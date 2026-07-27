@@ -1,0 +1,26 @@
+                                       Table "public.User"
+        Column        |              Type              | Collation | Nullable |      Default      
+----------------------+--------------------------------+-----------+----------+-------------------
+ id                   | text                           |           | not null | 
+ tenantId             | text                           |           | not null | 
+ email                | text                           |           | not null | 
+ passwordHash         | text                           |           | not null | 
+ role                 | "UserRole"                     |           | not null | 
+ createdAt            | timestamp(3) without time zone |           | not null | CURRENT_TIMESTAMP
+ updatedAt            | timestamp(3) without time zone |           | not null | 
+ privacyPolicyVersion | text                           |           |          | 
+ privacyAcceptedAt    | timestamp(3) without time zone |           |          | 
+ emailVerifiedAt      | timestamp(3) without time zone |           |          | 
+ suspendedAt          | timestamp(3) without time zone |           |          | 
+ suspendedReason      | text                           |           |          | 
+Indexes:
+    "User_pkey" PRIMARY KEY, btree (id)
+    "User_tenantId_email_key" UNIQUE, btree ("tenantId", email)
+    "User_tenantId_role_idx" btree ("tenantId", role)
+Foreign-key constraints:
+    "User_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"(id) ON UPDATE CASCADE ON DELETE CASCADE
+Referenced by:
+    TABLE ""AuthEmailToken"" CONSTRAINT "AuthEmailToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"(id) ON UPDATE CASCADE ON DELETE CASCADE
+    TABLE ""AuthSession"" CONSTRAINT "AuthSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"(id) ON UPDATE CASCADE ON DELETE CASCADE
+    TABLE ""Notification"" CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"(id) ON UPDATE CASCADE ON DELETE CASCADE
+
