@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a1230"/>
+      <stop offset="100%" stop-color="#020717"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg3)"/>
+  <circle cx="250" cy="730" r="230" fill="#2351e8" opacity="0.2"/>
+  <circle cx="1380" cy="170" r="190" fill="#7b4dff" opacity="0.2"/>
+  <rect x="170" y="120" width="1260" height="660" rx="28" fill="#09122d" stroke="#1f46d4"/>
+  <rect x="220" y="180" width="420" height="240" rx="20" fill="#112158"/>
+  <rect x="680" y="180" width="700" height="120" rx="20" fill="#112158"/>
+  <rect x="680" y="320" width="700" height="460" rx="20" fill="#0f1d4b"/>
+  <rect x="260" y="230" width="300" height="20" rx="10" fill="#4e7dff"/>
+  <rect x="260" y="270" width="210" height="20" rx="10" fill="#84a8ff"/>
+  <rect x="260" y="310" width="150" height="20" rx="10" fill="#b9cdff"/>
+  <rect x="730" y="360" width="560" height="22" rx="11" fill="#2351e8"/>
+  <rect x="730" y="405" width="450" height="22" rx="11" fill="#84a8ff"/>
+  <rect x="730" y="450" width="520" height="22" rx="11" fill="#4e7dff"/>
+  <text x="220" y="840" fill="#eef3ff" font-size="56" font-family="Arial, sans-serif" font-weight="700">Pilotage organisateur centralisé</text>
+</svg>

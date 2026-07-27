@@ -1,0 +1,941 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PLATFORM_SUPER_ADMIN
+  PLATFORM_ADMIN
+  ORGANIZER_OWNER
+  ORGANIZER_STAFF
+}
+
+enum EventStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+// Public layout template for the event page (/e/{slug}): how candidates are
+// presented. GRID = photo grid (default), LIST = rows, SPOTLIGHT = featured
+// first candidate + grid for the rest.
+enum EventLayout {
+  GRID
+  LIST
+  SPOTLIGHT
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  VOIDED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum PaymentPurpose {
+  VOTE
+  ACTIVATION
+  SUBSCRIPTION
+  TICKET
+}
+
+enum TicketTypeStatus {
+  ACTIVE
+  PAUSED
+  SOLD_OUT
+  CANCELLED
+}
+
+enum TicketStatus {
+  RESERVED
+  PAID
+  CONFIRMED
+  USED
+  CANCELLED
+  REFUNDED
+}
+
+enum AccountPlanType {
+  STANDARD
+  PARTNER
+}
+
+enum AccountPlanStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum AccountPartnerRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentProvider {
+  FEEXPAY
+  KKIAPAY
+  FEDAPAY
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  displayName String
+  // Organizer-level branding defaults, inherited by events that don't override.
+  logoUrl     String?
+  brandColor  String?
+  // Organizer-level commission override (basis points). Negotiated rate applied
+  // to all the organizer's events. Null = inherit platform default. Sits between
+  // the per-event override and the platform default in the resolution chain.
+  commissionBps Int?
+  // Organizer-level PSP routing choice. Null = inherit platform default.
+  provider      PaymentProvider?
+  // Partner program: activate-now-pay-later. Outstanding debt blocks new events.
+  isPartner              Boolean @default(false)
+  // Higher commission when isPartner=true. Null = fall back to commissionBps.
+  partnerCommissionBps   Int?
+  // Organizer payout (settlement) destination. The raw Mobile Money number is
+  // NEVER stored in plaintext: payoutPhoneEnc is AES-256-GCM encrypted and
+  // payoutPhoneLast4 is kept for display only (consistent with voter-phone).
+  payoutNetwork    String?
+  payoutPhoneEnc   String?
+  payoutPhoneLast4 String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  events      Event[]
+  auditLogs   AuditLog[]
+  secrets     TenantSecret[]
+  authSessions AuthSession[]
+  paymentTransactions PaymentTransaction[]
+  invitations Invitation[]
+  notifications Notification[]
+  accountSubscriptions    AccountSubscription[]
+  accountPartnerRequests  AccountPartnerRequest[]
+  partnerRequests   PartnerRequest[]
+  activationDebts   ActivationDebt[]
+}
+
+enum AuthEmailTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String?
+  firstName    String?
+  lastName     String?
+  photoUrl     String?
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Set when the user clicks the verification link sent after registration.
+  emailVerifiedAt DateTime?
+
+  // Platform suspension — blocks login and invalidates active sessions.
+  suspendedAt     DateTime?
+  suspendedReason String?
+
+  // Privacy policy acceptance, captured once at account creation (organizer
+  // onboarding). The voter journey no longer carries any consent step.
+  privacyPolicyVersion String?
+  privacyAcceptedAt    DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions AuthSession[]
+  notifications Notification[]
+  emailTokens AuthEmailToken[]
+  oauthAccounts OAuthAccount[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+}
+
+model AuthEmailToken {
+  id        String                @id @default(cuid())
+  userId    String
+  purpose   AuthEmailTokenPurpose
+  tokenHash String                @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+// OAuth account linking: one user may link multiple OAuth providers (e.g.
+// Google + Facebook). Uniqueness is enforced per (provider, providerAccountId).
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String   // "google" | "facebook"
+  providerAccountId String   // The user's unique ID from the provider
+  email             String?
+  displayName       String?
+  photoUrl          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  tenantId    String
+  // Globally unique: the event is the public "platform" unit, reachable at
+  // /e/{slug}. Uniqueness is enforced platform-wide, not per tenant.
+  slug        String      @unique
+  title       String
+  status      EventStatus @default(DRAFT)
+  startsAt    DateTime
+  endsAt      DateTime
+  // Per-event branding. Null fields inherit from the owning organizer (Tenant).
+  tagline         String?
+  logoUrl         String?
+  brandColor      String?
+  // Public page layout template (how candidates are displayed on /e/{slug}).
+  layout          EventLayout @default(GRID)
+  // Per-event voting rule: if set, every vote must match this unit price.
+  voteUnitPriceCfa Int?
+  // Per-event platform commission override, in basis points (1% = 100 bps).
+  // Null = inherit the platform-wide default from PlatformSetting.
+  commissionBps    Int?
+  // Per-event PSP routing override. Null = inherit the organizer's choice.
+  provider         PaymentProvider?
+  // Activation monetization (forfait). An event can only go ACTIVE once the
+  // activation fee has been paid (no free quota).
+  activationPaidAt   DateTime?
+  // Partner offer: votes collected on platform account; organizer has no BYO key.
+  isPartnerEvent           Boolean @default(false)
+  partnerPlatformShareBps  Int?
+  estimatedRevenueCfa      Int?
+  partnerOfferTierId       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  partnerOfferTier PartnerOfferTier? @relation(fields: [partnerOfferTierId], references: [id], onDelete: SetNull)
+  candidates Candidate[]
+  votes      Vote[]
+  secrets    EventSecret[]
+  partnerRequest    PartnerRequest?
+  activationDebt    ActivationDebt?
+  ticketTypes TicketType[]
+  tickets     Ticket[]
+
+  @@index([tenantId, status])
+}
+
+model TicketType {
+  id           String           @id @default(cuid())
+  eventId      String
+  name         String
+  description  String?
+  priceCfa     Int
+  quantity     Int
+  maxPerPerson Int              @default(10)
+  saleStartsAt DateTime?
+  saleEndsAt   DateTime?
+  status       TicketTypeStatus @default(ACTIVE)
+  design       Json?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  event   Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@unique([eventId, name])
+  @@index([eventId, status])
+}
+
+model Ticket {
+  id                String       @id @default(cuid())
+  ticketTypeId      String
+  eventId           String
+  holderName        String?
+  holderPhone       String?
+  holderEmail       String?
+  qrSecret          String       @unique
+  status            TicketStatus @default(RESERVED)
+  reservedAt        DateTime     @default(now())
+  paidAt            DateTime?
+  confirmedAt       DateTime?
+  usedAt            DateTime?
+  amountCfa         Int
+  paymentTransactionId String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id])
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, status])
+  @@index([ticketTypeId, status])
+}
+
+model Candidate {
+  id        String   @id @default(cuid())
+  eventId   String
+  fullName  String
+  photoUrl  String?
+  /// Numéro d'affichage optionnel (badge). Les liens publics utilisent publicRef.
+  number    Int?
+  /// Identifiant public non devinable pour /e/{eventSlug}/c/{publicRef}
+  publicRef String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  votes Vote[]
+
+  @@unique([eventId, number])
+}
+
+model Vote {
+  id              String   @id @default(cuid())
+  tenantId        String
+  eventId         String
+  candidateId     String
+  amountCfa       Int
+  // Number of vote units this row represents. When voteUnitPriceCfa is set on
+  // the event, votesCount = amountCfa / voteUnitPriceCfa (e.g. 10 votes at 100
+  // CFA each = amountCfa 1000, votesCount 10). Without a unit price it defaults
+  // to 1 (one row = one vote). Used in tally instead of COUNT(*) so that
+  // multi-vote purchases are counted correctly.
+  votesCount      Int      @default(1)
+  // Voter identity is stored ONLY as a salted hash (for matching a voter back
+  // to their vote when checking payment status) plus the last 4 digits (for
+  // support/display). The raw phone number is NEVER persisted (privacy / RGPD;
+  // voters have no account, so there is no deletion flow for it).
+  voterPhoneHash  String?
+  voterPhoneLast4 String?
+  createdAt       DateTime @default(now())
+  // Payment confirmation (denormalized). Set when the linked VOTE payment is
+  // confirmed SUCCEEDED by the webhook. A vote is counted in every tally ONLY
+  // when paidAt is set AND cancelledAt is null. Denormalized (rather than
+  // joining PaymentTransaction at read time) so tallying a high-volume event is
+  // a single indexed scan instead of an unbounded `id IN (...)` set.
+  paidAt          DateTime?
+  // Platform-admin cancellation (god-mode). A cancelled vote is excluded from
+  // every tally and revenue figure; the row is kept for audit (soft-void).
+  cancelledAt        DateTime?
+  cancelledReason    String?
+  cancelledByUserId  String?
+
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, eventId, createdAt])
+  @@index([candidateId, createdAt])
+  @@index([voterPhoneHash])
+  @@index([eventId, cancelledAt])
+  // Drives result tallies: count paid, non-cancelled votes per event/candidate.
+  @@index([eventId, candidateId, paidAt, cancelledAt])
+}
+
+model IdempotencyKey {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  scope      String
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  requestHash String
+}
+
+model PaymentTransaction {
+  id             String        @id @default(cuid())
+  tenantId       String
+  eventId        String
+  voteId         String?       @unique
+  provider       PaymentProvider
+  providerRef    String?       @unique
+  amountCfa       Int
+  // Number of vote units this row represents. When voteUnitPriceCfa is set on
+  // the event, votesCount = amountCfa / voteUnitPriceCfa (e.g. 10 votes at 100
+  // CFA each = amountCfa 1000, votesCount 10). Without a unit price it defaults
+  // to 1 (one row = one vote). Used in tally instead of COUNT(*) so that
+  // multi-vote purchases are counted correctly.
+  votesCount      Int      @default(1)
+  currency       String        @default("XOF")
+  status         PaymentStatus @default(INITIATED)
+  // What this payment is for: a vote, or an event activation fee.
+  purpose        PaymentPurpose @default(VOTE)
+  // Platform commission captured on this payment (computed at confirmation).
+  commissionCfa  Int?
+  idempotencyKey String        @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, eventId, status])
+}
+
+model ProductEvent {
+  id        String   @id @default(cuid())
+  name      String
+  sessionId String
+  userId    String?
+  tenantId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorUserId String
+  actorRole   UserRole
+  action      String
+  targetType  String
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model AuthSession {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  userId              String
+  refreshTokenHash    String
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  rotatedFromSessionId String?
+  userAgent           String?
+  ipAddress           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, expiresAt])
+  @@index([userId, revokedAt])
+}
+
+// Brute-force protection state, persisted so it is shared across all API
+// instances (Cloud Run scales horizontally) and survives restarts — never an
+// in-memory Map. Standalone (no tenant FK): attempts may target an unknown
+// tenant slug. Rows are cleared on successful login and purged by maintenance.
+model LoginAttempt {
+  id          String    @id @default(cuid())
+  identifier  String    @unique // lowercased `${tenantSlug}:${email}`
+  count       Int       @default(0)
+  lockedUntil DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([updatedAt])
+}
+
+model TenantSecret {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         String
+  cipherText  String
+  iv          String
+  authTag     String
+  createdByUserId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@index([tenantId, createdAt])
+}
+
+// Global platform configuration (PLATFORM_ADMIN "god-mode" control space).
+// Key/value, e.g. `commission_bps` = default commission in basis points.
+model PlatformSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Encrypted platform-level secrets (FeexPay master account for activation fees).
+model PlatformSecret {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  cipherText      String
+  iv              String
+  authTag         String
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+enum PartnerRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ActivationDebtStatus {
+  OUTSTANDING
+  SETTLED
+  WRITTEN_OFF
+}
+
+model PartnerOfferTier {
+  id               String   @id @default(cuid())
+  label            String
+  minRevenueCfa    Int
+  maxRevenueCfa    Int?
+  platformShareBps Int
+  sortOrder        Int      @default(0)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  events   Event[]
+  requests PartnerRequest[]
+
+  @@index([sortOrder])
+}
+
+model PartnerRequest {
+  id                  String               @id @default(cuid())
+  tenantId            String
+  eventId             String               @unique
+  status              PartnerRequestStatus @default(PENDING)
+  requestedByUserId   String
+  decidedByUserId     String?
+  decidedAt           DateTime?
+  reason              String?
+  estimatedRevenueCfa Int?
+  offerTierId         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  event     Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  offerTier PartnerOfferTier? @relation(fields: [offerTierId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+}
+
+model ActivationDebt {
+  id           String               @id @default(cuid())
+  tenantId     String
+  eventId      String               @unique
+  amountCfa    Int
+  recoveredCfa Int                  @default(0)
+  status       ActivationDebtStatus @default(OUTSTANDING)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  event      Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  recoveries ActivationRecovery[]
+
+  @@index([tenantId, status])
+}
+
+model ActivationRecovery {
+  id        String   @id @default(cuid())
+  debtId    String
+  payoutId  String?
+  amountCfa Int
+  createdAt DateTime @default(now())
+
+  debt   ActivationDebt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  payout Payout?        @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@index([debtId])
+}
+
+// Per-event encrypted secret (AES-256-GCM), e.g. the event's own FeexPay
+// account. Resolution at payment time: event secret first, organizer fallback.
+model EventSecret {
+  id              String   @id @default(cuid())
+  eventId         String
+  key             String
+  cipherText      String
+  iv              String
+  authTag         String
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, key])
+  @@index([eventId])
+}
+
+// Hidden forensic vault. Every vote that a platform admin cancels or
+// hard-deletes is purged from the live Vote/PaymentTransaction tables and a
+// full encrypted snapshot is stored here. Read only by PLATFORM_SUPER_ADMIN
+// behind a fresh-OTP gate. The "kind" field tracks why it landed here.
+model VaultEntry {
+  id              String   @id @default(cuid())
+  kind            String
+  tenantId        String
+  eventId         String
+  originalVoteId  String
+  amountCfa       Int
+  occurredAt      DateTime
+  actorUserId     String?
+  cipherText      String
+  iv              String
+  authTag         String
+  createdAt       DateTime @default(now())
+
+  @@unique([originalVoteId, kind])
+  @@index([tenantId, occurredAt])
+  @@index([eventId])
+}
+
+// Short-lived OTP challenge: super-admin requests vault unlock, gets a 6-digit
+// code by email, posts it back to obtain a 10-min vault token. The raw code is
+// never stored — only sha256(code). 5 failed attempts invalidate the challenge.
+model VaultUnlockChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+// Member invitation: an ORGANIZER_OWNER invites a teammate to its tenant.
+// Only the SHA-256 hash of the token is stored; the raw token is delivered once.
+model Invitation {
+  id              String           @id @default(cuid())
+  tenantId        String
+  email           String
+  role            UserRole
+  tokenHash       String           @unique
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  invitedByUserId String
+  acceptedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([email])
+}
+
+// ---------------------------------------------------------------------------
+// Payouts: automated, anti-double-spend disbursements through the multi-PSP seam.
+// A PayoutPeriod groups all payouts of a billing window. Inside a period there is
+// at most ONE Payout per (kind, beneficiaryTenantId). Each PayoutLine pins a
+// source revenue row (PaymentTransaction or VaultEntry) so a revenue can be paid
+// out at most once — ever.
+// ---------------------------------------------------------------------------
+
+enum PayoutPeriodStatus {
+  OPEN
+  PROCESSING
+  CLOSED
+}
+
+enum PayoutStatus {
+  PENDING // created, no provider call yet
+  IN_FLIGHT // locked + provider called, awaiting response
+  SUCCEEDED
+  FAILED
+  UNCERTAIN // provider timeout/5xx — manual resolution required, never auto-retried
+}
+
+enum PayoutKind {
+  ORGANIZER
+  PLATFORM
+}
+
+model PayoutPeriod {
+  id        String             @id @default(cuid())
+  label     String             @unique
+  from      DateTime
+  to        DateTime
+  status    PayoutPeriodStatus @default(OPEN)
+  payouts   Payout[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model Payout {
+  id                  String          @id @default(cuid())
+  periodId            String
+  kind                PayoutKind
+  // ORGANIZER: beneficiaryTenantId set ; PLATFORM: null.
+  beneficiaryTenantId String?
+  amountCfa           Int
+  currency            String          @default("XOF")
+  status              PayoutStatus    @default(PENDING)
+  idempotencyKey      String          @unique
+  // Which PSP performed the disbursement (resolved from the beneficiary's choice).
+  provider            PaymentProvider
+  providerRef         String?         @unique
+  errorMessage        String?
+  lockedAt            DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  period PayoutPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  lines  PayoutLine[]
+  recoveries ActivationRecovery[]
+
+  @@unique([periodId, kind, beneficiaryTenantId])
+  @@index([status])
+  @@index([periodId, kind])
+}
+
+model PayoutLine {
+  id                   String   @id @default(cuid())
+  payoutId             String
+  // Exactly one source id is set; the unique indexes guarantee a single source
+  // row maps to at most one PayoutLine, ever (one-revenue-one-payout).
+  paymentTransactionId String?  @unique
+  vaultEntryId         String?  @unique
+  activationRecoveryId String?  @unique
+  amountCfa            Int
+  kind                 String // 'vote_net' | 'commission' | 'activation_fee' | 'confiscated' | 'activation_recovery'
+  createdAt            DateTime @default(now())
+
+  payout Payout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  @@index([payoutId])
+}
+
+model PayoutJobLock {
+  name       String   @id
+  acquiredAt DateTime
+  acquiredBy String
+  expiresAt  DateTime
+}
+
+enum NotificationType {
+  PAYMENT_SUCCEEDED
+  INVITATION_ACCEPTED
+  EVENT_ACTIVATED
+  PAYOUT_SUCCEEDED
+  PAYOUT_FAILED
+  PARTNER_REQUEST_RECEIVED
+  PARTNER_REQUEST_APPROVED
+  PARTNER_REQUEST_REJECTED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_EXPIRING_SOON
+  SUBSCRIPTION_EXPIRED
+  ACCOUNT_PARTNER_REQUEST_RECEIVED
+  ACCOUNT_PARTNER_REQUEST_APPROVED
+  ACCOUNT_PARTNER_REQUEST_REJECTED
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String
+  userId    String
+  type      NotificationType
+  data      Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Account Subscriptions: SaaS-style plans (Standard paid / Partner by contract).
+// A single AccountSubscription row is the "central switch" that gates event
+// creation and vote reception per tenant.
+// ---------------------------------------------------------------------------
+
+// Admin-configurable pricing grid for Standard plans.
+model SubscriptionPricing {
+  id              String   @id @default(cuid())
+  durationMonths  Int      @unique    // 1, 3, 6, 12
+  priceCfa        Int                 // price in FCFA
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Subscription Plans: flexible admin-defined pricing tiers.
+// Free (gratuit, 1 event max), Starter, Pro, Enterprise.
+// L'admin peut modifier prix, commission, maxEvents sans toucher au code.
+// ---------------------------------------------------------------------------
+model Plan {
+  id             String   @id @default(cuid())
+  name           String   @unique        // "Free", "Starter", "Pro", "Enterprise"
+  slug           String   @unique        // "free", "starter", "pro", "enterprise"
+  description    String?
+  // Prix mensuel en FCFA. 0 pour Free.
+  priceCfa       Int      @default(0)
+  // Nombre max d'événements autorisés. null = illimité.
+  maxEvents      Int?
+  // Commission platform en basis points (1% = 100 bps). Ex: 1500 = 15%.
+  commissionRate Int      @default(1500)
+  // Le plan peut être désactivé par l'admin (caché, plus souscriptible).
+  isActive       Boolean  @default(true)
+  // Ordre d'affichage dans le tableau des prix.
+  sortOrder      Int      @default(0)
+  // Fonctionnalités additionnelles (tableau JSON).
+  features       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  subscriptions  AccountSubscription[]
+
+  @@index([isActive, sortOrder])
+}
+
+// One row per paid/validated period. The "central switch": does this tenant
+// currently have the right to create events and receive votes?
+model AccountSubscription {
+  id                String            @id @default(cuid())
+  tenantId          String
+  planType          AccountPlanType   // STANDARD | PARTNER
+  // Référence au Plan souscrit (nullable pour rétrocompatibilité).
+  // Permet de connaître la commission, le maxEvents et le prix définis par l'admin
+  // au moment de la souscription.
+  planId            String?
+  status            AccountPlanStatus @default(ACTIVE)
+  startsAt          DateTime
+  expiresAt         DateTime
+  durationMonths    Int               // chosen duration
+  priceCfa          Int?              // amount paid (Standard) or null (Partner)
+  currency          String            @default("XOF")
+
+  // Frozen commission: rate captured at subscription time.
+  // Applied to all votes during this plan's lifetime.
+  frozenCommissionBps Int
+
+  // For partners: custom rate (20% default, overridable per partner).
+  partnerCommissionBps Int?
+
+  // Reference to the subscription payment (Standard only).
+  paymentTransactionId String?        @unique
+
+  // Reference to the account partner request (Partner only).
+  accountPartnerRequestId String?     @unique
+
+  // Reminder tracking (avoid duplicates).
+  reminderJ7Sent    Boolean @default(false)
+  reminderJ3Sent    Boolean @default(false)
+  reminderJ1Sent    Boolean @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan?   @relation(fields: [planId], references: [id], onDelete: SetNull)
+  accountPartnerRequest AccountPartnerRequest? @relation(fields: [accountPartnerRequestId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, expiresAt])
+  @@index([expiresAt, status])
+}
+
+// Account-level partnership request (distinct from the existing per-event
+// PartnerRequest which remains untouched for backward compatibility).
+model AccountPartnerRequest {
+  id                    String                        @id @default(cuid())
+  tenantId              String
+  status                AccountPartnerRequestStatus   @default(PENDING)
+  durationMonths        Int                           // desired duration
+  requestedByUserId     String
+  reason                String?                       // motivation
+
+  // Contract: template version presented + acceptance timestamp.
+  contractVersion       String                        // template version id
+  contractAcceptedAt    DateTime?                     // when the organizer accepted terms
+
+  // Digital signature (full name typed to sign).
+  signedFullName        String?                       // full name typed as electronic signature
+  signedAt              DateTime?                     // exact signature timestamp
+
+  // Admin decision
+  decidedByUserId       String?
+  decidedAt             DateTime?
+  decisionNote          String?
+
+  // Negotiated partner commission (null = platform default 20%).
+  negotiatedCommissionBps Int?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription AccountSubscription?
+
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+}
+
+// Display partners shown on the public website carousel.
+model DisplayPartner {
+  id        String   @id @default(cuid())
+  name      String   // Company/organization name
+  logoUrl   String   // Logo image URL
+  websiteUrl String? // Optional link
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// Admin access keys for programmatic API access.
+model AdminApiKey {
+  id          String   @id @default(cuid())
+  label       String   // Human-readable name
+  keyHash     String   @unique // SHA-256 of the raw key
+  keyPrefix   String   // First 8 chars for identification
+  createdByUserId String
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([revokedAt])
+}

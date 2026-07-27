@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f2ebd8"/>
+      <stop offset="100%" stop-color="#ebf0fb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg2)"/>
+  <circle cx="1160" cy="180" r="180" fill="#2351e8" opacity="0.14"/>
+  <rect x="330" y="150" width="320" height="620" rx="36" fill="#0a1230"/>
+  <rect x="360" y="200" width="260" height="470" rx="24" fill="#eef3ff"/>
+  <rect x="390" y="250" width="200" height="20" rx="10" fill="#2351e8"/>
+  <rect x="390" y="290" width="160" height="20" rx="10" fill="#4e7dff"/>
+  <circle cx="470" cy="410" r="84" fill="#163ebf"/>
+  <rect x="750" y="220" width="530" height="430" rx="26" fill="#ffffff" stroke="#b9cdff"/>
+  <rect x="800" y="300" width="420" height="18" rx="9" fill="#2351e8" opacity="0.9"/>
+  <rect x="800" y="340" width="360" height="18" rx="9" fill="#7b4dff" opacity="0.7"/>
+  <rect x="800" y="380" width="290" height="18" rx="9" fill="#84a8ff" opacity="0.85"/>
+  <text x="760" y="530" fill="#0a1230" font-size="56" font-family="Arial, sans-serif" font-weight="700">Vote mobile simple et rapide</text>
+</svg>

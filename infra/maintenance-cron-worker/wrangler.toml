@@ -1,0 +1,17 @@
+name = "votezpro-maintenance-cron"
+main = "src/index.ts"
+compatibility_date = "2026-04-29"
+
+[env.staging]
+workers_dev = false
+
+[env.staging.triggers]
+# 02:00 daily = retention purge + reconciliation; every 5 min = reconciliation only.
+crons = ["0 2 * * *", "*/5 * * * *"]
+
+[env.production]
+workers_dev = false
+
+[env.production.triggers]
+# 01:00 daily = retention purge + reconciliation; every 5 min = reconciliation only.
+crons = ["0 1 * * *", "*/5 * * * *"]

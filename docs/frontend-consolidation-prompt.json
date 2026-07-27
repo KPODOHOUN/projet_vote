@@ -1,0 +1,111 @@
+{
+  "task": "consolidate_frontend_design",
+  "role": "Senior frontend designer + engineer. Une seule source de vérité design, sans casser le câblage de données.",
+  "project": {
+    "name": "VotezPro",
+    "domain": "Plateforme SaaS de concours/votes payants — Afrique francophone (Bénin)",
+    "core_value": "Chaque événement = une mini-plateforme de vote publique payante (event-as-platform, ADR-016)",
+    "language_ui": ["fr", "en"],
+    "audience": "Voteurs majoritairement sur mobile, réseaux Afrique de l'Ouest"
+  },
+  "stack": {
+    "framework": "Next.js 15 (App Router)",
+    "react": "19",
+    "styling": "Tailwind v4 (@theme)",
+    "monorepo": ["apps/web", "apps/api (NE PAS TOUCHER)", "packages/shared"],
+    "reuse_only": ["framer-motion", "gsap", "@gsap/react", "three", "@react-three/fiber", "lucide-react", "clsx", "tailwind-merge", "@sentry/nextjs"],
+    "fonts": "next/font/local — variables --font-display/body/mono",
+    "data_layer": "apps/web/lib/api.ts (apiFetch) + SSE statut paiement",
+    "i18n": "apps/web/lib/i18n* (provider existant — aucune string en dur)"
+  },
+  "problem": {
+    "summary": "3 systèmes de design contradictoires + composants qui n'utilisent pas les primitives partagées",
+    "conflicting_design_sources": [
+      { "file": "design-system/tokens.ts", "palette": "bleu #2E5BFF", "fonts": "Fraunces / Manrope" },
+      { "file": "design-system/votezpro/MASTER.md", "palette": "or #F59E0B + violet #8B5CF6, fond sombre", "fonts": "IBM Plex Sans" },
+      { "file": "apps/web/app/globals.css", "palette": "tokens Material, primary #004ac6", "fonts": "Inter / Plus Jakarta (auto-hébergées)" }
+    ],
+    "unused_primitives": {
+      "available": "design-system/components/ (Button, Input, EmptyState, KpiCard, StatusChip, TrustBadge)",
+      "issue": "apps/web/components/ (7 composants de layout) ne les utilise pas → incohérence, états UX manquants, a11y/SEO faibles"
+    }
+  },
+  "objective": "UNE source de vérité de tokens, pages reconstruites sur primitives partagées, tous les états UX couverts, WCAG 2.1 AA, SEO/OG, responsive — sans toucher à la logique métier ni au câblage API.",
+  "steps": [
+    {
+      "id": 1,
+      "name": "AUDIT (lecture seule, livrer le rapport AVANT tout code)",
+      "actions": [
+        "Lister chaque divergence entre les 3 sources de tokens (couleur, font, spacing, radius, ombre)",
+        "Pour chaque apps/web/app/**/page.tsx : composants utilisés, états gérés (loading/empty/error/success), couleurs/fonts hardcodées",
+        "Recommander UNE direction (palette + 2 fonts max) justifiée par le domaine (confiance fintech/vote). ATTENDRE validation avant de réécrire les tokens."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "SOURCE DE VÉRITÉ UNIQUE",
+      "actions": [
+        "Choisir design-system/tokens.ts comme SSOT, le réconcilier en un seul thème",
+        "Générer apps/web/app/globals.css À PARTIR des tokens (variables @theme Tailwind v4 dérivées — zéro valeur en double)",
+        "Déprécier/aligner MASTER.md ; supprimer les sources mortes ; zéro couleur/font hardcodée hors tokens"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "PRIMITIVES PARTAGÉES",
+      "actions": [
+        "design-system/components/* = seules briques de base, exposées proprement à apps/web",
+        "Aucun <button>/<input> brut stylé à la main",
+        "Compléter si besoin : Card, Field+Label+Error, Toast, Skeleton, Spinner, Modal, Badge — TS strict, accessibles"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "ÉTATS UX OBLIGATOIRES (chaque page connectée à l'API)",
+      "states": ["loading (skeleton)", "empty (EmptyState : illustration + titre + CTA réel)", "error (message humain + récupération, lit la vraie erreur API)", "success", "partial", "offline"],
+      "rule": "Aucun état mort, aucune fake data. Données toujours via apiFetch."
+    },
+    {
+      "id": 5,
+      "name": "PAGE MANQUANTE /e/{slug} (priorité produit)",
+      "create": "apps/web/app/e/[slug]/page.tsx",
+      "consumes": ["GET /api/v1/votes/public/event/:eventSlug", "GET /api/v1/votes/public/event/:eventSlug/results"],
+      "flow": "afficher event + candidats → choisir candidat + montant → payer (réutiliser le flux SSE de vote/[tenantSlug]/[eventSlug]/page.tsx) → confirmation",
+      "seo": "generateMetadata dynamique (title/description/OG par event)"
+    },
+    {
+      "id": 6,
+      "name": "A11Y (WCAG 2.1 AA) & SEO",
+      "a11y": ["contraste ≥ 4.5:1", "focus visible", "nav clavier complète", "labels/ARIA sur tout interactif", "erreurs formulaire annoncées", "prefers-reduced-motion respecté"],
+      "seo": ["title/description uniques", "OG dynamique", "sitemap/robots routes publiques"]
+    },
+    {
+      "id": 7,
+      "name": "MOTION & POLISH",
+      "actions": [
+        "Réutiliser design-system/gsap-presets.ts",
+        "1 élément mémorable par page principale",
+        "Entrée < 300ms / sortie < 200ms ; hover/active cohérents",
+        "Pas d'AI-slop (pas de purple-gradient générique ni cards grises ternes)"
+      ]
+    }
+  ],
+  "constraints": [
+    "TypeScript strict, zéro any. Lint vert (npm run lint:check).",
+    "ZÉRO fake data / placeholder / TODO : tout vient de l'API réelle.",
+    "Aucune string FR/EN en dur → provider i18n existant.",
+    "Responsive mobile-first.",
+    "Ne pas régresser les tests Playwright (apps/web/tests/e2e).",
+    "NE JAMAIS modifier apps/api."
+  ],
+  "definition_of_done": [
+    "npm run lint:check vert + build web OK + e2e Playwright verts",
+    "1 seule source de tokens ; 0 couleur/font hardcodée (prouvé par grep)",
+    "Chaque page connectée gère loading/empty/error explicitement",
+    "/e/{slug} fonctionnel de bout en bout (affichage → vote → paiement → confirmation)",
+    "Audit a11y (contraste, focus, clavier) documenté et corrigé",
+    "Score Design/UX et Accessibilité ≥ 9/10 (grille 12 dimensions)"
+  ],
+  "method": "Commence par l'AUDIT (§1) et présente-le AVANT d'écrire du code. Travaille page par page ; vérifie (build + lint + e2e) après chaque page ; ne déclare 'fait' qu'avec la sortie des commandes à l'appui.",
+  "do_not_touch": ["apps/api/**", "packages/db/**", "câblage apiFetch / SSE existant"]
+}

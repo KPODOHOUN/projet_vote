@@ -1,0 +1,41 @@
+{
+  "name": "shadowa-votes-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plateforme SaaS de concours et votes payants pour l'Afrique francophone.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:check": "eslint \"apps/api/src/**/*.ts\" \"packages/*/src/**/*.ts\"",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace=@votezpro/db",
+    "db:seed": "npm run db:seed --workspace=@votezpro/db",
+    "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@votezpro/db"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "overrides": {
+    "postcss": "8.5.17",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/body-parser": "^1.19.6",
+    "@types/http-errors": "^2.0.5",
+    "@types/qs": "^6.15.1",
+    "@types/range-parser": "^1.2.7",
+    "@types/send": "^1.2.1",
+    "@types/stats.js": "^0.17.4",
+    "@types/three": "^0.184.1",
+    "eslint": "^9.39.4",
+    "typescript-eslint": "^8.60.0"
+  }
+}
