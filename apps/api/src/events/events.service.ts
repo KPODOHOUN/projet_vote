@@ -6,7 +6,7 @@ import {
   HttpStatus,
   NotFoundException
 } from "@nestjs/common";
-import { EventLayout, EventStatus, UserRole } from "@prisma/client";
+import { EventLayout, EventStatus, PaymentProvider, TenantOfferType, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma/prisma.service";
 import { VotesService } from "../votes/votes.service";
@@ -21,8 +21,9 @@ import {
 import { PartnersService } from "../partners/partners.service";
 import { generateSecureEventSlug } from "../common/secure-event-slug";
 import { generateUniqueCandidatePublicRef } from "../common/candidate-public-ref";
-import { AccountPlanStatus } from "@prisma/client";
-import { PlansService } from "../admin/plans/plans.service";
+import { OfferSettingsService } from "../offers/offer-settings.service";
+import { supportsSplit } from "../offers/psp-split.util";
+import { env } from "../config/env";
 
 // Per-event branding / rules. Reused by create and update. All optional:
 // a null field inherits from the owning organizer (ADR-016).
@@ -88,17 +89,14 @@ export class EventsService {
     private readonly votesService: VotesService,
     private readonly notifications: NotificationsService,
     private readonly partnersService: PartnersService,
-    private readonly plansService: PlansService
+    private readonly offerSettings: OfferSettingsService
   ) { }
 
   /**
-   * Central subscription gate: verifies the tenant has an active plan
-   * AND that the plan's event limit hasn't been reached.
-   * Platform admins are exempt. Partner accounts with active subs skip
-   * the old activation-debt check.
+   * Offer-based gate: both EXTERNAL and ESCROW allow unlimited events when the
+   * matching platform offer flag is enabled. Replaces the former subscription plan limit.
    */
-  private async assertSubscriptionForEventCreation(tenantId: string, userRole: UserRole): Promise<void> {
-    // Platform admins and legacy test cases bypass the subscription check.
+  private async assertOfferAllowsEventCreation(tenantId: string, userRole: UserRole): Promise<void> {
     if (userRole === UserRole.PLATFORM_ADMIN || userRole === UserRole.PLATFORM_SUPER_ADMIN) {
       return;
     }
@@ -106,10 +104,69 @@ export class EventsService {
       return;
     }
 
-    // Vérifier via PlansService : abonnement actif + limite d'événements
-    const { allowed, reason } = await this.plansService.canCreateEvent(tenantId);
-    if (!allowed) {
-      throw new ConflictException(reason ?? "Abonnement requis pour créer un évènement.");
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { offerType: true }
+    });
+    if (!tenant) {
+      throw new NotFoundException("Organisation introuvable.");
+    }
+
+    const settings = await this.offerSettings.getSettings();
+    if (tenant.offerType === TenantOfferType.EXTERNAL && !settings.offer1ExternalEnabled) {
+      throw new ConflictException(
+        "L'offre External est désactivée. Contactez le support ou choisissez l'offre Escrow."
+      );
+    }
+    if (tenant.offerType === TenantOfferType.ESCROW && !settings.offer2EscrowEnabled) {
+      throw new ConflictException(
+        "L'offre Escrow est désactivée. Contactez le support ou choisissez l'offre External."
+      );
+    }
+  }
+
+  /**
+   * Offer 1 (EXTERNAL): event create/activate requires a PSP that supports split
+   * and a configured payout destination on the tenant.
+   */
+  private async assertExternalOfferReady(
+    tenantId: string,
+    eventProvider?: PaymentProvider | null
+  ): Promise<void> {
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        offerType: true,
+        provider: true,
+        fedapaySubAccountRef: true,
+        fedapaySubAccountVerifiedAt: true
+      }
+    });
+    if (!tenant) {
+      throw new NotFoundException("Organisation introuvable.");
+    }
+    if (tenant.offerType !== TenantOfferType.EXTERNAL) {
+      return;
+    }
+
+    if (!tenant.fedapaySubAccountRef || !tenant.fedapaySubAccountVerifiedAt) {
+      throw new ConflictException(
+        "Offre External : connectez puis faites valider votre sous-compte FedaPay avant de créer ou activer un évènement."
+      );
+    }
+
+    const provider =
+      eventProvider ?? tenant.provider ?? (env.DEFAULT_PSP_PROVIDER as PaymentProvider);
+    const ok = await supportsSplit(this.prisma.client, provider);
+    if (!ok) {
+      throw new ConflictException(
+        `Offre External : ${provider} ne prend pas en charge le split natif validé. Utilisez FedaPay Marketplace ou passez à l'offre Escrow.`
+      );
+    }
+    if (provider !== PaymentProvider.FEDAPAY) {
+      throw new ConflictException(
+        "Offre External : seul FedaPay Marketplace est autorisé actuellement pour garantir le partage automatique des fonds."
+      );
     }
   }
 
@@ -139,8 +196,8 @@ export class EventsService {
       throw new NotFoundException("Rôle non autorisé.");
     }
 
-    // Subscription gate: must have an active plan to create events.
-    await this.assertSubscriptionForEventCreation(user.tenantId, user.role);
+    await this.assertOfferAllowsEventCreation(user.tenantId, user.role);
+    await this.assertExternalOfferReady(user.tenantId);
 
     if (await this.partnersService.hasOutstandingDebt(user.tenantId)) {
       throw new ConflictException(
@@ -205,8 +262,8 @@ export class EventsService {
       throw new NotFoundException("Rôle non autorisé.");
     }
 
-    // Subscription gate: must have an active plan to create events.
-    await this.assertSubscriptionForEventCreation(user.tenantId, user.role);
+    await this.assertOfferAllowsEventCreation(user.tenantId, user.role);
+    await this.assertExternalOfferReady(user.tenantId);
 
     if (await this.partnersService.hasOutstandingDebt(user.tenantId)) {
       throw new ConflictException(
@@ -703,10 +760,11 @@ export class EventsService {
     if (input.voteUnitPriceCfa !== undefined) data.voteUnitPriceCfa = input.voteUnitPriceCfa;
 
     // Activation gate: going ACTIVE requires the activation fee to be paid
-    // (no free quota) when a fee is configured.
+    // (no free quota) when a fee is configured. EXTERNAL also needs PSP split + payout dest.
     const isActivating = input.status === EventStatus.ACTIVE && event.status !== EventStatus.ACTIVE;
     if (isActivating) {
       await this.assertCanActivate(event);
+      await this.assertExternalOfferReady(user.tenantId, event.provider);
     }
 
     const updatedEvent = await this.prisma.client.event.update({

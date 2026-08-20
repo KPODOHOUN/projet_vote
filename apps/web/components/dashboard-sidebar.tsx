@@ -15,7 +15,8 @@ import {
   Shield,
   CreditCard,
   Ticket,
-  Search
+  Search,
+  Wallet
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useI18n } from "../lib/i18n-provider";
@@ -30,9 +31,8 @@ type NavItem = {
 
 export function DashboardSidebar() {
   const pathname = usePathname();
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { isPlatformAdmin } = useAuth();
-  const isEn = locale === "en";
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -49,30 +49,31 @@ export function DashboardSidebar() {
     const items: NavItem[] = [
       { href: "/dashboard", label: t("nav.overview"), icon: LayoutDashboard },
       { href: "/dashboard/events", label: t("nav.events"), icon: Calendar },
-      { href: "/dashboard/ticketing", label: isEn ? "Ticketing" : "Billetterie", icon: Ticket },
-      { href: "/dashboard/search", label: isEn ? "Search" : "Recherche", icon: Search },
+      { href: "/dashboard/ticketing", label: t("nav.ticketing"), icon: Ticket },
+      { href: "/dashboard/search", label: t("nav.search"), icon: Search },
       { href: "/dashboard/team", label: t("nav.team"), icon: UserPlus },
       { href: "/dashboard/account", label: t("nav.account"), icon: CircleUser },
-      { href: "/dashboard/subscription", label: isEn ? "Subscription" : "Mon abonnement", icon: CreditCard },
+      { href: "/dashboard/wallet", label: t("nav.wallet"), icon: Wallet },
+      { href: "/dashboard/offer", label: t("nav.offer"), icon: CreditCard },
       { href: "/dashboard/notifications", label: t("nav.notifications"), icon: Bell }
     ];
     if (isPlatformAdmin) {
       items.push({
         href: "/admin",
-        label: isEn ? "Platform admin" : "Admin plateforme",
+        label: t("nav.platformAdmin"),
         icon: Shield,
         className: "mt-auto border-t border-border pt-4"
       });
     }
     return items;
-  }, [t, isPlatformAdmin, isEn]);
+  }, [t, isPlatformAdmin]);
 
   return (
     <>
       <button
         type="button"
         onClick={() => setIsMobileOpen(!isMobileOpen)}
-        aria-label={isMobileOpen ? (isEn ? "Close menu" : "Fermer") : isEn ? "Open menu" : "Ouvrir"}
+        aria-label={isMobileOpen ? t("nav.closeMenu") : t("nav.openMenu")}
         aria-expanded={isMobileOpen}
         className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm transition-all hover:bg-accent lg:hidden"
       >
@@ -94,7 +95,7 @@ export function DashboardSidebar() {
             <div className="transition-opacity duration-300">
               <h1 className="truncate text-lg font-bold tracking-tight text-foreground">SHADOMA</h1>
               <p className="text-[11px] font-medium text-muted-foreground">
-                {isEn ? "Organizer workspace" : "Espace organisateur"}
+                {t("nav.workspace")}
               </p>
             </div>
           )}
@@ -134,7 +135,7 @@ export function DashboardSidebar() {
         <button
           type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          aria-label={isCollapsed ? (isEn ? "Expand sidebar" : "Déplier") : isEn ? "Collapse sidebar" : "Replier"}
+          aria-label={isCollapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
           className="hidden h-11 items-center justify-center border-t border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
         >
           {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

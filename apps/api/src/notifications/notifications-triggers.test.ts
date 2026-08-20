@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
+import { TenantOfferType } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
 import { EventsService } from "../events/events.service";
 import { VotesService } from "../votes/votes.service";
@@ -10,6 +11,7 @@ import { PartnersService } from "../partners/partners.service";
 import { noopPartnerNotifications } from "../partners/partner-notifications.stub";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
+import { OfferSettingsService } from "../offers/offer-settings.service";
 
 const prismaService = new PrismaService();
 const notifications = new NotificationsService(prismaService);
@@ -19,7 +21,8 @@ const eventsService = new EventsService(
   prismaService,
   votesService,
   notifications,
-  new PartnersService(prismaService, noopPartnerNotifications())
+  new PartnersService(prismaService, noopPartnerNotifications()),
+  new OfferSettingsService(prismaService)
 );
 
 const creds = {
@@ -27,6 +30,7 @@ const creds = {
   tenantDisplayName: "Trig",
   email: "owner@trig.africa",
   password: "SecurePass123!",
+  offerType: TenantOfferType.ESCROW,
   acceptPrivacyPolicy: true as const
 };
 

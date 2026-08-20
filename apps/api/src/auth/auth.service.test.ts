@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
+import { TenantOfferType } from "@prisma/client";
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -17,6 +18,7 @@ const credentials = {
   tenantDisplayName: "Lock Test",
   email: "owner@lock-test.africa",
   password: "SecurePass123!",
+  offerType: TenantOfferType.ESCROW,
   acceptPrivacyPolicy: true as const
 };
 
@@ -113,6 +115,7 @@ test("register refuse un mot de passe trop court (<10)", async () => {
       tenantDisplayName: "PW Short",
       email: "a@pw-short.africa",
       password: "Ab1cdef",
+      offerType: TenantOfferType.ESCROW,
       acceptPrivacyPolicy: true as const
     }),
     /10 caract|au moins/i
@@ -127,6 +130,7 @@ test("register refuse un mot de passe sans diversité (une seule classe)", async
       tenantDisplayName: "PW Weak",
       email: "a@pw-weak.africa",
       password: "aaaaaaaaaa",
+      offerType: TenantOfferType.ESCROW,
       acceptPrivacyPolicy: true as const
     }),
     /deux types|classe|caract/i
@@ -140,6 +144,7 @@ test("register accepte un mot de passe robuste", async () => {
     tenantDisplayName: "PW OK",
     email: "a@pw-ok.africa",
     password: "SecurePass123!",
+    offerType: TenantOfferType.ESCROW,
     acceptPrivacyPolicy: true as const
   });
   assert.ok(res);

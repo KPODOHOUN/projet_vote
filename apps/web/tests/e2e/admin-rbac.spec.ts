@@ -2,8 +2,12 @@ import { expect, test } from "@playwright/test";
 
 test.describe("RBAC admin", () => {
   test("organisateur redirigé hors de /admin", async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem("vp.organizer.token", "organizer-token");
+    await page.route("**/api/v1/auth/refresh", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ accessToken: "organizer-token" })
+      });
     });
 
     await page.route("**/api/v1/auth/me", async (route) => {
@@ -32,8 +36,12 @@ test.describe("RBAC admin", () => {
   });
 
   test("admin plateforme accède à /admin/votes", async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem("vp.organizer.token", "admin-token");
+    await page.route("**/api/v1/auth/refresh", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ accessToken: "admin-token" })
+      });
     });
 
     await page.route("**/api/v1/auth/me", async (route) => {
@@ -75,6 +83,7 @@ test.describe("RBAC admin", () => {
 
     await page.goto("/admin/votes");
     await expect(page.getByRole("heading", { name: "Modération des votes" })).toBeVisible();
-    await expect(page.getByText("Aucun vote")).toBeVisible();
+    // heading précis : « Aucun vote » matche aussi la description « Aucun vote ne correspond aux filtres. »
+    await expect(page.getByRole("heading", { name: "Aucun vote" })).toBeVisible();
   });
 });

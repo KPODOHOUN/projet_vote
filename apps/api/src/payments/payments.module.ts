@@ -1,8 +1,9 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { PlatformControlModule } from "../platform-control/platform-control.module";
 import { OrganizerSecretsModule } from "../organizer-secrets/organizer-secrets.module";
 import { NotificationsCoreModule } from "../notifications/notifications-core.module";
+import { OffersModule } from "../offers/offers.module";
 import { PaymentsController } from "./payments.controller";
 import { PaymentReconciliationController } from "./payment-reconciliation.controller";
 import { PaymentsService } from "./payments.service";
@@ -14,7 +15,13 @@ import { KkiapayGateway } from "./psp/kkiapay.gateway";
 import { PspRegistry } from "./psp/psp.registry";
 
 @Module({
-  imports: [AuthModule, NotificationsCoreModule, OrganizerSecretsModule, PlatformControlModule],
+  imports: [
+    AuthModule,
+    NotificationsCoreModule,
+    OrganizerSecretsModule,
+    PlatformControlModule,
+    forwardRef(() => OffersModule)
+  ],
   controllers: [PaymentsController, PaymentReconciliationController],
   providers: [
     PaymentsService,

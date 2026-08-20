@@ -4,7 +4,7 @@ import {
     Injectable,
     NotFoundException
 } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../../auth/auth.types";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -115,7 +115,7 @@ export class PlansService {
                 commissionRate: data.commissionRate,
                 isActive: data.isActive,
                 sortOrder: data.sortOrder,
-                features: data.features ?? null
+                features: data.features ?? Prisma.JsonNull
             }
         });
 

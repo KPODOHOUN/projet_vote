@@ -87,7 +87,7 @@ export default function DashboardLayout({
           <DemoModeBanner />
           <SubscriptionBanner />
           <main className="flex-1 overflow-y-auto bg-background/50">
-            <div className="mx-auto max-w-container-max p-6 md:p-10 lg:p-12">{children}</div>
+            <div className="mx-auto max-w-container-wide p-6 md:p-10 lg:p-12">{children}</div>
           </main>
         </div>
       </div>

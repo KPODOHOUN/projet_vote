@@ -77,7 +77,11 @@ export default function DashboardAdminSubscriptionsPage() {
     void loadData();
   }, [router]);
 
-  const handlePriceChange = (index: number, field: keyof PricingItem, value: string | number) => {
+  const handlePriceChange = <K extends keyof PricingItem>(
+    index: number,
+    field: K,
+    value: PricingItem[K]
+  ) => {
     setPricing((prev) => {
       const copy = [...prev];
       copy[index] = { ...copy[index], [field]: value } as PricingItem;

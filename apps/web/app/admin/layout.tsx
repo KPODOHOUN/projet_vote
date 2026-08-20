@@ -5,10 +5,11 @@ import { AuthProvider, useAuth } from "../../lib/auth-context";
 import { AdminSidebar } from "../../components/admin-sidebar";
 import { AdminHeader } from "../../components/admin-header";
 import { AdminLoginForm } from "../../components/admin-login-form";
+import { AdminRouteGuard } from "../../components/admin-route-guard";
 import { LoadingState } from "@/components/ui";
 
 function AdminLayoutInner({ children }: Readonly<{ children: ReactNode }>) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isPlatformAdmin } = useAuth();
 
   if (isLoading) {
     return (
@@ -21,6 +22,9 @@ function AdminLayoutInner({ children }: Readonly<{ children: ReactNode }>) {
   if (!user) {
     return <AdminLoginForm />;
   }
+  if (!isPlatformAdmin) {
+    return <AdminRouteGuard>{null}</AdminRouteGuard>;
+  }
 
   return (
     <div className="flex min-h-dvh overflow-hidden bg-background">
@@ -28,7 +32,7 @@ function AdminLayoutInner({ children }: Readonly<{ children: ReactNode }>) {
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminHeader />
         <main className="flex-1 overflow-y-auto bg-background/50">
-          <div className="mx-auto max-w-container-max p-8 md:p-12 lg:p-16">{children}</div>
+          <div className="mx-auto max-w-container-wide p-8 md:p-12 lg:p-16">{children}</div>
         </main>
       </div>
     </div>

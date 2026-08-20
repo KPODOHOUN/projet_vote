@@ -228,6 +228,31 @@ async function main() {
   }
   console.log(`Seed OK — ${defaultPlans.length} plans d'abonnement (Free, Starter, Pro, Enterprise).`);
 
+  // Offres EXTERNAL / ESCROW + OTP + flags PSP split (defaults produit).
+  const platformDefaults: Array<{ key: string; value: string }> = [
+    // Offre 1 External en réflexion pendant la phase de test Escrow.
+    { key: "offer1_external_enabled", value: "false" },
+    { key: "offer2_escrow_enabled", value: "true" },
+    { key: "offer1_commission_bps", value: "1000" },
+    { key: "offer1_commission_fixed_cfa", value: "0" },
+    { key: "offer2_retention_bps", value: "500" },
+    { key: "offer2_per_vote_commission_enabled", value: "false" },
+    { key: "offer2_per_vote_commission_bps", value: "0" },
+    { key: "psp_feexpay_supports_split", value: "false" },
+    { key: "psp_fedapay_supports_split", value: "true" },
+    { key: "psp_kkiapay_supports_split", value: "false" },
+    { key: "otp_ttl_seconds", value: "600" },
+    { key: "otp_resend_delay_seconds", value: "60" }
+  ];
+  for (const s of platformDefaults) {
+    await prisma.platformSetting.upsert({
+      where: { key: s.key },
+      update: { value: s.value },
+      create: { key: s.key, value: s.value, updatedByUserId: "system:seed" }
+    });
+  }
+  console.log(`Seed OK — ${platformDefaults.length} réglages plateforme (offres / OTP / PSP split).`);
+
   console.log(`Seed OK — concours « ${event.title} » (/e/${event.slug}), ${CANDIDATES.length} candidats, ${total} votes payés.`);
   console.log("");
   console.log("Comptes de démo testeurs (mot de passe : SecurePass123!) :");

@@ -21,13 +21,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ? exception.getStatus()
       : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    const exceptionResponse =
+      isHttpException && typeof exception.getResponse() === "object" && exception.getResponse() !== null
+        ? (exception.getResponse() as Record<string, unknown>)
+        : null;
+
     const message = (() => {
       if (!isHttpException) {
         return "Erreur interne du serveur.";
       }
-      const exceptionResponse = exception.getResponse();
-      if (typeof exceptionResponse === "object" && exceptionResponse !== null) {
-        const maybeMessage = (exceptionResponse as { message?: unknown }).message;
+      if (exceptionResponse) {
+        const maybeMessage = exceptionResponse.message;
         if (Array.isArray(maybeMessage)) {
           return maybeMessage.join(", ");
         }
@@ -37,6 +41,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
       return exception.message;
     })();
+
+    const code =
+      exceptionResponse && typeof exceptionResponse.code === "string"
+        ? exceptionResponse.code
+        : undefined;
 
     const traceId =
       request.headers["x-trace-id"]?.toString() ?? response.getHeader("x-trace-id")?.toString();
@@ -52,6 +61,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     response.status(status).json({
       statusCode: status,
       message,
+      ...(code ? { code } : {}),
       path: request.url,
       traceId,
       timestamp: new Date().toISOString()

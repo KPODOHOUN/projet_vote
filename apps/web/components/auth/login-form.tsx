@@ -36,8 +36,7 @@ export type LoginFormProps = {
 
 export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, returnTo = null }: LoginFormProps) {
   const router = useRouter();
-  const { t, locale } = useI18n();
-  const isEn = locale === "en";
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -80,7 +79,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, 
       });
       setStoredToken(result.accessToken);
       void trackEvent("login");
-      showToast.success(isEn ? "Signed in successfully." : "Connexion réussie.");
+      showToast.success(t("auth.login.successToast"));
       const me = await apiFetch<{ role: string }>("/auth/me", {
         headers: { Authorization: `Bearer ${result.accessToken}` }
       });
@@ -97,16 +96,11 @@ export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, 
       if (caughtError instanceof ApiError) {
         if (caughtError.code === "EMAIL_NOT_VERIFIED") {
           setEmailNotVerified(true);
-          setError(
-            isEn
-              ? "Confirm your email first. Check your inbox or resend the link."
-              : "Confirmez d'abord votre e-mail. Consultez votre boîte mail ou renvoyez le lien."
-          );
+          showToast.info(t("auth.login.notVerifiedToast"));
+          router.push(`/check-email?email=${encodeURIComponent(email.trim())}`);
+          return;
         } else if (caughtError.code === "ACCOUNT_SUSPENDED") {
-          setError(
-            caughtError.message ||
-              (isEn ? "This account is suspended. Contact support." : "Ce compte est suspendu. Contactez le support.")
-          );
+          setError(caughtError.message || t("auth.login.suspended"));
         } else if (caughtError.status === 429 || caughtError.status === 403) {
           setIsLocked(true);
         } else {
@@ -125,12 +119,10 @@ export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, 
       {!hideHeading ? (
         <div className="mb-8 md:mb-10">
           <span className="mb-4 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
-            {isEn ? "Sign in" : "Connexion"}
+            {t("auth.login.badge")}
           </span>
           <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">{t("login.title")}</h1>
-          <p className="text-base text-muted-foreground sm:text-lg">
-            {isEn ? "Your email and password are enough." : "Votre e-mail et votre mot de passe suffisent."}
-          </p>
+          <p className="text-base text-muted-foreground sm:text-lg">{t("auth.login.pageSubtitle")}</p>
         </div>
       ) : null}
 
@@ -191,7 +183,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, 
             <>
               {" · "}
               <Link href={`/check-email?email=${encodeURIComponent(email)}`} className="font-medium text-primary hover:underline">
-                {isEn ? "Resend confirmation" : "Renvoyer la confirmation"}
+                {t("auth.login.resendConfirmation")}
               </Link>
             </>
           ) : null}
@@ -217,18 +209,18 @@ export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, 
 
       <div className="mt-6 pt-6 border-t border-border/50 text-center text-sm space-y-3">
         <p className="text-muted-foreground">
-          {isEn ? "Don't have an account?" : "Vous n'avez pas encore de compte ?"}
+          {t("auth.login.noAccount")}
           {onSwitchToRegister ? (
             <button
               type="button"
               onClick={onSwitchToRegister}
               className="font-semibold text-primary hover:text-primary/80 hover:underline ml-1.5 transition-all"
             >
-              {isEn ? "Sign up" : "S'inscrire"}
+              {t("auth.login.signUp")}
             </button>
           ) : (
             <Link href={authRegisterUrl()} className="font-semibold text-primary hover:text-primary/80 hover:underline ml-1.5 transition-all">
-              {isEn ? "Sign up" : "S'inscrire"}
+              {t("auth.login.signUp")}
             </Link>
           )}
         </p>

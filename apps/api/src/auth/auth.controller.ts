@@ -119,16 +119,43 @@ export class AuthController {
     return user;
   }
 
-  @Post("verify-email")
+  @Post("verify-otp")
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
-  verifyEmail(@Body() body: unknown) {
-    return this.authService.verifyEmail(body);
+  async verifyOtp(
+    @Body() body: unknown,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const result = await this.authService.verifyOtp(body, extractSessionMeta(request));
+    if ("accessToken" in result && "refreshToken" in result) {
+      response.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+      return { accessToken: result.accessToken, success: true };
+    }
+    return result;
   }
 
+  @Post("resend-otp")
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  resendOtp(@Body() body: unknown) {
+    return this.authService.resendOtp(body);
+  }
+
+  /** @deprecated Alias — préfère POST /auth/verify-otp */
+  @Post("verify-email")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async verifyEmail(
+    @Body() body: unknown,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    return this.verifyOtp(body, request, response);
+  }
+
+  /** @deprecated Alias — préfère POST /auth/resend-otp */
   @Post("resend-verification")
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   resendVerification(@Body() body: unknown) {
-    return this.authService.resendVerificationEmail(body);
+    return this.authService.resendOtp(body);
   }
 
   @Post("forgot-password")

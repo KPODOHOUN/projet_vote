@@ -1,88 +1,56 @@
 "use client";
-import { authLoginUrl } from "@/lib/auth-navigation";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "../../lib/api";
+
+import { authLoginUrl } from "@/lib/auth-navigation";
 import { getStoredToken } from "../../lib/auth";
 import { useI18n } from "../../lib/i18n-provider";
-import { KpiCard, StatusChip, EmptyState, LoadingState, Button } from "@/components/ui";
+import {
+  useOrganizerEvents,
+  usePaymentReadiness,
+} from "../../lib/hooks/use-organizer-events";
+import { KpiCard, StatusChip, EmptyState, LoadingState, Button, FormError } from "@/components/ui";
 import { OnboardingChecklist } from "../../components/onboarding-checklist";
 import { CopyPublicLinkButton } from "../../components/copy-public-link-button";
-import { getPaymentSetupStatus } from "../../lib/organizer-secrets";
-import { getEventPartnerStatus } from "../../lib/partners";
 import { formatEventStatus } from "../../lib/i18n";
-
-type EventItem = {
-  id: string;
-  title: string;
-  slug: string;
-  status: string;
-  candidateCount: number;
-};
 
 export default function DashboardHomePage() {
   const router = useRouter();
   const { locale } = useI18n();
   const isEn = locale === "en";
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [paymentReady, setPaymentReady] = useState(false);
-  const [skipPaymentStep, setSkipPaymentStep] = useState(false);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [hasToken] = useState(() => Boolean(getStoredToken()));
 
   useEffect(() => {
-    const token = getStoredToken();
-    if (!token) {
-      router.push(authLoginUrl());
-      return;
-    }
+    if (!hasToken) router.push(authLoginUrl());
+  }, [hasToken, router]);
 
-    void Promise.all([
-      apiFetch<EventItem[]>("/events", { headers: { Authorization: `Bearer ${token}` } }),
-      getPaymentSetupStatus(token).catch(() => ({ readyForVotes: false } as const))
-    ])
-      .then(async ([items, payment]) => {
-        setEvents(items);
-        setPaymentReady(payment.readyForVotes);
-        const latest = items[0];
-        if (latest) {
-          try {
-            const partner = await getEventPartnerStatus(token, latest.id);
-            if (partner.isPartnerEvent) {
-              setSkipPaymentStep(true);
-              setPaymentReady(true);
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-      })
-      .catch((caughtError) =>
-        setError(caughtError instanceof Error ? caughtError.message : isEn ? "Loading failed." : "Erreur de chargement.")
-      )
-      .finally(() => setIsLoading(false));
-  }, [router, isEn]);
+  const eventsQuery = useOrganizerEvents(hasToken);
+  const events = eventsQuery.data ?? [];
+  const latest = events[0];
+  const { ready: paymentReady, skipPaymentStep } = usePaymentReadiness(latest?.id);
 
   useEffect(() => {
-    if (!isLoading && !error && events.length === 0) {
+    if (!eventsQuery.isFetching && eventsQuery.isSuccess && events.length === 0) {
       router.replace("/dashboard/start");
     }
-  }, [isLoading, error, events.length, router]);
+  }, [eventsQuery.isFetching, eventsQuery.isSuccess, events.length, router]);
 
   const activeEvents = events.filter((item) => item.status === "ACTIVE").length;
   const recentEvents = events.slice(0, 5);
 
-  if (isLoading) {
+  if (eventsQuery.isPending) {
     return <LoadingState variant="rows" count={4} label={isEn ? "Loading dashboard metrics…" : "Chargement des indicateurs…"} />;
   }
 
-  if (error) {
+  if (eventsQuery.isError) {
     return (
-      <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 font-medium text-destructive" role="alert">
-        {error}
-      </div>
+      <FormError>
+        {eventsQuery.error instanceof Error
+          ? eventsQuery.error.message || (isEn ? "Loading failed." : "Erreur de chargement.")
+          : isEn ? "Loading failed." : "Erreur de chargement."}
+      </FormError>
     );
   }
 

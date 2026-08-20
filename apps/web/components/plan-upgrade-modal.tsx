@@ -73,7 +73,7 @@ export function PlanUpgradeModal({
         setIsLoading(true);
         setError("");
         apiFetch<Plan[]>("/plans")
-            .then((data) => setPlans(data.filter((p: any) => p.priceCfa > 0 && p.isActive)))
+            .then((data) => setPlans(data.filter((plan) => plan.priceCfa > 0 && plan.isActive)))
             .catch((err) => setError(err instanceof Error ? err.message : "Erreur"))
             .finally(() => setIsLoading(false));
     }, [isOpen]);

@@ -30,6 +30,8 @@ import type {
   FeexpayStatusPayload
 } from "./payments/feexpay/feexpay.types";
 import { assertTestDatabase, prisma, resetDatabase } from "./test-utils/db";
+import { OfferSettingsService } from "./offers/offer-settings.service";
+import { WalletService } from "./offers/wallet.service";
 
 /**
  * In-memory Feexpay client (ADR-017): tests script the next pull response per
@@ -90,7 +92,9 @@ const prismaService = new PrismaService();
 const notifications = new NotificationsService(prismaService);
 const votes = new VotesService(prismaService);
 const partners = new PartnersService(prismaService, noopPartnerNotifications());
-const events = new EventsService(prismaService, votes, notifications, partners);
+const offerSettings = new OfferSettingsService(prismaService);
+const wallet = new WalletService(prismaService);
+const events = new EventsService(prismaService, votes, notifications, partners, offerSettings);
 const secrets = new OrganizerSecretsService(prismaService);
 const platformSecrets = new PlatformSecretsService(prismaService);
 const invitations = new InvitationsService(prismaService, new MailService());
@@ -105,8 +109,19 @@ const pspRegistry = new PspRegistry(
   new FedapayGateway(),
   new KkiapayGateway()
 );
-const verifyService = new PaymentVerifyService(prismaService, notifications, pspRegistry);
-const payments = new PaymentsService(prismaService, verifyService, pspRegistry);
+const verifyService = new PaymentVerifyService(
+  prismaService,
+  notifications,
+  pspRegistry,
+  wallet,
+  offerSettings
+);
+const payments = new PaymentsService(
+  prismaService,
+  verifyService,
+  pspRegistry,
+  offerSettings
+);
 
 /**
  * Helper bridging the OLD `processWebhook({providerRef, idempotencyKey, status})`

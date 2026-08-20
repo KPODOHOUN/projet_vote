@@ -1,8 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("vp.organizer.token", "admin-token");
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ accessToken: "admin-token" })
+    });
   });
 
   await page.route("**/api/v1/auth/me", async (route) => {
@@ -72,7 +76,8 @@ test("maintenance: affiche le mode inactif puis active", async ({ page }) => {
   await expect(page.getByText("INACTIF")).toBeVisible();
 
   await page.getByRole("button", { name: "Activer la maintenance" }).click();
-  await expect(page.getByText("ACTIF")).toBeVisible();
+  // exact: sinon le substring case-insensitive matche aussi « Événements actifs » (sidebar).
+  await expect(page.getByText("ACTIF", { exact: true })).toBeVisible();
 });
 
 test("maintenance publique: bannière visible quand activé", async ({ page }) => {

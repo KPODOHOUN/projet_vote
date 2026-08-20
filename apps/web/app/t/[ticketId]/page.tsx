@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { useI18n } from "../../../lib/i18n-provider";
@@ -18,7 +18,17 @@ type TicketDetail = {
   event: { title: string; slug: string };
 };
 
+// useSearchParams exige une boundary Suspense au prerender (le layout racine
+// n'en fournit plus — voir AuthModalUrlSync).
 export default function TicketValidationPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <TicketValidationContent />
+    </Suspense>
+  );
+}
+
+function TicketValidationContent() {
   const params = useParams<{ ticketId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();

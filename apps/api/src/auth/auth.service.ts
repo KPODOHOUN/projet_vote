@@ -1,6 +1,6 @@
 import { ConflictException, BadRequestException, ForbiddenException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
-import { createHash, randomBytes } from "crypto";
-import { AuthEmailTokenPurpose, InvitationStatus, UserRole } from "@prisma/client";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
+import { AuthOtpPurpose, InvitationStatus, TenantOfferType, UserRole } from "@prisma/client";
 import { compare, hash } from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
@@ -8,16 +8,26 @@ import { env } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { MailService } from "../mail/mail.service";
-import { buildAuthActionUrl, passwordResetEmailHtml, verificationEmailHtml } from "./auth-email.util";
+import { otpPasswordResetEmailHtml, otpVerificationEmailHtml } from "./auth-email.util";
 import { isUniqueConstraintViolation } from "../common/prisma-errors";
 import { CURRENT_PRIVACY_POLICY_VERSION } from "../privacy/privacy-policy";
+import {
+  DEFAULT_OTP_RESEND_DELAY_SECONDS,
+  DEFAULT_OTP_TTL_SECONDS,
+  OFFER1_ENABLED_KEY,
+  OTP_RESEND_DELAY_SECONDS_KEY,
+  OTP_TTL_SECONDS_KEY,
+  parseBoolSetting,
+  parseIntSetting
+} from "../common/platform-settings";
+import { DEFAULT_OFFER1_ENABLED } from "../offers/offer-settings.service";
 import type { AuthUser } from "./auth.types";
 
 // Politique appliquée aux NOUVEAUX mots de passe (inscription, reset, invitation).
 // Le login garde .min(8) pour continuer d'accepter les mots de passe existants.
 // bcryptjs tronque au-delà de 72 octets : on rejette explicitement plutôt que
 // de tronquer en silence.
-const strongPassword = z
+export const strongPasswordSchema = z
   .string()
   .min(10, "Le mot de passe doit contenir au moins 10 caractères.")
   .max(72, "Le mot de passe ne peut pas dépasser 72 caractères.")
@@ -29,15 +39,25 @@ const strongPassword = z
     "Le mot de passe doit combiner au moins deux types de caractères (minuscule, majuscule, chiffre ou symbole)."
   );
 
-const registerSchema = z.object({
-  tenantSlug: z.string().min(3).max(60),
-  tenantDisplayName: z.string().min(2).max(120),
-  email: z.string().email(),
-  password: strongPassword,
-  // The organizer accepts the privacy policy once, here at account creation.
-  // Must be explicitly true — registration is refused otherwise.
-  acceptPrivacyPolicy: z.literal(true)
-});
+const registerSchema = z
+  .object({
+    tenantSlug: z.string().min(3).max(60),
+    tenantDisplayName: z.string().min(2).max(120),
+    email: z.string().email(),
+    password: strongPasswordSchema,
+    passwordConfirm: z.string().optional(),
+    firstName: z.string().min(1).max(80).optional(),
+    lastName: z.string().min(1).max(80).optional(),
+    phone: z.string().min(6).max(30).optional(),
+    offerType: z.nativeEnum(TenantOfferType),
+    // The organizer accepts the privacy policy once, here at account creation.
+    // Must be explicitly true — registration is refused otherwise.
+    acceptPrivacyPolicy: z.literal(true)
+  })
+  .refine((data) => data.passwordConfirm === undefined || data.passwordConfirm === data.password, {
+    message: "Les mots de passe ne correspondent pas.",
+    path: ["passwordConfirm"]
+  });
 
 const loginSchema = z.object({
   tenantSlug: z.string().min(3).max(60).optional(),
@@ -51,16 +71,20 @@ const refreshSchema = z.object({
 
 const acceptInvitationSchema = z.object({
   token: z.string().min(32),
-  password: strongPassword
+  password: strongPasswordSchema
 });
 
-const verifyEmailSchema = z.object({
-  token: z.string().min(32)
-});
-
-const resendVerificationSchema = z.object({
+const verifyOtpSchema = z.object({
   email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/, "Le code OTP doit contenir 6 chiffres."),
+  purpose: z.nativeEnum(AuthOtpPurpose).default(AuthOtpPurpose.EMAIL_VERIFICATION),
   tenantSlug: z.string().min(3).max(60).optional()
+});
+
+const resendOtpSchema = z.object({
+  email: z.string().email(),
+  tenantSlug: z.string().min(3).max(60).optional(),
+  purpose: z.nativeEnum(AuthOtpPurpose).default(AuthOtpPurpose.EMAIL_VERIFICATION)
 });
 
 const forgotPasswordSchema = z.object({
@@ -68,18 +92,24 @@ const forgotPasswordSchema = z.object({
   tenantSlug: z.string().min(3).max(60).optional()
 });
 
-const resetPasswordSchema = z.object({
-  token: z.string().min(32),
-  password: strongPassword
-});
+const resetPasswordSchema = z
+  .object({
+    email: z.string().email(),
+    code: z.string().regex(/^\d{6}$/, "Le code OTP doit contenir 6 chiffres."),
+    password: strongPasswordSchema,
+    passwordConfirm: z.string().optional(),
+    tenantSlug: z.string().min(3).max(60).optional()
+  })
+  .refine((data) => data.passwordConfirm === undefined || data.passwordConfirm === data.password, {
+    message: "Les mots de passe ne correspondent pas.",
+    path: ["passwordConfirm"]
+  });
 
 export type SessionMeta = { userAgent?: string | null; ipAddress?: string | null };
 
-const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
-const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
-
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const OTP_MAX_ATTEMPTS = 5;
 
 // Bound the access token to this issuer/audience so a token minted for another
 // context (or with a tampered header) is rejected by jwtVerify.
@@ -165,10 +195,49 @@ export class AuthService {
       .catch(() => undefined);
   }
 
+  private async auditOtp(
+    action: "auth.otp_verified" | "auth.otp_validated" | "auth.otp_failed",
+    tenantId: string,
+    userId: string,
+    actorRole: UserRole,
+    purpose: AuthOtpPurpose,
+    meta?: SessionMeta
+  ) {
+    await this.prisma.client.auditLog
+      .create({
+        data: {
+          tenantId,
+          actorUserId: userId,
+          actorRole,
+          action,
+          targetType: "AuthOtpChallenge",
+          targetId: userId,
+          metadata: {
+            purpose,
+            ip: meta?.ipAddress ?? null,
+            userAgent: meta?.userAgent ?? null
+          }
+        }
+      })
+      .catch(() => undefined);
+  }
+
   async register(payload: unknown, meta?: SessionMeta) {
     const input = registerSchema.parse(payload);
     const normalizedSlug = input.tenantSlug.toLowerCase();
     const normalizedEmail = input.email.toLowerCase();
+
+    if (input.offerType === TenantOfferType.EXTERNAL) {
+      const offer1Row = await this.prisma.client.platformSetting.findUnique({
+        where: { key: OFFER1_ENABLED_KEY }
+      });
+      const offer1Enabled = parseBoolSetting(offer1Row?.value, DEFAULT_OFFER1_ENABLED);
+      if (!offer1Enabled) {
+        throw new BadRequestException(
+          "L'offre External est en réflexion et indisponible. Choisissez l'offre Escrow (encaissement plateforme)."
+        );
+      }
+    }
 
     // SECURITY: registration always provisions a NEW tenant. A duplicate slug
     // is rejected (409) — it must NOT silently attach the new account to an
@@ -186,7 +255,8 @@ export class AuthService {
       .create({
         data: {
           slug: normalizedSlug,
-          displayName: input.tenantDisplayName
+          displayName: input.tenantDisplayName,
+          offerType: input.offerType
         }
       })
       .catch((error: unknown) => {
@@ -197,6 +267,12 @@ export class AuthService {
         throw error;
       });
 
+    if (input.offerType === TenantOfferType.ESCROW) {
+      await this.prisma.client.organizerWallet.create({
+        data: { tenantId: tenant.id }
+      });
+    }
+
     const passwordHash = await hash(input.password, 12);
     const user = await this.prisma.client.user.create({
       data: {
@@ -204,6 +280,9 @@ export class AuthService {
         email: normalizedEmail,
         passwordHash,
         role: UserRole.ORGANIZER_OWNER,
+        ...(input.firstName ? { firstName: input.firstName } : {}),
+        ...(input.lastName ? { lastName: input.lastName } : {}),
+        ...(input.phone ? { phone: input.phone } : {}),
         privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
         privacyAcceptedAt: new Date()
       }
@@ -229,11 +308,11 @@ export class AuthService {
       return { accessToken, refreshToken };
     }
 
-    const verifyUrl = await this.sendVerificationEmail(user.id, user.email);
+    const otpResult = await this.createAndSendOtp(user.id, user.email, AuthOtpPurpose.EMAIL_VERIFICATION);
     return {
       requiresEmailVerification: true as const,
       email: normalizedEmail,
-      ...(verifyUrl.exposeInResponse ? { verificationUrl: verifyUrl.url } : {})
+      ...(otpResult.exposeInResponse ? { otpCode: otpResult.code } : {})
     };
   }
 
@@ -379,6 +458,9 @@ export class AuthService {
     if (user.suspendedAt) {
       throw new UnauthorizedException(user.suspendedReason ?? "Compte suspendu.");
     }
+    if (!user.emailVerifiedAt) {
+      throw new UnauthorizedException("Adresse e-mail non vérifiée.");
+    }
 
     await this.prisma.client.authSession.update({
       where: { id: session.id },
@@ -484,49 +566,185 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async verifyEmail(payload: unknown) {
-    const input = verifyEmailSchema.parse(payload);
-    const user = await this.consumeEmailToken(input.token, AuthEmailTokenPurpose.EMAIL_VERIFICATION);
+  /** @deprecated Prefer verifyOtp. Magic-link email verification is removed. */
+  async verifyEmail(_payload: unknown) {
+    throw new BadRequestException(
+      "La vérification par lien e-mail n'est plus disponible. Utilisez POST /auth/verify-otp avec le code à 6 chiffres."
+    );
+  }
+
+  async verifyOtp(payload: unknown, meta?: SessionMeta) {
+    const input = verifyOtpSchema.parse(payload);
+    const user = await this.resolveUserByEmail(input.email, input.tenantSlug);
     if (!user) {
-      throw new BadRequestException("Lien de confirmation invalide ou expiré.");
+      throw new BadRequestException("Code invalide ou expiré.");
     }
+    if (user.suspendedAt) {
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
+
+    const challenge = await this.prisma.client.authOtpChallenge.findFirst({
+      where: {
+        userId: user.id,
+        purpose: input.purpose,
+        consumedAt: null
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    if (!challenge) {
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
+    if (challenge.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
+    if (challenge.attempts >= challenge.maxAttempts) {
+      throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
+    }
+
+    const expected = Buffer.from(challenge.codeHash, "utf8");
+    const provided = Buffer.from(
+      this.hashOtpCode(user.id, input.purpose, input.code),
+      "utf8"
+    );
+    const matches = expected.length === provided.length && timingSafeEqual(expected, provided);
+
+    if (!matches) {
+      const updated = await this.prisma.client.authOtpChallenge.update({
+        where: { id: challenge.id },
+        data: { attempts: { increment: 1 } }
+      });
+      await this.auditOtp(
+        "auth.otp_failed",
+        user.tenantId,
+        user.id,
+        user.role,
+        input.purpose,
+        meta
+      );
+      if (updated.attempts >= updated.maxAttempts) {
+        throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
+      }
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
+
+    if (input.purpose === AuthOtpPurpose.PASSWORD_RESET) {
+      await this.auditOtp(
+        "auth.otp_validated",
+        user.tenantId,
+        user.id,
+        user.role,
+        input.purpose,
+        meta
+      );
+      return { success: true as const, resetAuthorized: true as const };
+    }
+
+    // EMAIL_VERIFICATION → mark verified + auto-login session
+    await this.consumeOtpChallenge(challenge.id);
+    await this.auditOtp(
+      "auth.otp_verified",
+      user.tenantId,
+      user.id,
+      user.role,
+      input.purpose,
+      meta
+    );
     if (!user.emailVerifiedAt) {
       await this.prisma.client.user.update({
         where: { id: user.id },
         data: { emailVerifiedAt: new Date() }
       });
     }
-    return { success: true, email: user.email };
+
+    const authUser: AuthUser = {
+      userId: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      photoUrl: user.photoUrl
+    };
+    const accessToken = await this.signAccessToken(authUser);
+    const { refreshToken } = await this.createSession(authUser, undefined, meta);
+    return { accessToken, refreshToken, success: true as const };
   }
 
+  /** @deprecated Prefer resendOtp. */
   async resendVerificationEmail(payload: unknown) {
-    const input = resendVerificationSchema.parse(payload);
+    return this.resendOtp({
+      ...(typeof payload === "object" && payload !== null ? payload : {}),
+      purpose: AuthOtpPurpose.EMAIL_VERIFICATION
+    });
+  }
+
+  async resendOtp(payload: unknown) {
+    const input = resendOtpSchema.parse(payload);
+    const antiEnumMessage =
+      input.purpose === AuthOtpPurpose.PASSWORD_RESET
+        ? "Si un compte existe pour cet e-mail, un nouveau code a été envoyé."
+        : "Si un compte non confirmé existe, un nouvel e-mail a été envoyé.";
+
+    const result: Record<string, unknown> = {
+      success: true,
+      message: antiEnumMessage
+    };
+
     const user = await this.resolveUserByEmail(input.email, input.tenantSlug);
-    let verificationUrl: string | undefined;
-    if (user && !user.emailVerifiedAt) {
-      const result = await this.sendVerificationEmail(user.id, user.email);
-      if (result.exposeInResponse) {
-        verificationUrl = result.url;
+    if (!user) {
+      return result;
+    }
+
+    const eligible =
+      input.purpose === AuthOtpPurpose.EMAIL_VERIFICATION
+        ? !user.emailVerifiedAt
+        : Boolean(user.emailVerifiedAt);
+
+    if (!eligible) {
+      return result;
+    }
+
+    const delaySeconds = await this.getOtpResendDelaySeconds();
+    const latest = await this.prisma.client.authOtpChallenge.findFirst({
+      where: { userId: user.id, purpose: input.purpose },
+      orderBy: { lastSentAt: "desc" }
+    });
+    if (latest) {
+      const elapsedMs = Date.now() - latest.lastSentAt.getTime();
+      if (elapsedMs < delaySeconds * 1000) {
+        return result;
       }
     }
-    return {
-      success: true,
-      message: "Si un compte non confirmé existe, un nouvel e-mail a été envoyé.",
-      ...(verificationUrl ? { verificationUrl } : {})
-    };
+
+    const otpResult = await this.createAndSendOtp(user.id, user.email, input.purpose);
+    if (otpResult.exposeInResponse) {
+      result.otpCode = otpResult.code;
+    }
+    return result;
   }
 
   async forgotPassword(payload: unknown) {
     const input = forgotPasswordSchema.parse(payload);
-    const user = await this.resolveUserByEmail(input.email, input.tenantSlug);
     const result: Record<string, unknown> = {
       success: true,
-      message: "Si un compte existe pour cet e-mail, un lien de réinitialisation a été envoyé."
+      message: "Si un compte existe pour cet e-mail, un code de réinitialisation a été envoyé."
     };
+    const user = await this.resolveUserByEmail(input.email, input.tenantSlug);
     if (user?.emailVerifiedAt) {
-      const { url, exposeInResponse } = await this.sendPasswordResetEmail(user.id, user.email);
-      if (exposeInResponse) {
-        result.resetUrl = url;
+      const delaySeconds = await this.getOtpResendDelaySeconds();
+      const latest = await this.prisma.client.authOtpChallenge.findFirst({
+        where: { userId: user.id, purpose: AuthOtpPurpose.PASSWORD_RESET },
+        orderBy: { lastSentAt: "desc" }
+      });
+      if (latest) {
+        const elapsedMs = Date.now() - latest.lastSentAt.getTime();
+        if (elapsedMs < delaySeconds * 1000) {
+          return result;
+        }
+      }
+      const otpResult = await this.createAndSendOtp(user.id, user.email, AuthOtpPurpose.PASSWORD_RESET);
+      if (otpResult.exposeInResponse) {
+        result.otpCode = otpResult.code;
       }
     }
     return result;
@@ -534,10 +752,17 @@ export class AuthService {
 
   async resetPassword(payload: unknown) {
     const input = resetPasswordSchema.parse(payload);
-    const user = await this.consumeEmailToken(input.token, AuthEmailTokenPurpose.PASSWORD_RESET);
+    const user = await this.resolveUserByEmail(input.email, input.tenantSlug);
     if (!user) {
-      throw new BadRequestException("Lien de réinitialisation invalide ou expiré.");
+      throw new BadRequestException("Code invalide ou expiré.");
     }
+
+    await this.verifyAndConsumeOtpChallenge(
+      user.id,
+      input.code,
+      AuthOtpPurpose.PASSWORD_RESET
+    );
+
     const passwordHash = await hash(input.password, 12);
     await this.prisma.client.user.update({
       where: { id: user.id },
@@ -576,7 +801,17 @@ export class AuthService {
 
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: result.sub },
-      select: { suspendedAt: true, suspendedReason: true }
+      select: {
+        tenantId: true,
+        role: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        photoUrl: true,
+        emailVerifiedAt: true,
+        suspendedAt: true,
+        suspendedReason: true
+      }
     });
     if (!dbUser) {
       throw new UnauthorizedException("Session invalide.");
@@ -584,16 +819,19 @@ export class AuthService {
     if (dbUser.suspendedAt) {
       throw new UnauthorizedException(dbUser.suspendedReason ?? "Compte suspendu.");
     }
+    if (!dbUser.emailVerifiedAt) {
+      throw new UnauthorizedException("Adresse e-mail non vérifiée.");
+    }
 
     const authUser: AuthUser = {
       userId: result.sub,
-      tenantId: result.tenantId,
-      role: result.role,
-      email: result.email
+      tenantId: dbUser.tenantId,
+      role: dbUser.role,
+      email: dbUser.email
     };
-    if (result.firstName !== undefined) authUser.firstName = result.firstName;
-    if (result.lastName !== undefined) authUser.lastName = result.lastName;
-    if (result.photoUrl !== undefined) authUser.photoUrl = result.photoUrl;
+    authUser.firstName = dbUser.firstName;
+    authUser.lastName = dbUser.lastName;
+    authUser.photoUrl = dbUser.photoUrl;
     return authUser;
   }
 
@@ -603,6 +841,15 @@ export class AuthService {
 
   hashRefreshToken(raw: string): string {
     return this.hashToken(raw);
+  }
+
+  async sendEmailVerificationOtp(userId: string, email: string) {
+    const result = await this.createAndSendOtp(
+      userId,
+      email,
+      AuthOtpPurpose.EMAIL_VERIFICATION
+    );
+    return { sent: !result.exposeInResponse };
   }
 
   private async signAccessToken(user: AuthUser): Promise<string> {
@@ -626,6 +873,12 @@ export class AuthService {
 
   private hashToken(rawToken: string) {
     return createHash("sha256").update(rawToken).digest("hex");
+  }
+
+  private hashOtpCode(userId: string, purpose: AuthOtpPurpose, code: string) {
+    return createHmac("sha256", env.API_JWT_SECRET)
+      .update(`${userId}:${purpose}:${code}`)
+      .digest("hex");
   }
 
   private async createSession(user: AuthUser, rotatedFromSessionId?: string, meta?: SessionMeta) {
@@ -675,72 +928,111 @@ export class AuthService {
     return matches[0] ?? null;
   }
 
-  private async sendVerificationEmail(
-    userId: string,
-    email: string
-  ): Promise<{ url: string; exposeInResponse: boolean }> {
-    const rawToken = await this.createEmailToken(userId, AuthEmailTokenPurpose.EMAIL_VERIFICATION, EMAIL_VERIFICATION_TTL_MS);
-    const verifyUrl = buildAuthActionUrl("/verify-email", rawToken);
-    const sent = await this.mail.send({
-      to: [email],
-      subject: "Confirmez votre adresse e-mail — SHADOMA Votes",
-      html: verificationEmailHtml(verifyUrl),
-      text: `Confirmez votre e-mail : ${verifyUrl}`
+  private async getOtpTtlSeconds(): Promise<number> {
+    const row = await this.prisma.client.platformSetting.findUnique({
+      where: { key: OTP_TTL_SECONDS_KEY }
     });
-    if (!sent) {
-      this.logger.warn(`[mail:dev] Vérification e-mail → ${email}: ${verifyUrl}`);
-    }
-    return { url: verifyUrl, exposeInResponse: !sent };
+    return parseIntSetting(row?.value, DEFAULT_OTP_TTL_SECONDS);
   }
 
-  private async sendPasswordResetEmail(
-    userId: string,
-    email: string
-  ): Promise<{ url: string; exposeInResponse: boolean }> {
-    const rawToken = await this.createEmailToken(userId, AuthEmailTokenPurpose.PASSWORD_RESET, PASSWORD_RESET_TTL_MS);
-    const resetUrl = buildAuthActionUrl("/reset-password", rawToken);
-    const sent = await this.mail.send({
-      to: [email],
-      subject: "Réinitialisez votre mot de passe — SHADOMA Votes",
-      html: passwordResetEmailHtml(resetUrl),
-      text: `Réinitialiser le mot de passe : ${resetUrl}`
+  private async getOtpResendDelaySeconds(): Promise<number> {
+    const row = await this.prisma.client.platformSetting.findUnique({
+      where: { key: OTP_RESEND_DELAY_SECONDS_KEY }
     });
-    if (!sent) {
-      this.logger.warn(`[mail:dev] Réinitialisation mot de passe → ${email}: ${resetUrl}`);
-    }
-    return { url: resetUrl, exposeInResponse: !sent };
+    return parseIntSetting(row?.value, DEFAULT_OTP_RESEND_DELAY_SECONDS);
   }
 
-  private async createEmailToken(userId: string, purpose: AuthEmailTokenPurpose, ttlMs: number) {
-    await this.prisma.client.authEmailToken.updateMany({
-      where: { userId, purpose, usedAt: null },
-      data: { usedAt: new Date() }
+  private async createAndSendOtp(
+    userId: string,
+    email: string,
+    purpose: AuthOtpPurpose
+  ): Promise<{ code: string; exposeInResponse: boolean }> {
+    const ttlSeconds = await this.getOtpTtlSeconds();
+    const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+    const codeHash = this.hashOtpCode(userId, purpose, code);
+    const now = new Date();
+
+    await this.prisma.client.authOtpChallenge.updateMany({
+      where: { userId, purpose, consumedAt: null },
+      data: { consumedAt: now }
     });
-    const rawToken = randomBytes(32).toString("hex");
-    await this.prisma.client.authEmailToken.create({
+
+    await this.prisma.client.authOtpChallenge.create({
       data: {
         userId,
         purpose,
-        tokenHash: this.hashToken(rawToken),
-        expiresAt: new Date(Date.now() + ttlMs)
+        codeHash,
+        expiresAt: new Date(now.getTime() + ttlSeconds * 1000),
+        maxAttempts: OTP_MAX_ATTEMPTS,
+        lastSentAt: now
       }
     });
-    return rawToken;
+
+    const ttlMinutes = Math.max(1, Math.ceil(ttlSeconds / 60));
+    const isReset = purpose === AuthOtpPurpose.PASSWORD_RESET;
+    const sent = await this.mail.send({
+      to: [email],
+      subject: isReset
+        ? "Réinitialisez votre mot de passe — SHADOMA Votes"
+        : "Confirmez votre adresse e-mail — SHADOMA Votes",
+      html: isReset ? otpPasswordResetEmailHtml(code, ttlMinutes) : otpVerificationEmailHtml(code, ttlMinutes),
+      text: isReset
+        ? `Code de réinitialisation : ${code} (expire dans ${ttlMinutes} min)`
+        : `Code de confirmation : ${code} (expire dans ${ttlMinutes} min)`
+    });
+
+    const exposeInResponse = !sent && env.NODE_ENV === "development";
+    if (exposeInResponse) {
+      this.logger.warn(`[mail:dev] OTP ${purpose} → ${email}: ${code}`);
+    }
+
+    return { code, exposeInResponse };
   }
 
-  private async consumeEmailToken(rawToken: string, purpose: AuthEmailTokenPurpose) {
-    const tokenHash = this.hashToken(rawToken);
-    const row = await this.prisma.client.authEmailToken.findUnique({
-      where: { tokenHash },
-      include: { user: true }
+  private async consumeOtpChallenge(challengeId: string) {
+    await this.prisma.client.authOtpChallenge.update({
+      where: { id: challengeId },
+      data: { consumedAt: new Date() }
     });
-    if (!row || row.purpose !== purpose || row.usedAt || row.expiresAt.getTime() < Date.now()) {
-      return null;
+  }
+
+  private async verifyAndConsumeOtpChallenge(
+    userId: string,
+    code: string,
+    purpose: AuthOtpPurpose
+  ): Promise<void> {
+    const codeHash = this.hashOtpCode(userId, purpose, code);
+    const provided = Buffer.from(codeHash, "utf8");
+
+    const challenge = await this.prisma.client.authOtpChallenge.findFirst({
+      where: { userId, purpose, consumedAt: null },
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!challenge) {
+      throw new BadRequestException("Code invalide ou expiré.");
     }
-    await this.prisma.client.authEmailToken.update({
-      where: { id: row.id },
-      data: { usedAt: new Date() }
-    });
-    return row.user;
+    if (challenge.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
+    if (challenge.attempts >= challenge.maxAttempts) {
+      throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
+    }
+
+    const expected = Buffer.from(challenge.codeHash, "utf8");
+    const matches = expected.length === provided.length && timingSafeEqual(expected, provided);
+
+    if (!matches) {
+      const updated = await this.prisma.client.authOtpChallenge.update({
+        where: { id: challenge.id },
+        data: { attempts: { increment: 1 } }
+      });
+      if (updated.attempts >= updated.maxAttempts) {
+        throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
+      }
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
+
+    await this.consumeOtpChallenge(challenge.id);
   }
 }

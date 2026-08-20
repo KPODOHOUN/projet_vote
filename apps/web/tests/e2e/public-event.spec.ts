@@ -23,7 +23,7 @@ test("pages publiques d'un évènement : rendu SSR + état zéro des résultats"
 
   // 1) Provisionne un tenant + organisateur (API réelle).
   const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-    data: { tenantSlug, tenantDisplayName: organizerName, email, password, acceptPrivacyPolicy: true }
+    data: { tenantSlug, tenantDisplayName: organizerName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
   });
   expect(registerResponse.ok()).toBeTruthy();
   const { accessToken } = (await registerResponse.json()) as { accessToken: string };

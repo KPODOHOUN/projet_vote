@@ -2,12 +2,12 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { compare, hash } from "bcryptjs";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
-import { AuthService } from "../auth/auth.service";
+import { AuthService, strongPasswordSchema } from "../auth/auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(8).max(72)
+  newPassword: strongPasswordSchema
 });
 const changeEmailSchema = z.object({
   newEmail: z.string().email(),
@@ -61,7 +61,7 @@ export class AccountService {
     return { success: true as const };
   }
 
-  async changeEmail(user: AuthUser, payload: unknown, currentRefreshToken?: string) {
+  async changeEmail(user: AuthUser, payload: unknown, _currentRefreshToken?: string) {
     const input = changeEmailSchema.parse(payload);
     const row = await this.requireUser(user);
     const ok = await compare(input.currentPassword, row.passwordHash ?? "");
@@ -71,11 +71,20 @@ export class AccountService {
       const existing = await this.prisma.client.user.findUnique({ where: { tenantId_email: { tenantId: user.tenantId, email: newEmail } } });
       if (existing) throw new ConflictException("Cette adresse est déjà utilisée dans l'organisation.");
     }
-    await this.prisma.client.user.update({ where: { id: row.id }, data: { email: newEmail } });
-    await this.revokeOthers(row.id, currentRefreshToken);
+    await this.prisma.client.user.update({
+      where: { id: row.id },
+      data: { email: newEmail, emailVerifiedAt: null }
+    });
+    await this.prisma.client.authSession.updateMany({
+      where: { userId: row.id, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+    await this.authService.sendEmailVerificationOtp(row.id, newEmail);
     await this.audit(user, "account.email.changed", row.id, { email: newEmail });
-    const accessToken = await this.authService.issueAccessToken({ ...user, email: newEmail });
-    return { accessToken };
+    return {
+      requiresEmailVerification: true as const,
+      email: newEmail
+    };
   }
 
   async listSessions(user: AuthUser, currentRefreshToken?: string) {

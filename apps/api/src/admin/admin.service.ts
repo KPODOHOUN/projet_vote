@@ -282,8 +282,15 @@ export class AdminService {
       throw new NotFoundException("Utilisateur introuvable.");
     }
 
-    if (input.role === UserRole.PLATFORM_SUPER_ADMIN && actor.role !== UserRole.PLATFORM_SUPER_ADMIN) {
-      throw new ForbiddenException("Seul un super-admin peut attribuer le rôle PLATFORM_SUPER_ADMIN.");
+    const touchesPlatformRole =
+      input.role === UserRole.PLATFORM_ADMIN ||
+      input.role === UserRole.PLATFORM_SUPER_ADMIN ||
+      target.role === UserRole.PLATFORM_ADMIN ||
+      target.role === UserRole.PLATFORM_SUPER_ADMIN;
+    if (touchesPlatformRole && actor.role !== UserRole.PLATFORM_SUPER_ADMIN) {
+      throw new ForbiddenException(
+        "Seul un super-admin peut attribuer ou modifier un rôle plateforme."
+      );
     }
 
     const data: {
@@ -902,7 +909,7 @@ export class AdminService {
 
   // ── Admin Management ─────────────────────────────────────────────────
 
-  async listAdmins(actor: AuthUser) {
+  async listAdmins(_actor: AuthUser) {
     const admins = await this.prisma.client.user.findMany({
       where: { role: { in: [UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUPER_ADMIN] } },
       select: {
@@ -1037,7 +1044,7 @@ export class AdminService {
 
   // ── API Keys ─────────────────────────────────────────────────────────
 
-  async listApiKeys(actor: AuthUser) {
+  async listApiKeys(_actor: AuthUser) {
     const keys = await this.prisma.client.adminApiKey.findMany({
       orderBy: { createdAt: "desc" }
     });

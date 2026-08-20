@@ -16,12 +16,13 @@ test.describe("Invitations", () => {
     const inviteeEmail = `invitee-${unique}@example.com`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true }
+      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
     });
     expect(registerResponse.ok()).toBeTruthy();
 
     await page.goto("/login");
-    await page.getByLabel("Adresse e-mail").fill(email);
+    // #email : le label « Adresse e-mail » matche aussi l'input newsletter du footer (strict mode).
+    await page.locator("#email").fill(email);
     await page.getByLabel("Mot de passe", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Se connecter" }).click();
     await page.waitForURL("**/dashboard");
@@ -29,7 +30,7 @@ test.describe("Invitations", () => {
     await page.goto("/dashboard/team");
     await expect(page.getByRole("heading", { name: "Équipe" })).toBeVisible();
 
-    await page.getByLabel("Adresse e-mail").fill(inviteeEmail);
+    await page.locator("#invite-email").fill(inviteeEmail);
     await page.getByRole("button", { name: "Créer l'invitation" }).click();
 
     const link = page.locator(".vp-invite-link-field");
@@ -54,18 +55,19 @@ test.describe("Invitations", () => {
     const inviteeEmail = `invitee-${unique}@example.com`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true }
+      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
     });
     expect(registerResponse.ok()).toBeTruthy();
 
     await page.goto("/login");
-    await page.getByLabel("Adresse e-mail").fill(email);
+    // #email : le label « Adresse e-mail » matche aussi l'input newsletter du footer (strict mode).
+    await page.locator("#email").fill(email);
     await page.getByLabel("Mot de passe", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Se connecter" }).click();
     await page.waitForURL("**/dashboard");
 
     await page.goto("/dashboard/team");
-    await page.getByLabel("Adresse e-mail").fill(inviteeEmail);
+    await page.locator("#invite-email").fill(inviteeEmail);
     await page.getByRole("button", { name: "Créer l'invitation" }).click();
 
     const link = page.locator(".vp-invite-link-field");

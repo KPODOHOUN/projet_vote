@@ -12,6 +12,13 @@
 const STORAGE_KEY = "vp.organizer.token";
 const BROADCAST_CHANNEL = "vp-auth";
 
+// Purge les anciens jetons persistés par les versions précédentes. Ils ne sont
+// jamais relus : la restauration passe exclusivement par le cookie httpOnly.
+if (typeof window !== "undefined") {
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem("vp.organizer.refresh-token");
+}
+
 // ── Token en mémoire ──────────────────────────────────────────────────────
 let accessToken: string | null = null;
 
@@ -87,17 +94,11 @@ export function getStoredToken(): string | null {
 }
 
 /**
- * Stocke le token en mémoire et le diffuse aux autres onglets.
- * Compatibilité ascendante : écrit aussi dans localStorage pour les pages
- * qui ne sont pas encore migrées (sera supprimé après migration complète).
+ * Stocke le token uniquement en mémoire et le diffuse aux autres onglets.
  */
 export function setStoredToken(token: string) {
   accessToken = token;
   broadcastToken(token);
-  // Fallback localStorage pour migration progressive
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, token);
-  }
 }
 
 /**

@@ -11,11 +11,19 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PartnersService } from "../partners/partners.service";
 import { noopPartnerNotifications } from "../partners/partner-notifications.stub";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
+import { OfferSettingsService } from "../offers/offer-settings.service";
 
 const prismaService = new PrismaService();
 const votes = new VotesService(prismaService);
 const partners = new PartnersService(prismaService, noopPartnerNotifications());
-const events = new EventsService(prismaService, votes, new NotificationsService(prismaService), partners);
+const offerSettings = new OfferSettingsService(prismaService);
+const events = new EventsService(
+  prismaService,
+  votes,
+  new NotificationsService(prismaService),
+  partners,
+  offerSettings
+);
 const platform = new PlatformControlService(prismaService, new VaultService(prismaService));
 
 function owner(tenantId: string) {

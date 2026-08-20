@@ -1,6 +1,10 @@
 name = "votezpro-maintenance-cron"
 main = "src/index.ts"
-compatibility_date = "2026-04-29"
+compatibility_date = "2026-07-29"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
 
 [env.staging]
 workers_dev = false

@@ -80,6 +80,37 @@ test("initPayin runs the 3-step flow (create → token → mode) and returns the
   assert.equal(c2.body.token, "tok_abc");
 });
 
+test("initPayin transmet le split Marketplace FedaPay au sous-compte organisateur", async () => {
+  const calls: Array<{ body: Record<string, unknown> }> = [];
+  mockSequence([
+    (_url, init) => {
+      calls.push({ body: JSON.parse(String(init.body)) as Record<string, unknown> });
+      return { status: 200, body: { "v1/transaction": { id: 4243, status: "pending" } } };
+    },
+    () => ({ status: 200, body: { token: "tok_split" } }),
+    () => ({ status: 200, body: { status: "pending" } })
+  ]);
+
+  const gw = new FedapayGateway();
+  await gw.initPayin(
+    {
+      amountCfa: 1_000,
+      phoneNumber: "+2290166000000",
+      operator: "mtn_open",
+      customId: "tx-split",
+      split: {
+        beneficiaryReference: "acc_organisateur",
+        amountCfa: 900
+      }
+    },
+    creds
+  );
+
+  assert.deepEqual(calls[0]?.body.sub_accounts_commisssions, [
+    { reference: "acc_organisateur", amount: 900 }
+  ]);
+});
+
 test("fetchPayinStatus maps approved → SUCCEEDED", async () => {
   mockSequence([
     () => ({ status: 200, body: { "v1/transaction": { id: 4242, status: "approved", amount: 100, currency: { iso: "XOF" } } } })
@@ -89,6 +120,58 @@ test("fetchPayinStatus maps approved → SUCCEEDED", async () => {
   assert.equal(res.status, "SUCCEEDED");
   assert.equal(res.amountCfa, 100);
   assert.equal(res.currency, "XOF");
+});
+
+test("fetchPayinStatus expose la répartition Marketplace confirmée", async () => {
+  mockSequence([
+    () => ({
+      status: 200,
+      body: {
+        "v1/transaction": {
+          id: 4242,
+          status: "approved",
+          amount: 1_000,
+          currency: { iso: "XOF" },
+          sub_accounts_commissions: [
+            { reference: "acc_organisateur", amount: 900 }
+          ]
+        }
+      }
+    })
+  ]);
+
+  const res = await new FedapayGateway().fetchPayinStatus("4242", creds);
+
+  assert.deepEqual(res.split, {
+    beneficiaryReference: "acc_organisateur",
+    amountCfa: 900
+  });
+});
+
+test("fetchPayinStatus accepte la référence imbriquée renvoyée par FedaPay", async () => {
+  mockSequence([
+    () => ({
+      status: 200,
+      body: {
+        "v1/transaction": {
+          status: "approved",
+          amount: 1_000,
+          currency: { iso: "XOF" },
+          sub_accounts_commissions: [
+            {
+              amount: 900,
+              sub_account: { reference: "acc_imbrique" }
+            }
+          ]
+        }
+      }
+    })
+  ]);
+
+  const res = await new FedapayGateway().fetchPayinStatus("4244", creds);
+
+  assert.equal(res.split?.beneficiaryReference, "acc_imbrique");
+  assert.equal(res.split?.amountCfa, 900);
 });
 
 test("fetchPayinStatus maps declined → FAILED", async () => {

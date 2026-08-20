@@ -46,7 +46,8 @@ export {
 // Réexport direct des composants shadcn bruts (pour usage avancé dans les pages)
 export { Button as ShadcnButton, buttonVariants } from "./button";
 export { Badge } from "./badge";
-export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./card";
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, cardVariants } from "./card";
+export type { CardProps } from "./card";
 export { Checkbox } from "./checkbox";
 export { Label } from "./label";
 export { Skeleton } from "./skeleton";

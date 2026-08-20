@@ -34,6 +34,9 @@ const TABLES = [
   "PayoutJobLock",
   "Notification",
   "AuthEmailToken",
+  "WalletLedgerEntry",
+  "WithdrawalRequest",
+  "OrganizerWallet",
   "User",
   "Tenant"
 ] as const;

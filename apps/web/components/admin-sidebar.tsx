@@ -2,28 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
   Users,
   Flag,
   ListTodo,
-  Layers,
-  Handshake,
   Settings,
   Menu,
   Wrench,
   ScrollText,
   Gavel,
   Banknote,
-  ShieldCheck,
-  Images,
-  CreditCard
+  CreditCard,
+  CalendarDays,
+  Tags
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useI18n } from "../lib/i18n-provider";
-import { getStoredToken } from "../lib/auth";
-import { pendingPartnerRequestCount } from "../lib/partners";
 
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
 type NavSection = { title: string; items: NavItem[] };
@@ -34,21 +30,6 @@ export function AdminSidebar() {
   const isEn = locale === "en";
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [pendingPartners, setPendingPartners] = useState(0);
-
-  const pollPendingPartners = useCallback(() => {
-    const token = getStoredToken();
-    if (!token) return;
-    void pendingPartnerRequestCount(token)
-      .then((r) => setPendingPartners(r.count))
-      .catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    pollPendingPartners();
-    const id = setInterval(pollPendingPartners, 30_000);
-    return () => clearInterval(id);
-  }, [pollPendingPartners, pathname]);
 
   useEffect(() => {
     const handleResize = () => setIsCollapsed(window.innerWidth < 1024);
@@ -66,12 +47,9 @@ export function AdminSidebar() {
         items: [
           { href: "/admin", label: isEn ? "Overview" : "Vue d'ensemble", icon: LayoutDashboard },
           { href: "/admin/users", label: t("nav.adminUsers"), icon: Users },
-          { href: "/admin/subscriptions", label: t("nav.subscriptions"), icon: Layers },
-          { href: "/admin/plans", label: isEn ? "Plans" : "Plans", icon: CreditCard },
-          { href: "/admin/payouts", label: isEn ? "Payouts" : "Versements", icon: Banknote },
-          { href: "/admin/partners", label: isEn ? "Partners" : "Partenaires", icon: Handshake },
-          { href: "/admin/account-partners", label: isEn ? "Account Partners" : "Partenaires Compte", icon: ShieldCheck },
-          { href: "/admin/display-partners", label: isEn ? "Display Partners" : "Partenaires Site", icon: Images },
+          { href: "/admin/offers", label: isEn ? "Offers & pricing" : "Offres & tarifs", icon: Tags },
+          { href: "/admin/offers/events", label: isEn ? "Active events" : "Événements actifs", icon: CalendarDays },
+          { href: "/admin/offers/withdrawals", label: isEn ? "Withdrawals" : "Retraits", icon: Banknote },
           { href: "/admin/settings", label: isEn ? "Settings" : "Réglages", icon: Settings }
         ]
       },
@@ -82,7 +60,9 @@ export function AdminSidebar() {
           { href: "/admin/jobs", label: t("nav.jobs"), icon: ListTodo },
           { href: "/admin/feature-flags", label: t("nav.featureFlags"), icon: Flag },
           { href: "/admin/maintenance", label: isEn ? "Maintenance" : "Maintenance", icon: Wrench },
-          { href: "/admin/audit", label: isEn ? "Audit log" : "Journal d'audit", icon: ScrollText }
+          { href: "/admin/audit", label: isEn ? "Audit log" : "Journal d'audit", icon: ScrollText },
+          // Legacy / soft-hidden from primary nav
+          { href: "/admin/payouts", label: isEn ? "Legacy payouts" : "Versements (legacy)", icon: CreditCard }
         ]
       }
     ];
@@ -131,9 +111,12 @@ export function AdminSidebar() {
               )}
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
-                const isPartners = item.href === "/admin/partners";
-                const badge = isPartners && pendingPartners > 0 ? pendingPartners : 0;
+                const isActive =
+                  item.href === "/admin"
+                    ? pathname === "/admin"
+                    : item.href === "/admin/offers"
+                      ? pathname === "/admin/offers"
+                      : pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <Link
                     key={item.href}
@@ -143,17 +126,12 @@ export function AdminSidebar() {
                     className={cn(
                       "flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-medium transition-all active:scale-[0.97] active:opacity-80",
                       isActive
-                        ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700 dark:text-gold-400 shadow-sm"
+                        ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700 shadow-sm dark:text-gold-400"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                     )}
                   >
                     <span className="relative shrink-0">
                       <Icon className={cn("h-5 w-5", isActive && "text-gold-600 dark:text-gold-400")} />
-                      {badge > 0 && (
-                        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold-600 px-1 text-[9px] font-bold text-white">
-                          {badge > 9 ? "9+" : badge}
-                        </span>
-                      )}
                     </span>
                     {!isCollapsed && <span className="truncate">{item.label}</span>}
                   </Link>

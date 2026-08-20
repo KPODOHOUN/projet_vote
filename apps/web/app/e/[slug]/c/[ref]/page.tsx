@@ -8,8 +8,7 @@ import { Card } from "../../../../../components/ui/card";
 import { Badge } from "../../../../../components/ui/badge";
 import { publicCandidatePath, SITE_NAME } from "../../../../../lib/site";
 import { getServerLocale } from "../../../../../lib/locale-server";
-import { formatEventStatus } from "../../../../../lib/i18n";
-import { publicEventMessage } from "../../../../../lib/public-event-i18n";
+import { formatEventStatus, translate, translateVars, type MessageKey } from "../../../../../lib/i18n";
 import { PublicEventShell } from "../../../../../components/public-event-shell";
 import { ArrowLeft } from "lucide-react";
 
@@ -52,9 +51,10 @@ type PageProps = { params: Promise<{ slug: string; ref: string }> };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug, ref } = await params;
+  const locale = await getServerLocale();
   const data = await fetchCandidate(slug, ref);
   if (!data) {
-    return { title: `Candidat introuvable · ${SITE_NAME}`, robots: { index: false, follow: false } };
+    return { title: `${translate(locale, "pub.candidateNotFound")} · ${SITE_NAME}`, robots: { index: false, follow: false } };
   }
   const { candidate, event } = data;
   const title = `${candidate.fullName} · ${event.title}`;
@@ -91,11 +91,12 @@ export default async function CandidateProfilePage({ params }: PageProps) {
   const { organizer, event, candidate } = data;
   const isOpen = event.status === "ACTIVE";
   const statusLabel = formatEventStatus(event.status, isEn);
+  const t9n = (key: MessageKey) => translate(locale, key);
 
   return (
     <PublicEventShell isEn={isEn} eventTitle={event.title} slug={event.slug} branding={event.branding}>
       <main className="flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-5xl overflow-hidden rounded-3xl border border-border/40 bg-card/75 backdrop-blur-md shadow-2xl">
+        <Card surface="glass" className="w-full max-w-5xl overflow-hidden p-0">
         <div className="flex flex-col md:flex-row">
           <div className="relative w-full md:w-5/12 lg:w-1/2 min-h-[400px] md:min-h-full bg-muted overflow-hidden">
             <CandidatePhoto 
@@ -128,13 +129,13 @@ export default async function CandidateProfilePage({ params }: PageProps) {
                   href={`/e/${event.slug}/results`} 
                   className="flex items-center gap-2 hover:text-primary transition-colors py-2 px-3 -mr-3 rounded-lg hover:bg-muted/50 hover:underline"
                 >
-                  {isEn ? "Live results" : "Résultats en direct"}
+                  {t9n("pub.liveResults")}
                 </Link>
               </nav>
 
               <div className="space-y-4 mb-8">
                 <p className="text-xs font-bold uppercase tracking-wider text-primary">
-                  {isEn ? "Organized by" : "Organisé par"}{" "}
+                  {t9n("pub.organizedBy")}{" "}
                   <span className="text-foreground">{organizer.displayName}</span>
                 </p>
 
@@ -144,7 +145,7 @@ export default async function CandidateProfilePage({ params }: PageProps) {
                 
                 {candidate.number != null ? (
                   <p className="text-base text-muted-foreground font-semibold">
-                    {isEn ? `Candidate no. ${candidate.number}` : `Candidat n°${candidate.number}`}
+                    {translateVars(locale, "pub.candidateNumber", { number: candidate.number })}
                   </p>
                 ) : null}
               </div>
@@ -168,12 +169,10 @@ export default async function CandidateProfilePage({ params }: PageProps) {
                   initialVoteCount={candidate.voteCount}
                 />
               ) : (
-                <div className="p-8 rounded-2xl bg-muted/30 text-center border border-border/40">
-                  <h2 className="text-xl font-bold mb-3">{publicEventMessage(locale, "voteClosed")}</h2>
-                  <p className="text-muted-foreground">
-                    {isEn
-                      ? `This event is currently ${statusLabel.toLowerCase()}.`
-                      : `Cet évènement est actuellement ${statusLabel.toLowerCase()}.`}
+                <div className="rounded-2xl border border-[var(--color-info)]/30 bg-[var(--color-info)]/10 p-8 text-center">
+                  <h2 className="mb-3 text-xl font-bold text-[var(--color-info-text)]">{t9n("pub.voteClosed")}</h2>
+                  <p className="text-[var(--color-info-text)]/80">
+                    {translateVars(locale, "pub.eventCurrently", { status: statusLabel.toLowerCase() })}
                   </p>
                 </div>
               )}

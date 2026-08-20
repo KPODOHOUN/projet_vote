@@ -25,6 +25,8 @@ import { FedapayGateway } from "./psp/fedapay.gateway";
 import { KkiapayGateway } from "./psp/kkiapay.gateway";
 import { PspRegistry } from "./psp/psp.registry";
 import type { PspCredentials } from "./psp/psp.types";
+import { OfferSettingsService } from "../offers/offer-settings.service";
+import { WalletService } from "../offers/wallet.service";
 
 /**
  * These tests verify the SECURITY-CRITICAL invariant of the platform:
@@ -81,7 +83,8 @@ class FakeFeexpayGateway extends FeexpayGateway {
       amountCfa: parseStrictProviderAmount(payload.amount) ?? 0,
       providerAmount: payload.amount,
       currency: payload.currency ?? "XOF",
-      reason: payload.reason
+      reason: payload.reason,
+      ...(payload.split ? { split: payload.split } : {})
     };
   }
 }
@@ -101,7 +104,9 @@ const pspRegistry = new PspRegistry(
 const verify = new PaymentVerifyService(
   prismaService,
   new NotificationsService(prismaService),
-  pspRegistry
+  pspRegistry,
+  new WalletService(prismaService),
+  new OfferSettingsService(prismaService)
 );
 
 before(() => assertTestDatabase());
@@ -119,6 +124,8 @@ async function seedPendingVotePayment(opts: {
   providerRef?: string;
   withVote?: boolean;
   purpose?: PaymentPurpose;
+  splitBeneficiaryRef?: string;
+  splitAmountCfa?: number;
 } = {}) {
   const amountCfa = opts.amountCfa ?? 500;
   const tenant = await prisma.tenant.create({
@@ -158,6 +165,12 @@ async function seedPendingVotePayment(opts: {
       currency: opts.currency ?? "XOF",
       status: PaymentStatus.PENDING,
       purpose: opts.purpose ?? PaymentPurpose.VOTE,
+      ...(opts.splitBeneficiaryRef
+        ? { splitBeneficiaryRef: opts.splitBeneficiaryRef }
+        : {}),
+      ...(opts.splitAmountCfa !== undefined
+        ? { splitAmountCfa: opts.splitAmountCfa }
+        : {}),
       idempotencyKey: `idem_${Math.random().toString(36).slice(2)}_aaaaaaaaaaaaaaaaaa`
     }
   });
@@ -215,6 +228,31 @@ test("ATTAQUE: pull SUCCESSFUL mais montant Feexpay < tx → REJET, vote.paidAt 
   const first = audits[0];
   assert.ok(first);
   assert.equal((first.metadata as { reason: string }).reason, "amount_mismatch");
+});
+
+test("ATTAQUE: split PSP différent du split attendu → REJET sans créditer le vote", async () => {
+  const { vote } = await seedPendingVotePayment({
+    amountCfa: 1_000,
+    providerRef: "fp_split_mismatch",
+    splitBeneficiaryRef: "acc_attendu",
+    splitAmountCfa: 900
+  });
+  fake.next = {
+    kind: "ok",
+    payload: {
+      status: "SUCCESSFUL",
+      amount: "1000",
+      currency: "XOF",
+      split: { beneficiaryReference: "acc_attaquant", amountCfa: 900 }
+    }
+  };
+
+  const result = await verify.verifyAndApplyByReference("fp_split_mismatch");
+
+  assert.equal(result.outcome, "rejected");
+  assert.equal(result.reason, "split_mismatch");
+  const afterVote = await prisma.vote.findUnique({ where: { id: vote!.id } });
+  assert.equal(afterVote?.paidAt, null);
 });
 
 test("ATTAQUE: montant amount renvoyé sous forme '500abc' non parsable → REJET amount_unparseable", async () => {

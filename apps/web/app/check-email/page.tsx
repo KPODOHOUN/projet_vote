@@ -1,53 +1,180 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ExternalLink } from "lucide-react";
-import { apiFetch } from "../../lib/api";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiFetch, ApiError } from "../../lib/api";
+import { setStoredToken } from "../../lib/auth";
 import { showToast } from "../../lib/toast";
 import { useI18n } from "../../lib/i18n-provider";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
 import { GlassCard } from "@/components/glass-card";
-import { Button, Input } from "@/components/ui";
+import { Button, FormError, Input } from "@/components/ui";
 
-type ResendResponse = {
-  success: boolean;
+const DEV_OTP_STORAGE_KEY = "vp.dev.emailOtp";
+
+type VerifyOtpResponse = {
+  success?: boolean;
+  accessToken?: string;
   message?: string;
-  verificationUrl?: string;
 };
 
+type ResendOtpResponse = {
+  success: boolean;
+  message?: string;
+  otpCode?: string;
+};
+
+function readDevOtp(email: string): string | null {
+  if (typeof window === "undefined" || !email) return null;
+  try {
+    const raw = sessionStorage.getItem(DEV_OTP_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { email?: string; code?: string };
+    if (
+      typeof parsed.email === "string" &&
+      parsed.email.toLowerCase() === email.toLowerCase() &&
+      typeof parsed.code === "string" &&
+      /^\d{6}$/.test(parsed.code)
+    ) {
+      return parsed.code;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function writeDevOtp(email: string, code: string) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(DEV_OTP_STORAGE_KEY, JSON.stringify({ email, code }));
+  } catch {
+    // ignore
+  }
+}
+
+function clearDevOtp() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(DEV_OTP_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function CheckEmailContent() {
+  const router = useRouter();
   const { locale } = useI18n();
   const isEn = locale === "en";
   const searchParams = useSearchParams();
-  const email = searchParams.get("email") ?? "";
-  const initialVerifyUrl = searchParams.get("verify");
-  const [verifyUrl, setVerifyUrl] = useState(initialVerifyUrl);
-  const [resendEmail, setResendEmail] = useState(email);
-  const [isLoading, setIsLoading] = useState(false);
+  const emailFromQuery = searchParams.get("email") ?? "";
 
-  async function onResend(event: FormEvent<HTMLFormElement>) {
+  const [email, setEmail] = useState(emailFromQuery);
+  const [code, setCode] = useState("");
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    setEmail(emailFromQuery);
+    const stored = readDevOtp(emailFromQuery);
+    if (stored) {
+      setDevOtp(stored);
+      setCode(stored);
+    }
+  }, [emailFromQuery]);
+
+  async function onVerify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!resendEmail.trim()) return;
-    setIsLoading(true);
+    setError("");
+    setSuccess(false);
+    const trimmedEmail = email.trim();
+    const trimmedCode = code.replace(/\D/g, "").slice(0, 6);
+    if (!trimmedEmail || trimmedCode.length !== 6) {
+      setError(isEn ? "Enter your email and the 6-digit code." : "Saisissez votre e-mail et le code à 6 chiffres.");
+      return;
+    }
+    setIsVerifying(true);
     try {
-      const result = await apiFetch<ResendResponse>("/auth/resend-verification", {
+      const result = await apiFetch<VerifyOtpResponse>("/auth/verify-otp", {
         method: "POST",
-        body: JSON.stringify({ email: resendEmail.trim() })
+        body: JSON.stringify({
+          email: trimmedEmail,
+          code: trimmedCode,
+          purpose: "EMAIL_VERIFICATION"
+        })
       });
-      if (result.verificationUrl) {
-        setVerifyUrl(result.verificationUrl);
+      clearDevOtp();
+      if (result.accessToken) {
+        setStoredToken(result.accessToken);
+        setSuccess(true);
+        showToast.success(isEn ? "Email confirmed. Welcome!" : "E-mail confirmé. Bienvenue !");
+        router.push("/dashboard/start");
+        return;
       }
-      showToast.success(
-        isEn ? "If your account is pending, we sent a new email." : "Si votre compte est en attente, un nouvel e-mail a été envoyé."
+      setSuccess(true);
+      showToast.success(isEn ? "Email confirmed. You can sign in." : "E-mail confirmé. Vous pouvez vous connecter.");
+      router.push(authLoginUrl());
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : caught instanceof Error
+            ? caught.message
+            : isEn
+              ? "Verification failed."
+              : "La vérification a échoué."
       );
-    } catch {
-      showToast.error(isEn ? "Could not resend the email." : "Impossible de renvoyer l'e-mail.");
     } finally {
-      setIsLoading(false);
+      setIsVerifying(false);
+    }
+  }
+
+  async function onResend() {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError(isEn ? "Enter your email to resend the code." : "Saisissez votre e-mail pour renvoyer le code.");
+      return;
+    }
+    setError("");
+    setIsResending(true);
+    try {
+      const result = await apiFetch<ResendOtpResponse>("/auth/resend-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          email: trimmedEmail,
+          purpose: "EMAIL_VERIFICATION"
+        })
+      });
+      if (result.otpCode) {
+        writeDevOtp(trimmedEmail, result.otpCode);
+        setDevOtp(result.otpCode);
+        setCode(result.otpCode);
+        showToast.success(
+          isEn ? "New verification code ready (local/dev)." : "Nouveau code prêt (mode local/dev)."
+        );
+      } else {
+        showToast.success(
+          isEn
+            ? "If your account is pending, we sent a new code."
+            : "Si votre compte est en attente, un nouveau code a été envoyé."
+        );
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : isEn
+            ? "Could not resend the code."
+            : "Impossible de renvoyer le code."
+      );
+    } finally {
+      setIsResending(false);
     }
   }
 
@@ -58,44 +185,87 @@ function CheckEmailContent() {
           {isEn ? "Confirm your email" : "Confirmez votre e-mail"}
         </h1>
         <p className="mb-6 text-muted-foreground">
-          {email
+          {emailFromQuery
             ? isEn
-              ? `We sent a link to ${email}. Open it on this device, then sign in.`
-              : `Nous avons envoyé un lien à ${email}. Ouvrez-le sur cet appareil, puis connectez-vous.`
+              ? `We sent a 6-digit code to ${emailFromQuery}. Enter it below to activate your account.`
+              : `Nous avons envoyé un code à 6 chiffres à ${emailFromQuery}. Saisissez-le ci-dessous pour activer votre compte.`
             : isEn
-              ? "Open the confirmation link we sent you, then sign in."
-              : "Ouvrez le lien de confirmation reçu par e-mail, puis connectez-vous."}
+              ? "Enter the 6-digit code we sent by email."
+              : "Saisissez le code à 6 chiffres reçu par e-mail."}
         </p>
 
-        {verifyUrl ? (
-          <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <p className="mb-3 text-sm text-muted-foreground">
-              {isEn
-                ? "Email delivery is not configured yet. Use this link to confirm your account now:"
-                : "L'envoi d'e-mails n'est pas encore configuré. Utilisez ce lien pour confirmer votre compte :"}
+        {devOtp ? (
+          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
+            <p className="font-semibold">
+              {isEn ? "Local / development mode" : "Mode local / développement"}
             </p>
-            <Button asChild className="w-full">
-              <a href={verifyUrl}>
-                {isEn ? "Confirm my email now" : "Confirmer mon e-mail maintenant"}
-                <ExternalLink className="ml-2 h-4 w-4" aria-hidden="true" />
-              </a>
-            </Button>
+            <p className="mt-1 text-muted-foreground">
+              {isEn
+                ? "No email provider configured — use this code:"
+                : "Aucun envoi e-mail configuré — utilisez ce code :"}
+            </p>
+            <p className="mt-2 font-mono text-2xl font-bold tracking-[0.35em] text-foreground">{devOtp}</p>
           </div>
         ) : null}
 
-        <form className="space-y-4" onSubmit={onResend}>
+        {success ? (
+          <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">
+            {isEn ? "Email confirmed. Redirecting…" : "E-mail confirmé. Redirection…"}
+          </div>
+        ) : null}
+
+        <form className="space-y-4" onSubmit={onVerify}>
+          {!emailFromQuery ? (
+            <Input
+              id="email"
+              label={isEn ? "Your email" : "Votre e-mail"}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          ) : (
+            <input type="hidden" value={email} readOnly />
+          )}
           <Input
-            id="resendEmail"
-            label={isEn ? "Your email" : "Votre e-mail"}
-            type="email"
-            value={resendEmail}
-            onChange={(e) => setResendEmail(e.target.value)}
+            id="otp"
+            label={isEn ? "Verification code" : "Code de vérification"}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            pattern="\d{6}"
+            placeholder="000000"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            helpText={
+              devOtp
+                ? isEn
+                  ? "Pre-filled from local/dev response."
+                  : "Prérempli depuis la réponse locale/dev."
+                : isEn
+                  ? "6 digits from your email."
+                  : "6 chiffres reçus par e-mail."
+            }
             required
           />
-          <Button type="submit" loading={isLoading} className="w-full" variant="secondary">
-            {isEn ? "Resend confirmation email" : "Renvoyer l'e-mail de confirmation"}
+          <FormError>{error}</FormError>
+          <Button type="submit" loading={isVerifying} className="w-full" disabled={success}>
+            {isEn ? "Confirm email" : "Confirmer l'e-mail"}
           </Button>
         </form>
+
+        <Button
+          type="button"
+          variant="secondary"
+          className="mt-3 w-full"
+          loading={isResending}
+          onClick={() => void onResend()}
+          disabled={success}
+        >
+          {isEn ? "Resend code" : "Renvoyer le code"}
+        </Button>
+
         <p className="mt-8 text-center text-sm text-muted-foreground">
           {isEn ? "Already confirmed?" : "Déjà confirmé ?"}{" "}
           <Link href={authLoginUrl()} className="font-semibold text-primary hover:underline">
@@ -103,13 +273,7 @@ function CheckEmailContent() {
           </Link>
         </p>
         <div className="mt-6 flex flex-col items-center gap-2 text-xs text-muted-foreground">
-          <Link href="/dashboard" className="hover:text-foreground transition-colors">
-            {isEn ? "Organizer dashboard →" : "Tableau de bord organisateur →"}
-          </Link>
-          <Link href="/admin" className="hover:text-foreground transition-colors">
-            {isEn ? "Platform administration →" : "Administration de la plateforme →"}
-          </Link>
-          <Link href="/" className="text-muted-foreground/60 hover:text-foreground transition-colors">
+          <Link href="/" className="text-muted-foreground/60 transition-colors hover:text-foreground">
             {isEn ? "← Back to SHADOMA" : "← Retour sur SHADOMA"}
           </Link>
         </div>

@@ -61,6 +61,8 @@
 
   --color-success-text: #059669;
   --color-error-text: #DC2626;
+  --color-warning-text: #B45309;
+  --color-info-text: #1D4ED8;
 
   /* ── shadcn/ui bridge ──────────────────────────────────────────────── */
   --color-primary: var(--color-brand-500);

@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useI18n } from "../../../../../lib/i18n-provider";
+import { publicEventDateLocale } from "../../../../../lib/i18n";
 import { usePublicVotePayment } from "../../use-public-vote-payment";
 import { Button } from "../../../../../components/ui/button";
 import { Input } from "../../../../../components/ui/input";
 import { Label } from "../../../../../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../../components/ui/select";
+import { FormError } from "../../../../../components/ui/form-error";
 import { AlertCircle, CheckCircle2, Loader2, Sparkles, Phone, CreditCard } from "lucide-react";
 import { trackEvent } from "../../../../../lib/analytics";
 import { sanitizePhoneInput } from "../../../../../lib/phone";
@@ -29,8 +32,9 @@ export function CandidateVoteClient({
   voteUnitPriceCfa,
   initialVoteCount
 }: Props) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
+  const dateLocale = publicEventDateLocale(locale);
   const { status, submit, reset } = usePublicVotePayment({ tenantSlug: organizerSlug, eventSlug, isEn });
   const [quantity, setQuantity] = useState(1);
   const [voterPhone, setVoterPhone] = useState("");
@@ -60,10 +64,10 @@ export function CandidateVoteClient({
       {/* Vote Tally Header */}
       <div className="flex items-center gap-3 bg-primary/5 px-4 py-3 rounded-xl border border-primary/10 w-fit">
         <span className="text-3xl font-black text-primary tracking-tight">
-          {(initialVoteCount + (isDone ? 1 : 0)).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+          {(initialVoteCount + (isDone ? 1 : 0)).toLocaleString(dateLocale)}
         </span>
         <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-none">
-          {isEn ? "total votes" : "votes au total"}
+          {t("pub.totalVotesLabel")}
         </span>
       </div>
 
@@ -77,24 +81,24 @@ export function CandidateVoteClient({
             className="space-y-6"
             onSubmit={onSubmit}
           >
-            <div className="space-y-4 bg-muted/40 p-5 sm:p-6 rounded-2xl border border-border/50 backdrop-blur-sm">
+            <div data-zone="secure-flow" className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
               {voteUnitPriceCfa !== null && voteUnitPriceCfa > 0 ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between py-2 border-b border-border/20">
                     <div className="flex items-center gap-2">
                       <CreditCard className="w-4 h-4 text-muted-foreground" />
                       <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                        {isEn ? "Price per vote" : "Prix du vote"}
+                        {t("pub.pricePerVote")}
                       </span>
                     </div>
                     <span className="text-base font-black text-foreground">
-                      {voteUnitPriceCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")} XOF
+                      {voteUnitPriceCfa.toLocaleString(dateLocale)} XOF
                     </span>
                   </div>
 
                   <div className="space-y-2">
                     <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      {isEn ? "Number of votes" : "Nombre de votes"}
+                      {t("pub.numberOfVotes")}
                     </Label>
                     <div className="grid grid-cols-4 gap-2">
                       {[1, 5, 10, 20].map((preset) => {
@@ -104,7 +108,7 @@ export function CandidateVoteClient({
                             key={preset}
                             type="button"
                             onClick={() => setQuantity(preset)}
-                            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition-all ${
+                            className={`flex min-h-11 flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition-all ${
                               isSelected
                                 ? "border-primary bg-primary/10 text-primary font-black shadow-sm"
                                 : "border-border/60 bg-background/40 hover:bg-muted text-foreground font-bold"
@@ -112,7 +116,7 @@ export function CandidateVoteClient({
                           >
                             <span className="text-xs sm:text-sm">x{preset}</span>
                             <span className="text-[9px] sm:text-[10px] opacity-80 font-mono mt-0.5">
-                              {(preset * voteUnitPriceCfa).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+                              {(preset * voteUnitPriceCfa).toLocaleString(dateLocale)}
                             </span>
                           </button>
                         );
@@ -120,36 +124,34 @@ export function CandidateVoteClient({
                     </div>
 
                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-dashed border-border/30">
-                      <span className="text-[11px] font-semibold text-muted-foreground">{isEn ? "Custom quantity:" : "Quantité libre :"}</span>
+                      <span className="text-[11px] font-semibold text-muted-foreground">{t("pub.customQuantity")}</span>
                       <Input
                         type="number"
                         min={1}
                         step={1}
                         value={quantity}
                         onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
-                        className="h-8 text-right font-bold w-20 ml-auto bg-background/50 border-border/50 text-xs"
+                        className="h-11 text-right font-bold w-24 ml-auto bg-background/50 border-border/50 text-xs"
                       />
                       <span className="text-xs font-bold text-muted-foreground">
-                        {isEn ? "votes" : "voix"}
+                        {t("pub.votesUnit")}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-primary/5 border border-primary/10">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      {isEn ? "Total to pay" : "Total à payer"}
+                      {t("pub.totalToPay")}
                     </span>
                     <span className="text-lg font-black text-primary">
-                      {amountCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")} XOF
+                      {amountCfa.toLocaleString(dateLocale)} XOF
                     </span>
                   </div>
                 </div>
               ) : (
                 <div className="py-4 text-center">
                   <p className="text-sm font-semibold text-muted-foreground">
-                    {isEn
-                      ? "This event has no voting price configured yet."
-                      : "Cet évènement n'a pas encore de prix de vote défini."}
+                    {t("pub.noPriceConfigured")}
                   </p>
                 </div>
               )}
@@ -157,7 +159,7 @@ export function CandidateVoteClient({
               <div className="space-y-2">
                 <Label htmlFor="voterPhone" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Phone className="w-4 h-4 text-muted-foreground" />
-                  {isEn ? "Mobile Money number" : "Numéro Mobile Money"}
+                  {t("pub.momoNumber")}
                 </Label>
                 <Input
                   id="voterPhone"
@@ -171,63 +173,58 @@ export function CandidateVoteClient({
                   className="text-lg h-12 tracking-widest font-mono bg-background/50 border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  {isEn
-                    ? "Enter your full international number (e.g. +229 Benin, +225 Ivory Coast, +221 Senegal)."
-                    : "Saisissez votre numéro au format international (ex: +229 Bénin, +225 Côte d'Ivoire, +221 Sénégal)."}
+                  {t("pub.momoHelp")}
                 </p>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="operator" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-muted-foreground" />
-                  {isEn ? "Mobile Money network" : "Réseau Mobile Money"}
+                  {t("pub.momoNetwork")}
                 </Label>
-                <select
-                  id="operator"
-                  value={operator}
-                  onChange={(inputEvent) => setOperator(inputEvent.target.value)}
-                  className="w-full h-12 rounded-md border border-border/50 bg-background/50 px-3 text-base font-semibold text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">{isEn ? "Auto-detect" : "Détection automatique"}</option>
-                  <option value="mtn">MTN</option>
-                  <option value="moov">Moov</option>
-                  <option value="orange">Orange</option>
-                </select>
+                <Select value={operator || "auto"} onValueChange={(value) => setOperator(value === "auto" ? "" : value)}>
+                  <SelectTrigger id="operator" className="w-full text-base font-semibold data-[size=default]:h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">{t("pub.operatorAuto")}</SelectItem>
+                    <SelectItem value="mtn">MTN</SelectItem>
+                    <SelectItem value="moov">Moov</SelectItem>
+                    <SelectItem value="orange">Orange</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-              <Button 
-                type="submit" 
-                size="lg" 
-                className="w-full h-14 text-base font-bold shadow-xl transition-all bg-primary hover:bg-primary/90 text-primary-foreground relative overflow-hidden group" 
-                disabled={!canSubmit}
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2 justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    {isEn ? "Processing Secure Payment…" : "Paiement Sécurisé…"}
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2 justify-center">
-                    <Sparkles className="w-4 h-4 transition-transform group-hover:scale-110" />
-                    {isEn ? "Vote for" : "Voter pour"} {candidateName} · {quantity} {isEn ? "vote" : "voix"} · {amountCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")} XOF
-                  </span>
-                )}
-              </Button>
-            </motion.div>
+            <Button
+              type="submit"
+              size="lg"
+              loading={isSubmitting}
+              disabled={!canSubmit}
+              className="h-14 w-full text-base font-bold shadow-xl"
+            >
+              {isSubmitting ? (
+                t("pub.processingPayment")
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  {t("pub.voteFor")} {candidateName} · {quantity} {t("pub.votesUnit")} · {amountCfa.toLocaleString(dateLocale)} XOF
+                </span>
+              )}
+            </Button>
           </motion.form>
         ) : (
-          <motion.section 
+          <motion.section
             key="payment-status"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-card border border-border/60 rounded-2xl p-6 space-y-6 shadow-2xl relative overflow-hidden" 
+            data-zone="secure-flow"
+            className="space-y-6 rounded-2xl border border-border bg-card p-6 shadow-lg relative overflow-hidden"
             aria-live="polite"
           >
             <h3 className="font-extrabold text-lg text-foreground border-b border-border/40 pb-3 flex items-center gap-2">
-              {isEn ? "Vote status" : "Statut du vote"}
+              {t("pub.voteStatusTitle")}
             </h3>
 
             {!isDone && !isFailed ? (
@@ -235,12 +232,10 @@ export function CandidateVoteClient({
                 <Loader2 className="h-10 w-10 animate-spin text-primary" />
                 <div className="space-y-1">
                   <p className="font-bold text-foreground">
-                    {status.label || (isEn ? "Pending payment confirmation" : "Confirmation de paiement en attente")}
+                    {status.label || t("pub.pendingTitle")}
                   </p>
                   <p className="text-sm text-muted-foreground max-w-sm">
-                    {isEn
-                      ? "Please approve the prompt sent to your phone. This screen will update automatically."
-                      : "Validez la demande de paiement reçue sur votre téléphone. Cette page se mettra à jour toute seule."}
+                    {t("pub.pendingDesc")}
                   </p>
                 </div>
               </div>
@@ -251,29 +246,29 @@ export function CandidateVoteClient({
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 200, damping: 12 }}
-                className="flex flex-col items-center justify-center p-6 text-center space-y-4 bg-emerald-500/5 rounded-xl border border-emerald-500/10"
+                className="flex flex-col items-center justify-center p-6 text-center space-y-4 rounded-xl border border-[var(--color-success)]/20 bg-[var(--color-success)]/5"
               >
-                <motion.div 
+                <motion.div
                   initial={{ scale: 0, rotate: -45 }}
                   animate={{ scale: 1, rotate: 0 }}
                   transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.1 }}
-                  className="rounded-full bg-emerald-500/10 p-4 border border-emerald-500/20"
+                  className="rounded-full border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 p-4"
                 >
-                  <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+                  <CheckCircle2 className="h-12 w-12 text-[var(--color-success)]" />
                 </motion.div>
                 <div className="space-y-1">
                   <p className="font-bold text-foreground text-lg">
-                    {isEn ? "Vote Confirmed!" : "Vote Validé !"}
+                    {t("pub.confirmedTitle")}
                   </p>
-                  <p className="text-sm text-emerald-600 dark:text-emerald-400">
-                    {isEn ? `Thank you! Your vote for ${candidateName} has been recorded.` : `Merci ! Votre vote pour ${candidateName} a bien été enregistré.`}
+                  <p className="text-sm text-[var(--color-success-text)]">
+                    {t("pub.confirmedDesc", { name: candidateName })}
                   </p>
                 </div>
               </motion.div>
             ) : null}
 
             {isFailed ? (
-              <div className="flex flex-col items-center justify-center p-6 text-center space-y-4 bg-destructive/5 rounded-xl border border-destructive/10">
+              <div className="flex flex-col items-center justify-center p-6 text-center space-y-4 rounded-xl border border-destructive/20 bg-destructive/5">
                 <motion.div 
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -284,32 +279,27 @@ export function CandidateVoteClient({
                 </motion.div>
                 <div className="space-y-2 w-full">
                   <p className="font-bold text-foreground text-lg">
-                    {isEn ? "Payment Failed" : "Échec du paiement"}
+                    {t("pub.failedTitle")}
                   </p>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {isEn ? "The transaction was canceled or did not complete. Try again." : "Le paiement a été rejeté ou a échoué. Veuillez réessayer."}
+                    {t("pub.failedDesc")}
                   </p>
                   <Button type="button" variant="outline" className="w-full mt-2" onClick={reset}>
-                    {isEn ? "Try again" : "Réessayer"}
+                    {t("pub.retry")}
                   </Button>
                 </div>
               </div>
             ) : null}
 
             <div className="pt-4 border-t border-border/40 flex justify-between items-center text-[10px] text-muted-foreground font-mono">
-              <span>{isEn ? "Transaction Reference" : "Référence de transaction"}</span>
+              <span>{t("pub.txRef")}</span>
               <span className="font-bold text-foreground">{status.live?.providerRef ?? status.result.transactionId}</span>
             </div>
           </motion.section>
         )}
       </AnimatePresence>
 
-      {status.error ? (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-destructive/5 text-destructive border border-destructive/10" role="alert">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          <p className="text-xs font-semibold">{status.error}</p>
-        </div>
-      ) : null}
+      <FormError>{status.error}</FormError>
     </div>
   );
 }

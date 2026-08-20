@@ -101,6 +101,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
       tenantDisplayName: "Demo Vote",
       email: "owner@demovote.africa",
       password: "SecurePass123!",
+      offerType: "ESCROW",
       acceptPrivacyPolicy: true
     });
 
@@ -141,6 +142,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
       tenantDisplayName: "Impersonator",
       email: "attacker@evil.africa",
       password: "SecurePass123!",
+      offerType: "ESCROW",
       acceptPrivacyPolicy: true
     });
   assert.equal(duplicateSlugRegister.status, 409);
@@ -293,6 +295,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
       tenantDisplayName: "Rival Vote",
       email: "owner@rivalvote.africa",
       password: "SecurePass123!",
+      offerType: "ESCROW",
       acceptPrivacyPolicy: true
     });
   assert.equal(attackerRegister.status, 201);

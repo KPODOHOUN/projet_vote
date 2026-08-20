@@ -22,6 +22,8 @@ import { FedapayGateway } from "./psp/fedapay.gateway";
 import { KkiapayGateway } from "./psp/kkiapay.gateway";
 import { PspRegistry } from "./psp/psp.registry";
 import type { PspCredentials } from "./psp/psp.types";
+import { OfferSettingsService } from "../offers/offer-settings.service";
+import { WalletService } from "../offers/wallet.service";
 
 /**
  * Reconciliation is the ADR-017 safety net: it must recover a paid-but-never-
@@ -75,7 +77,9 @@ const pspRegistry = new PspRegistry(
 const verify = new PaymentVerifyService(
   prismaService,
   new NotificationsService(prismaService),
-  pspRegistry
+  pspRegistry,
+  new WalletService(prismaService),
+  new OfferSettingsService(prismaService)
 );
 const reconciliation = new PaymentReconciliationService(prismaService, verify);
 

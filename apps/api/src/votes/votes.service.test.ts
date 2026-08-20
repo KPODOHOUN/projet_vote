@@ -187,7 +187,13 @@ test("getPublicCandidate: renvoie le candidat (photo+voteCount), 404 si absent",
 
 test("updateCandidate: met à jour photoUrl, refuse hors tenant", async () => {
   const { tenant, event, candidate } = await seed();
-  const events = new EventsService(prismaService, votes, undefined as never, undefined as never);
+  const events = new EventsService(
+    prismaService,
+    votes,
+    undefined as never,
+    undefined as never,
+    undefined as never
+  );
   const owner = { userId: "u1", tenantId: tenant.id, role: "ORGANIZER_OWNER" } as never;
   await events.updateCandidate(owner, event.id, candidate.id, { photoUrl: "https://img.test/new.jpg" });
   const row = await prisma.candidate.findUnique({ where: { id: candidate.id } });

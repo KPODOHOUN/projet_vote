@@ -33,7 +33,7 @@ export function changePassword(token: string, input: { currentPassword: string; 
 }
 
 export function changeEmail(token: string, input: { newEmail: string; currentPassword: string }) {
-  return apiFetch<{ accessToken: string }>("/account/email", {
+  return apiFetch<{ requiresEmailVerification: true; email: string }>("/account/email", {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(input)

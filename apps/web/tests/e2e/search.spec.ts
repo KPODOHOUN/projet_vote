@@ -17,7 +17,7 @@ test.describe("Recherche globale", () => {
     const title = `Concours Recherche ${unique}`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true }
+      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
     });
     expect(registerResponse.ok()).toBeTruthy();
     const { accessToken } = await registerResponse.json();
@@ -35,7 +35,8 @@ test.describe("Recherche globale", () => {
     expect(eventResponse.ok()).toBeTruthy();
 
     await page.goto("/login");
-    await page.getByLabel("Adresse e-mail").fill(email);
+    // #email : le label « Adresse e-mail » matche aussi l'input newsletter du footer (strict mode).
+    await page.locator("#email").fill(email);
     await page.getByLabel("Mot de passe", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Se connecter" }).click();
     await page.waitForURL("**/dashboard");

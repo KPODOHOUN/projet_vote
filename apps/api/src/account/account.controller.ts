@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthUser } from "../auth/auth.types";
@@ -29,8 +29,15 @@ export class AccountController {
 
   @Post("email")
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  changeEmail(@CurrentUser() user: AuthUser, @Body() body: unknown, @Req() request: Request) {
-    return this.accountService.changeEmail(user, body, refreshToken(request));
+  async changeEmail(
+    @CurrentUser() user: AuthUser,
+    @Body() body: unknown,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const result = await this.accountService.changeEmail(user, body, refreshToken(request));
+    response.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/v1" });
+    return result;
   }
 
   @Get("sessions")

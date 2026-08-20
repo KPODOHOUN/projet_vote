@@ -26,6 +26,11 @@ export interface PspPayinInitInput {
   description?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
+  /** Native marketplace split. Currently implemented by FedaPay sub-accounts. */
+  split?: {
+    beneficiaryReference: string;
+    amountCfa: number;
+  } | undefined;
 }
 
 export interface PspPayinInitResult {
@@ -41,6 +46,10 @@ export interface PspStatusResult {
   providerAmount?: string | number | undefined;
   currency: string;
   reason?: string | undefined;
+  split?: {
+    beneficiaryReference: string;
+    amountCfa: number;
+  } | undefined;
 }
 
 export interface PspPayoutInput {

@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -39,7 +40,19 @@ export function useAuthModalOptional(): AuthModalContextValue | null {
   return useContext(AuthModalContext);
 }
 
-function AuthModalProviderInner({ children }: { children: ReactNode }) {
+type UrlSyncProps = {
+  open: boolean;
+  onOpenFromUrl: (mode: AuthMode, next: string | null) => void;
+};
+
+/**
+ * Synchronise le modal avec l'URL (`?auth=login|register&next=/…`).
+ * Isolé sous sa propre boundary Suspense : `useSearchParams` l'exige, et une
+ * boundary au-dessus de `{children}` (layout racine) amorçait le streaming
+ * avant le rendu des pages — les `notFound()` arrivaient alors après l'envoi
+ * des headers et les 404 devenaient des soft-200 (SEO + e2e).
+ */
+function AuthModalUrlSync({ open, onOpenFromUrl }: UrlSyncProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -47,40 +60,41 @@ function AuthModalProviderInner({ children }: { children: ReactNode }) {
   const authFromUrl = parseAuthMode(searchParams.get(AUTH_QUERY_PARAM));
   const nextFromUrl = sanitizeAuthReturnTo(searchParams.get(AUTH_NEXT_PARAM));
 
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<AuthMode>("login");
-  const [returnTo, setReturnTo] = useState<string | null>(null);
-
+  // Deep-link entrant → ouvrir le modal.
   useEffect(() => {
-    if (authFromUrl) {
-      setMode(authFromUrl);
-      setOpen(true);
-      setReturnTo(nextFromUrl);
+    if (authFromUrl && !open) {
+      onOpenFromUrl(authFromUrl, nextFromUrl);
     }
-  }, [authFromUrl, nextFromUrl]);
+  }, [authFromUrl, nextFromUrl, open, onOpenFromUrl]);
 
-  const clearAuthQuery = useCallback(() => {
+  // Modal fermé → consommer les params auth de l'URL.
+  useEffect(() => {
+    if (open) return;
     if (!searchParams.get(AUTH_QUERY_PARAM) && !searchParams.get(AUTH_NEXT_PARAM)) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete(AUTH_QUERY_PARAM);
     params.delete(AUTH_NEXT_PARAM);
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname);
-  }, [pathname, router, searchParams]);
+  }, [open, pathname, router, searchParams]);
 
-  const openAuth = useCallback(
-    (nextMode: AuthMode, next?: string | null) => {
-      setMode(nextMode);
-      setOpen(true);
-      setReturnTo(sanitizeAuthReturnTo(next ?? null));
-    },
-    []
-  );
+  return null;
+}
+
+export function AuthModalProvider({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+
+  const openAuth = useCallback((nextMode: AuthMode, next?: string | null) => {
+    setMode(nextMode);
+    setOpen(true);
+    setReturnTo(sanitizeAuthReturnTo(next ?? null));
+  }, []);
 
   const closeAuth = useCallback(() => {
     setOpen(false);
-    clearAuthQuery();
-  }, [clearAuthQuery]);
+  }, []);
 
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
@@ -93,6 +107,12 @@ function AuthModalProviderInner({ children }: { children: ReactNode }) {
     [closeAuth]
   );
 
+  const handleOpenFromUrl = useCallback((urlMode: AuthMode, next: string | null) => {
+    setMode(urlMode);
+    setOpen(true);
+    setReturnTo(next);
+  }, []);
+
   const value = useMemo(
     () => ({ openAuth, closeAuth, returnTo }),
     [openAuth, closeAuth, returnTo]
@@ -101,6 +121,9 @@ function AuthModalProviderInner({ children }: { children: ReactNode }) {
   return (
     <AuthModalContext.Provider value={value}>
       {children}
+      <Suspense fallback={null}>
+        <AuthModalUrlSync open={open} onOpenFromUrl={handleOpenFromUrl} />
+      </Suspense>
       <AuthDialog
         open={open}
         onOpenChange={handleOpenChange}
@@ -109,8 +132,4 @@ function AuthModalProviderInner({ children }: { children: ReactNode }) {
       />
     </AuthModalContext.Provider>
   );
-}
-
-export function AuthModalProvider({ children }: { children: ReactNode }) {
-  return <AuthModalProviderInner>{children}</AuthModalProviderInner>;
 }

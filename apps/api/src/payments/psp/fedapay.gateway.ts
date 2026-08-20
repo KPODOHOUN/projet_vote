@@ -82,6 +82,15 @@ export class FedapayGateway implements PspGateway {
    * authoritative status is resolved later by verify-by-pull (ADR-017).
    */
   async initPayin(input: PspPayinInitInput, creds: PspCredentials): Promise<PspPayinInitResult> {
+    if (
+      input.split &&
+      (input.split.amountCfa <= 0 ||
+        input.split.amountCfa >= input.amountCfa ||
+        !input.split.beneficiaryReference.trim())
+    ) {
+      throw new ServiceUnavailableException("Fedapay: répartition Marketplace invalide.");
+    }
+
     // 1. create transaction
     const created = await this.requestJson<Record<string, unknown>>("POST", `${this.baseUrl}/transactions`, creds.apiKey, {
       description: input.description ?? "Vote",
@@ -91,7 +100,18 @@ export class FedapayGateway implements PspGateway {
         firstname: input.firstName ?? "Votant",
         lastname: input.lastName ?? "Anonyme",
         phone_number: { number: input.phoneNumber }
-      }
+      },
+      ...(input.split
+        ? {
+            // FedaPay's public Marketplace API uses this historical spelling.
+            sub_accounts_commisssions: [
+              {
+                reference: input.split.beneficiaryReference,
+                amount: input.split.amountCfa
+              }
+            ]
+          }
+        : {})
     });
     const tx = unwrap(created, "v1/transaction");
     const id = tx.id;
@@ -131,11 +151,36 @@ export class FedapayGateway implements PspGateway {
     const tx = unwrap(raw, "v1/transaction");
     const status = normalize(tx.status);
     if (!status) throw new ServiceUnavailableException(`Fedapay: statut inconnu "${tx.status}".`);
+    const splitRows = [
+      tx.sub_accounts_commissions,
+      tx.sub_accounts_commisssions
+    ].find(Array.isArray);
+    const firstSplit =
+      Array.isArray(splitRows) && splitRows[0] && typeof splitRows[0] === "object"
+        ? (splitRows[0] as Record<string, unknown>)
+        : null;
+    const nestedSubAccount =
+      firstSplit?.sub_account && typeof firstSplit.sub_account === "object"
+        ? (firstSplit.sub_account as Record<string, unknown>)
+        : null;
+    const splitReference =
+      firstSplit?.reference ??
+      firstSplit?.sub_account_reference ??
+      nestedSubAccount?.reference;
+    const splitAmount = firstSplit ? toInt(firstSplit.amount, 0) : 0;
     return {
       status,
       amountCfa: toInt(tx.amount, 0),
       currency: this.currencyIso(tx.currency),
-      reason: tx.last_error_code as string | undefined
+      reason: tx.last_error_code as string | undefined,
+      ...(typeof splitReference === "string" && splitReference && splitAmount > 0
+        ? {
+            split: {
+              beneficiaryReference: splitReference,
+              amountCfa: splitAmount
+            }
+          }
+        : {})
     };
   }
 

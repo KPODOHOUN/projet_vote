@@ -49,6 +49,11 @@ const VARIANT_MAP: Record<ButtonVariant, "default" | "secondary" | "destructive"
   ghost: "ghost",
 };
 
+/**
+ * @deprecated Utiliser `Button` de `@/components/ui/button` (variant `default`
+ * au lieu de `primary`, prop `loading` native). Cet adaptateur sera retiré
+ * quand les 13 pages consommatrices auront migré (phases B–E).
+ */
 export function Button({
   variant = "primary",
   loading = false,
@@ -178,23 +183,23 @@ const chipVariants = cva(
   {
     variants: {
       tone: {
-        live: "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300",
+        live: "border-[var(--color-info)]/30 bg-[var(--color-info)]/10 text-[var(--color-info-text)]",
         active:
-          "border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300",
+          "border-[var(--color-success)]/30 bg-[var(--color-success)]/10 text-[var(--color-success-text)]",
         success:
-          "border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300",
+          "border-[var(--color-success)]/30 bg-[var(--color-success)]/10 text-[var(--color-success-text)]",
         pending:
-          "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+          "border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 text-[var(--color-warning-text)]",
         warning:
-          "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+          "border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 text-[var(--color-warning-text)]",
         paused:
-          "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
+          "border-[var(--color-error)]/30 bg-[var(--color-error)]/10 text-[var(--color-error-text)]",
         error:
-          "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
+          "border-[var(--color-error)]/30 bg-[var(--color-error)]/10 text-[var(--color-error-text)]",
         draft:
-          "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+          "border-slate-200 bg-slate-100 text-slate-700",
         muted:
-          "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+          "border-slate-200 bg-slate-100 text-slate-700",
       },
     },
     defaultVariants: { tone: "muted" },

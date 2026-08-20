@@ -23,12 +23,16 @@ import { cn } from "@/lib/utils";
  * trap, l'échap, et l'annonce lecteur d'écran.
  */
 export interface ConfirmDialogProps {
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: React.ReactNode;
   title: string;
   description: React.ReactNode;
   confirmLabel: string;
-  cancelLabel: string;
-  onConfirm: () => void;
+  cancelLabel?: string;
+  onConfirm: () => void | Promise<void>;
+  variant?: "destructive" | "default";
   /** Style destructif (rouge) sur le bouton de confirmation. */
   destructive?: boolean;
   /** Désactive le déclencheur (ex. action en cours). */
@@ -37,19 +41,29 @@ export interface ConfirmDialogProps {
 
 export function ConfirmDialog({
   trigger,
+  open,
+  onOpenChange,
+  children,
   title,
   description,
   confirmLabel,
-  cancelLabel,
+  cancelLabel = "Annuler",
   onConfirm,
+  variant,
   destructive = true,
   disabled,
 }: ConfirmDialogProps) {
+  const isDestructive = variant ? variant === "destructive" : destructive;
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild disabled={disabled}>
-        {trigger}
-      </AlertDialogTrigger>
+    <AlertDialog
+      {...(open !== undefined ? { open } : {})}
+      {...(onOpenChange ? { onOpenChange } : {})}
+    >
+      {trigger ? (
+        <AlertDialogTrigger asChild disabled={disabled}>
+          {trigger}
+        </AlertDialogTrigger>
+      ) : null}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
@@ -57,12 +71,13 @@ export function ConfirmDialog({
             <div className="text-sm text-muted-foreground">{description}</div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {children}
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className={cn(
-              destructive &&
+              isDestructive &&
                 buttonVariants({ variant: "destructive" })
             )}
           >

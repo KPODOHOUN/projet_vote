@@ -140,10 +140,11 @@ export default function AdminUserDetailPage() {
         description={`${user.role} · ${user.tenant.displayName} (${user.tenant.slug})`}
         actions={
           <div className="flex items-center gap-3">
-            <StatusChip variant={user.suspendedAt ? "error" : "active"}>
-              {user.suspendedAt ? (isEn ? "Suspended" : "Suspendu") : (isEn ? "Active" : "Actif")}
-            </StatusChip>
-            <StatusChip variant="warning">{user.role}</StatusChip>
+            <StatusChip
+              tone={user.suspendedAt ? "error" : "active"}
+              label={user.suspendedAt ? (isEn ? "Suspended" : "Suspendu") : (isEn ? "Active" : "Actif")}
+            />
+            <StatusChip tone="warning" label={user.role} />
             {user.suspendedAt ? (
               <Button variant="secondary" onClick={unsuspendUser} loading={saving === "unsuspend"}>
                 {isEn ? "Reactivate" : "Réactiver"}
@@ -232,9 +233,10 @@ export default function AdminUserDetailPage() {
                     <td className="py-2 px-2">{new Date(s.createdAt).toLocaleString()}</td>
                     <td className="py-2 px-2">{new Date(s.expiresAt).toLocaleString()}</td>
                     <td className="py-2 px-2">
-                      <StatusChip variant={s.revokedAt ? "muted" : "active"}>
-                        {s.revokedAt ? (isEn ? "Revoked" : "Révoquée") : (isEn ? "Active" : "Active")}
-                      </StatusChip>
+                      <StatusChip
+                        tone={s.revokedAt ? "muted" : "active"}
+                        label={s.revokedAt ? (isEn ? "Revoked" : "Révoquée") : (isEn ? "Active" : "Active")}
+                      />
                     </td>
                   </tr>
                 ))}

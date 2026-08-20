@@ -21,7 +21,7 @@ test("annuaire → profil candidat : navigation, deep-link partagé, 404", async
 
   // 1) Tenant + organisateur.
   const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-    data: { tenantSlug, tenantDisplayName: organizerName, email, password, acceptPrivacyPolicy: true }
+    data: { tenantSlug, tenantDisplayName: organizerName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
   });
   expect(registerResponse.ok()).toBeTruthy();
   const { accessToken } = (await registerResponse.json()) as { accessToken: string };

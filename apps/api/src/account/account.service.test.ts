@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
 import { compare } from "bcryptjs";
+import { TenantOfferType } from "@prisma/client";
 import { AccountService } from "./account.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -18,6 +19,7 @@ const creds = {
   tenantDisplayName: "Acct Test",
   email: "owner@acct-test.africa",
   password: "SecurePass123!",
+  offerType: TenantOfferType.ESCROW,
   acceptPrivacyPolicy: true as const
 };
 
@@ -65,13 +67,24 @@ test("changeEmail: email déjà membre → conflit", async () => {
   );
 });
 
-test("changeEmail: succès met à jour l'email et réémet un access token le contenant", async () => {
+test("changeEmail: exige la vérification du nouvel e-mail et révoque les sessions", async () => {
   const { user, refreshToken } = await seedAndLogin();
-  const { accessToken } = await accountService.changeEmail(user, { newEmail: "new@acct-test.africa", currentPassword: creds.password }, refreshToken);
-  const decoded = await authService.verifyAccessToken(accessToken);
-  assert.equal(decoded.email, "new@acct-test.africa");
+  const result = await accountService.changeEmail(user, { newEmail: "new@acct-test.africa", currentPassword: creds.password }, refreshToken);
+  assert.deepEqual(result, {
+    requiresEmailVerification: true,
+    email: "new@acct-test.africa"
+  });
   const dbUser = await prisma.user.findFirst({ where: { id: user.userId } });
   assert.equal(dbUser?.email, "new@acct-test.africa");
+  assert.equal(dbUser?.emailVerifiedAt, null);
+  const activeSessions = await prisma.authSession.count({
+    where: { userId: user.userId, revokedAt: null }
+  });
+  assert.equal(activeSessions, 0);
+  const otp = await prisma.authOtpChallenge.findFirst({
+    where: { userId: user.userId, purpose: "EMAIL_VERIFICATION", consumedAt: null }
+  });
+  assert.ok(otp);
 });
 
 test("listSessions: marque la session courante et exclut les révoquées", async () => {

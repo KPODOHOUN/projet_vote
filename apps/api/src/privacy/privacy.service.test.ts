@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
-import { UserRole } from "@prisma/client";
+import { TenantOfferType, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { PrivacyService } from "./privacy.service";
 import { AuthService } from "../auth/auth.service";
@@ -18,6 +18,7 @@ const creds = {
   tenantDisplayName: "Priv",
   email: "user@priv.bj",
   password: "SecurePass123!",
+  offerType: TenantOfferType.ESCROW,
   acceptPrivacyPolicy: true as const
 };
 

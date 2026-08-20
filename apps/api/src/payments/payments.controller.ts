@@ -37,6 +37,14 @@ export class PaymentsController {
     return this.paymentsService.initPublicPayment(body);
   }
 
+  @Post("organizer/topup")
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.PLATFORM_ADMIN, UserRole.ORGANIZER_OWNER, UserRole.ORGANIZER_STAFF)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  initOrganizerTopup(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.paymentsService.initOrganizerTopup(user, body);
+  }
+
   @Get("activation/fee")
   getActivationFeeInfo() {
     return this.paymentsService.getActivationFeeInfo();

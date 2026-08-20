@@ -9,6 +9,7 @@ interface Env {
   RECONCILE_PULL_AFTER_MINUTES?: string;
   RECONCILE_EXPIRE_AFTER_MINUTES?: string;
   RECONCILE_LIMIT?: string;
+  CLOSE_EXPIRED_EVENTS_LIMIT?: string;
 }
 
 function stableStringify(value: unknown): string {
@@ -93,6 +94,17 @@ export default {
       runAtIso
     };
     ctx.waitUntil(signedPost(env, "/api/v1/payments/cron/reconcile", reconcilePayload));
+
+    // Event closure uses the exact same settlement service as the organizer's
+    // manual action. The API claims each event atomically, so overlapping cron
+    // ticks cannot apply retention twice.
+    const closeExpiredPayload = {
+      limit: parseRetention(env.CLOSE_EXPIRED_EVENTS_LIMIT, 100),
+      runAtIso
+    };
+    ctx.waitUntil(
+      signedPost(env, "/api/v1/offers/cron/close-expired", closeExpiredPayload)
+    );
 
     // Retention purge only on the daily schedule.
     if (DAILY_PURGE_CRONS.has(event.cron)) {

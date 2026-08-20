@@ -1,3 +1,7 @@
+// Skeleton global des navigations dashboard. Scopé à ce segment (et admin) :
+// à la racine, sa boundary Suspense implicite forçait le streaming avant la
+// résolution des pages dynamiques et transformait tous les notFound() en
+// soft-200 (SEO + e2e) — la zone publique ne doit donc pas en avoir.
 export default function Loading() {
     return (
         <main className="flex min-h-[70dvh] items-center justify-center px-6" aria-label="Chargement de SHADOMA Votes">

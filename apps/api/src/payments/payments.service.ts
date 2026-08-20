@@ -7,7 +7,13 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import { createHash, timingSafeEqual } from "crypto";
-import { PaymentPurpose, PaymentStatus, UserRole } from "@prisma/client";
+import {
+  PaymentProvider,
+  PaymentPurpose,
+  PaymentStatus,
+  TenantOfferType,
+  UserRole
+} from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -22,6 +28,7 @@ import { PaymentVerifyService } from "./payment-verify.service";
 import { PspRegistry } from "./psp/psp.registry";
 import { normalizePayinPhone, resolvePayinOperator } from "../common/mobile-operator";
 import { env } from "../config/env";
+import { OfferSettingsService } from "../offers/offer-settings.service";
 
 const initActivationSchema = z.object({
   eventId: z.string().min(1),
@@ -90,7 +97,8 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly verifyService: PaymentVerifyService,
-    private readonly pspRegistry: PspRegistry
+    private readonly pspRegistry: PspRegistry,
+    private readonly offerSettings: OfferSettingsService
   ) {}
 
   /**
@@ -144,6 +152,99 @@ export class PaymentsService {
     }
 
     return this.initPaymentCore(input, "payments:init");
+  }
+
+  /**
+   * Organizer-paid vote top-up: create a Vote row + ORGANIZER_VOTE_TOPUP payment.
+   * EXTERNAL: payer pays platform commission only; vote tallies full votesCount.
+   * ESCROW: payer pays votesCount × unit price (credited to wallet on success).
+   */
+  async initOrganizerTopup(user: AuthUser, payload: unknown) {
+    const schema = z.object({
+      eventId: z.string().min(1),
+      candidateId: z.string().min(1),
+      votesCount: z.number().int().positive().max(1_000_000),
+      idempotencyKey: z.string().min(16),
+      payerPhone: z.string().min(8).max(20),
+      operator: z.string().min(2).max(20).optional()
+    });
+    const input = schema.parse(payload);
+
+    const event = await this.prisma.client.event.findFirst({
+      where: { id: input.eventId, tenantId: user.tenantId },
+      include: { tenant: { select: { offerType: true } } }
+    });
+    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (event.closedAt || event.status === "CLOSED" || event.status === "ARCHIVED") {
+      throw new ConflictException("Impossible d'ajouter des votes sur un évènement clôturé.");
+    }
+    const unitPrice = event.voteUnitPriceCfa;
+    if (!unitPrice || unitPrice <= 0) {
+      throw new BadRequestException("Définissez un prix unitaire de vote avant d'ajouter des votes.");
+    }
+    const candidate = await this.prisma.client.candidate.findFirst({
+      where: { id: input.candidateId, eventId: event.id }
+    });
+    if (!candidate) throw new NotFoundException("Candidat introuvable.");
+
+    const settingsRow = await this.prisma.client.platformSetting.findMany();
+    const settingsMap = Object.fromEntries(settingsRow.map((s) => [s.key, s.value]));
+    const offer1Bps = parseIntSetting(settingsMap["offer1_commission_bps"], 500);
+    const offer1Fixed = parseIntSetting(settingsMap["offer1_commission_fixed_cfa"], 0);
+
+    const grossCfa = input.votesCount * unitPrice;
+    let amountDueCfa = grossCfa;
+    if (event.tenant.offerType === "EXTERNAL") {
+      amountDueCfa = Math.floor((grossCfa * offer1Bps) / 10_000) + offer1Fixed;
+      if (amountDueCfa <= 0) {
+        throw new BadRequestException(
+          "Commission plateforme nulle : configurez le taux Offre 1 avant d'ajouter des votes."
+        );
+      }
+    }
+
+    const vote = await this.prisma.client.vote.create({
+      data: {
+        tenantId: user.tenantId,
+        eventId: event.id,
+        candidateId: candidate.id,
+        amountCfa: grossCfa,
+        votesCount: input.votesCount,
+        voterPhoneLast4: "ORGA"
+      }
+    });
+
+    const initResult = await this.initPaymentCore(
+      {
+        tenantId: user.tenantId,
+        eventId: event.id,
+        voteId: vote.id,
+        amountCfa: amountDueCfa,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: input.payerPhone
+      },
+      "payments:organizer:topup",
+      PaymentPurpose.ORGANIZER_VOTE_TOPUP
+    );
+
+    await this.prisma.client.paymentTransaction.update({
+      where: { id: initResult.transactionId },
+      data: { votesCount: input.votesCount }
+    });
+
+    if (env.API_PAYMENT_DEMO_MODE) {
+      return this.maybeAutoConfirmDemoPayment(initResult.transactionId);
+    }
+
+    return this.triggerVotePayin({
+      transactionId: initResult.transactionId,
+      eventId: event.id,
+      tenantId: user.tenantId,
+      amountCfa: amountDueCfa,
+      payerPhone: input.payerPhone,
+      operator: input.operator,
+      description: `Ajout votes — ${event.title}`
+    });
   }
 
   async initPublicPayment(payload: unknown) {
@@ -231,7 +332,16 @@ export class PaymentsService {
     description: string;
   }) {
     const tx = await this.prisma.client.paymentTransaction.findUnique({
-      where: { id: args.transactionId }
+      where: { id: args.transactionId },
+      include: {
+        tenant: {
+          select: {
+            offerType: true,
+            fedapaySubAccountRef: true,
+            fedapaySubAccountVerifiedAt: true
+          }
+        }
+      }
     });
     if (!tx) {
       throw new NotFoundException("Transaction introuvable.");
@@ -245,18 +355,61 @@ export class PaymentsService {
       };
     }
 
+    let split:
+      | { beneficiaryReference: string; amountCfa: number }
+      | undefined;
+    if (
+      tx.purpose === PaymentPurpose.VOTE &&
+      tx.tenant.offerType === TenantOfferType.EXTERNAL
+    ) {
+      if (
+        tx.provider !== PaymentProvider.FEDAPAY ||
+        !tx.tenant.fedapaySubAccountRef ||
+        !tx.tenant.fedapaySubAccountVerifiedAt
+      ) {
+        throw new ConflictException(
+          "Offre External : sous-compte FedaPay Marketplace validé requis."
+        );
+      }
+      const settings = await this.offerSettings.getSettings();
+      const commissionCfa = this.offerSettings.computeExternalCommissionCfa(
+        settings,
+        args.amountCfa
+      );
+      const organizerNetCfa = args.amountCfa - commissionCfa;
+      if (commissionCfa <= 0 || organizerNetCfa <= 0) {
+        throw new ConflictException(
+          "La commission Offre External doit être positive et inférieure au prix du vote."
+        );
+      }
+      split = {
+        beneficiaryReference: tx.tenant.fedapaySubAccountRef,
+        amountCfa: organizerNetCfa
+      };
+      await this.prisma.client.paymentTransaction.update({
+        where: { id: tx.id },
+        data: {
+          splitBeneficiaryRef: split.beneficiaryReference,
+          splitAmountCfa: split.amountCfa
+        }
+      });
+    }
+
     const gateway = this.pspRegistry.get(tx.provider);
-    const creds = await this.pspRegistry.resolveVotePayinCredentials({
-      eventId: args.eventId,
-      tenantId: args.tenantId
-    });
+    const creds = split
+      ? await this.pspRegistry.resolvePlatformCredentials(PaymentProvider.FEDAPAY)
+      : await this.pspRegistry.resolveVotePayinCredentials({
+          eventId: args.eventId,
+          tenantId: args.tenantId
+        });
     const payin = await gateway.initPayin(
       {
         amountCfa: args.amountCfa,
         phoneNumber: normalizePayinPhone(args.payerPhone),
         operator: resolvePayinOperator(args.operator, args.payerPhone),
         customId: tx.id,
-        description: args.description
+        description: args.description,
+        ...(split ? { split } : {})
       },
       creds
     );
@@ -493,7 +646,7 @@ export class PaymentsService {
    */
   private async initPaymentCore(
     input: z.infer<typeof initPaymentSchema>,
-    scope: "payments:init" | "payments:public:init" | "payments:activation:init",
+    scope: "payments:init" | "payments:public:init" | "payments:activation:init" | "payments:organizer:topup",
     purpose: PaymentPurpose = PaymentPurpose.VOTE
   ) {
     const requestHash = createHash("sha256")

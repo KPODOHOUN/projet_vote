@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, apiFetch } from "../../../lib/api";
-import { getStoredToken, setStoredToken } from "../../../lib/auth";
+import { clearAuthStorage, getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
 import {
   getAccount, changePassword, changeEmail, listSessions, revokeOtherSessions, revokeSession,
@@ -108,11 +108,10 @@ export default function DashboardAccountPage() {
     setEmailBusy(true);
     try {
       const res = await changeEmail(token, { newEmail, currentPassword: emailPw });
-      setStoredToken(res.accessToken);
+      clearAuthStorage();
       setEmailSuccess(true); setEmailPw("");
       showToast.success(t("account.emailSuccess"));
-      setAccount(await getAccount(res.accessToken));
-      await loadSessions(res.accessToken);
+      router.push(`/check-email?email=${encodeURIComponent(res.email)}`);
     } catch (e) {
       setEmailError(
         e instanceof ApiError && e.status === 409 ? t("account.emailTaken")

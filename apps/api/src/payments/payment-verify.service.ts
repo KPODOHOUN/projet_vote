@@ -4,10 +4,21 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
-import { PaymentPurpose, PaymentProvider, PaymentStatus, UserRole, AccountPlanType, AccountPlanStatus } from "@prisma/client";
+import {
+  PaymentPurpose,
+  PaymentProvider,
+  PaymentStatus,
+  UserRole,
+  AccountPlanType,
+  AccountPlanStatus,
+  TenantOfferType,
+  WalletLedgerKind
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolvePartnerVoteCommissionBps } from "../partners/partner-tier.util";
+import { WalletService } from "../offers/wallet.service";
+import { OfferSettingsService } from "../offers/offer-settings.service";
 import { PspRegistry } from "./psp/psp.registry";
 import { parseStrictProviderAmount } from "./psp/parse-provider-amount";
 import type { FeexpayStatusPayload } from "./feexpay/feexpay.types";
@@ -42,7 +53,9 @@ export class PaymentVerifyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly pspRegistry: PspRegistry
+    private readonly pspRegistry: PspRegistry,
+    private readonly wallet: WalletService,
+    private readonly offerSettings: OfferSettingsService
   ) { }
 
   /**
@@ -152,12 +165,27 @@ export class PaymentVerifyService {
       });
       return { outcome: "rejected", reason: "currency_mismatch", transactionId: tx.id };
     }
+    if (
+      tx.splitBeneficiaryRef &&
+      (pull.split?.beneficiaryReference !== tx.splitBeneficiaryRef ||
+        pull.split.amountCfa !== tx.splitAmountCfa)
+    ) {
+      await this.auditReject({
+        tenantId: tx.tenantId,
+        transactionId: tx.id,
+        reason: "split_mismatch",
+        metadata: {
+          reference,
+          expectedBeneficiary: tx.splitBeneficiaryRef,
+          expectedSplitAmountCfa: tx.splitAmountCfa,
+          providerSplit: pull.split ?? null
+        }
+      });
+      return { outcome: "rejected", reason: "split_mismatch", transactionId: tx.id };
+    }
 
     // All invariants OK — commit atomically.
-    const commissionCfa =
-      tx.purpose === PaymentPurpose.VOTE
-        ? await this.resolveCommissionCfa(tx.eventId, tx.amountCfa)
-        : null;
+    const commissionCfa = await this.resolveCommissionForTx(tx);
 
     await this.prisma.client.$transaction(async (trx) => {
       // CAS-style guard: only flip from PENDING. Prevents a concurrent
@@ -175,7 +203,10 @@ export class PaymentVerifyService {
         return;
       }
 
-      if (tx.purpose === PaymentPurpose.VOTE && tx.voteId) {
+      if (
+        (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) &&
+        tx.voteId
+      ) {
         await trx.vote.update({
           where: { id: tx.voteId },
           data: { paidAt: new Date() }
@@ -194,6 +225,18 @@ export class PaymentVerifyService {
           data: { status: "PAID" as any, paidAt: new Date(), confirmedAt: new Date() }
         });
       }
+
+      await this.applyOfferWalletEffects(
+        trx,
+        {
+          id: tx.id,
+          tenantId: tx.tenantId,
+          eventId: tx.eventId,
+          amountCfa: tx.amountCfa,
+          purpose: tx.purpose,
+          commissionCfa
+        }
+      );
 
       await trx.auditLog.create({
         data: {
@@ -214,7 +257,7 @@ export class PaymentVerifyService {
       });
     });
 
-    if (tx.purpose === PaymentPurpose.VOTE) {
+    if (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) {
       this.notifyPaymentSucceeded(tx.tenantId, tx.eventId, tx.amountCfa);
     } else if (tx.purpose === PaymentPurpose.SUBSCRIPTION) {
       this.notifications
@@ -274,10 +317,7 @@ export class PaymentVerifyService {
       return;
     }
 
-    const commissionCfa =
-      tx.purpose === PaymentPurpose.VOTE
-        ? await this.resolveCommissionCfa(tx.eventId, tx.amountCfa)
-        : null;
+    const commissionCfa = await this.resolveCommissionForTx(tx);
 
     await this.prisma.client.$transaction(async (trx) => {
       const updated = await trx.paymentTransaction.updateMany({
@@ -291,7 +331,10 @@ export class PaymentVerifyService {
         return;
       }
 
-      if (tx.purpose === PaymentPurpose.VOTE && tx.voteId) {
+      if (
+        (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) &&
+        tx.voteId
+      ) {
         await trx.vote.update({
           where: { id: tx.voteId },
           data: { paidAt: new Date() }
@@ -307,6 +350,18 @@ export class PaymentVerifyService {
           data: { status: "PAID" as any, paidAt: new Date(), confirmedAt: new Date() }
         });
       }
+
+      await this.applyOfferWalletEffects(
+        trx,
+        {
+          id: tx.id,
+          tenantId: tx.tenantId,
+          eventId: tx.eventId,
+          amountCfa: tx.amountCfa,
+          purpose: tx.purpose,
+          commissionCfa
+        }
+      );
 
       await trx.auditLog.create({
         data: {
@@ -343,13 +398,21 @@ export class PaymentVerifyService {
     reference: string
   ): Promise<FeexpayStatusPayload> {
     const gateway = this.pspRegistry.get(tx.provider);
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tx.tenantId },
+      select: { offerType: true }
+    });
+    const usesPlatformMarketplaceAccount =
+      tx.provider === PaymentProvider.FEDAPAY &&
+      tx.purpose === PaymentPurpose.VOTE &&
+      tenant?.offerType === TenantOfferType.EXTERNAL;
     const creds =
-      tx.purpose === PaymentPurpose.ACTIVATION
+      tx.purpose === PaymentPurpose.ACTIVATION || usesPlatformMarketplaceAccount
         ? await this.pspRegistry.resolvePlatformCredentials(tx.provider)
         : await this.pspRegistry.resolveVotePayinCredentials({
-          eventId: tx.eventId,
-          tenantId: tx.tenantId
-        });
+            eventId: tx.eventId,
+            tenantId: tx.tenantId
+          });
     const result = await gateway.fetchPayinStatus(reference, creds);
     const status: FeexpayStatusPayload["status"] =
       result.status === "SUCCEEDED" ? "SUCCESSFUL" : result.status;
@@ -357,7 +420,8 @@ export class PaymentVerifyService {
       status,
       amount: result.providerAmount ?? result.amountCfa,
       currency: result.currency,
-      reason: result.reason
+      reason: result.reason,
+      ...(result.split ? { split: result.split } : {})
     };
   }
 
@@ -403,6 +467,124 @@ export class PaymentVerifyService {
         metadata: { reason: args.reason, ...args.metadata }
       }
     });
+  }
+
+  private async resolveCommissionForTx(tx: {
+    purpose: PaymentPurpose;
+    eventId: string;
+    amountCfa: number;
+    tenantId: string;
+  }): Promise<number | null> {
+    if (tx.purpose === PaymentPurpose.VOTE) {
+      const tenant = await this.prisma.client.tenant.findUnique({
+        where: { id: tx.tenantId },
+        select: { offerType: true }
+      });
+      if (tenant?.offerType === TenantOfferType.ESCROW) {
+        const settings = await this.offerSettings.getSettings();
+        return this.offerSettings.computeEscrowVoteCommissionCfa(settings, tx.amountCfa);
+      }
+      if (tenant?.offerType === TenantOfferType.EXTERNAL) {
+        const settings = await this.offerSettings.getSettings();
+        return this.offerSettings.computeExternalCommissionCfa(settings, tx.amountCfa);
+      }
+      return this.resolveCommissionCfa(tx.eventId, tx.amountCfa);
+    }
+    if (tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) {
+      const tenant = await this.prisma.client.tenant.findUnique({
+        where: { id: tx.tenantId },
+        select: { offerType: true }
+      });
+      if (tenant?.offerType === TenantOfferType.EXTERNAL) {
+        // Amount paid IS the platform commission.
+        return tx.amountCfa;
+      }
+      if (tenant?.offerType === TenantOfferType.ESCROW) {
+        const settings = await this.offerSettings.getSettings();
+        return this.offerSettings.computeEscrowVoteCommissionCfa(settings, tx.amountCfa);
+      }
+      return 0;
+    }
+    return null;
+  }
+
+  /**
+   * ESCROW: credit pending wallet (net for votes, full for topup).
+   * EXTERNAL: no wallet mutation. Regular votes were already split natively
+   * by FedaPay; organizer top-ups contain only the platform commission.
+   */
+  private async applyOfferWalletEffects(
+    trx: Parameters<Parameters<typeof this.prisma.client.$transaction>[0]>[0],
+    tx: {
+      id: string;
+      tenantId: string;
+      eventId: string;
+      amountCfa: number;
+      purpose: PaymentPurpose;
+      commissionCfa: number | null;
+    }
+  ): Promise<void> {
+    if (
+      tx.purpose !== PaymentPurpose.VOTE &&
+      tx.purpose !== PaymentPurpose.ORGANIZER_VOTE_TOPUP
+    ) {
+      return;
+    }
+
+    const tenant = await trx.tenant.findUnique({
+      where: { id: tx.tenantId },
+      select: { offerType: true }
+    });
+    if (!tenant) return;
+
+    if (tenant.offerType === TenantOfferType.ESCROW) {
+      const commission = tx.commissionCfa ?? 0;
+      if (tx.purpose === PaymentPurpose.VOTE) {
+        const net = Math.max(0, tx.amountCfa - commission);
+        if (net > 0) {
+          await this.wallet.credit(
+            {
+              tenantId: tx.tenantId,
+              amountCfa: net,
+              kind: WalletLedgerKind.VOTE_CREDIT,
+              target: "pending",
+              eventId: tx.eventId,
+              paymentId: tx.id,
+              note: "Crédit vote (escrow)"
+            },
+            trx
+          );
+        }
+      } else {
+        // ORGANIZER_VOTE_TOPUP: full amount credited to pending wallet.
+        if (tx.amountCfa > 0) {
+          await this.wallet.credit(
+            {
+              tenantId: tx.tenantId,
+              amountCfa: tx.amountCfa,
+              kind: WalletLedgerKind.TOPUP_CREDIT,
+              target: "pending",
+              eventId: tx.eventId,
+              paymentId: tx.id,
+              note: "Crédit top-up orga (escrow)"
+            },
+            trx
+          );
+        }
+      }
+      return;
+    }
+
+    if (tenant.offerType === TenantOfferType.EXTERNAL) {
+      this.logger.log({
+        msg: "payment.external.native_split_applied",
+        tenantId: tx.tenantId,
+        eventId: tx.eventId,
+        paymentId: tx.id,
+        purpose: tx.purpose,
+        commissionCfa: tx.commissionCfa
+      });
+    }
   }
 
   private async resolveCommissionCfa(eventId: string, amountCfa: number): Promise<number> {

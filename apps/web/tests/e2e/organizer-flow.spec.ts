@@ -14,13 +14,15 @@ test("parcours express: inscription -> lancement concours en une étape", async 
       tenantDisplayName,
       email,
       password,
-      acceptPrivacyPolicy: true
+      acceptPrivacyPolicy: true,
+      offerType: "ESCROW"
     }
   });
   expect(registerResponse.ok()).toBeTruthy();
 
   await page.goto("/login");
-  await page.getByLabel("Adresse e-mail").fill(email);
+  // #email : le label « Adresse e-mail » matche aussi l'input newsletter du footer (strict mode).
+  await page.locator("#email").fill(email);
   await page.getByLabel("Mot de passe", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Se connecter" }).click();
 

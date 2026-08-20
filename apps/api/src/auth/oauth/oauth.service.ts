@@ -1,5 +1,5 @@
 import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { TenantOfferType, UserRole } from "@prisma/client";
 import { createHash, randomBytes } from "crypto";
 import { SignJWT } from "jose";
 import { env } from "../../config/env";
@@ -22,7 +22,7 @@ const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
   google: {
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
-    userInfoUrl: "https://www.googleapis.com/oauth2/v2/userinfo",
+    userInfoUrl: "https://openidconnect.googleapis.com/v1/userinfo",
     scope: "openid email profile",
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
@@ -49,6 +49,9 @@ export class OAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   getProviderConfig(provider: string): ProviderConfig {
+    if (provider !== "google") {
+      throw new UnauthorizedException(`Fournisseur OAuth non supporté: ${provider}`);
+    }
     const config = OAUTH_PROVIDERS[provider as OAuthProvider];
     if (!config) {
       throw new UnauthorizedException(`Fournisseur OAuth non supporté: ${provider}`);
@@ -91,6 +94,11 @@ export class OAuthService {
     const tokenData = await this.exchangeCode(config, code);
 
     const userInfo = await this.fetchUserInfo(provider, config, tokenData.access_token);
+    if (!userInfo.id || !userInfo.email || !userInfo.emailVerified) {
+      throw new UnauthorizedException(
+        "Le fournisseur OAuth doit confirmer une adresse e-mail vérifiée."
+      );
+    }
 
     const { user, isNew } = await this.findOrCreateUser(provider, userInfo);
 
@@ -158,7 +166,15 @@ export class OAuthService {
     provider: string,
     config: ProviderConfig,
     accessToken: string
-  ): Promise<{ id: string; email: string; firstName: string; lastName: string; displayName: string; photoUrl: string }> {
+  ): Promise<{
+    id: string;
+    email: string;
+    emailVerified: boolean;
+    firstName: string;
+    lastName: string;
+    displayName: string;
+    photoUrl: string;
+  }> {
     const response = await fetch(config.userInfoUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -172,8 +188,9 @@ export class OAuthService {
     if (provider === "google") {
       const data = (await response.json()) as GoogleUserInfo;
       return {
-        id: data.id,
+        id: data.sub,
         email: data.email ?? "",
+        emailVerified: data.email_verified === true,
         firstName: data.given_name ?? "",
         lastName: data.family_name ?? "",
         displayName: data.name ?? data.email?.split("@")[0] ?? "",
@@ -186,6 +203,7 @@ export class OAuthService {
       return {
         id: data.id,
         email: data.email ?? "",
+        emailVerified: false,
         firstName: data.name?.split(" ").slice(0, -1).join(" ") ?? "",
         lastName: data.name?.split(" ").pop() ?? "",
         displayName: data.name ?? data.email?.split("@")[0] ?? "",
@@ -198,7 +216,15 @@ export class OAuthService {
 
   private async findOrCreateUser(
     provider: string,
-    userInfo: { id: string; email: string; firstName: string; lastName: string; displayName: string; photoUrl: string }
+    userInfo: {
+      id: string;
+      email: string;
+      emailVerified: boolean;
+      firstName: string;
+      lastName: string;
+      displayName: string;
+      photoUrl: string;
+    }
   ) {
     const normalizedEmail = userInfo.email.toLowerCase();
 
@@ -208,6 +234,14 @@ export class OAuthService {
     });
 
     if (existingAccount) {
+      if (existingAccount.user.suspendedAt) {
+        throw new UnauthorizedException(
+          existingAccount.user.suspendedReason ?? "Compte suspendu."
+        );
+      }
+      if (!existingAccount.user.emailVerifiedAt) {
+        throw new UnauthorizedException("Adresse e-mail du compte non vérifiée.");
+      }
       if (userInfo.photoUrl && existingAccount.photoUrl !== userInfo.photoUrl) {
         await this.prisma.client.oAuthAccount.update({
           where: { id: existingAccount.id },
@@ -218,11 +252,28 @@ export class OAuthService {
     }
 
     if (normalizedEmail) {
-      const existingUserByEmail = await this.prisma.client.user.findFirst({
+      const existingUsersByEmail = await this.prisma.client.user.findMany({
         where: { email: normalizedEmail },
+        take: 2
       });
+      if (existingUsersByEmail.length > 1) {
+        throw new UnauthorizedException(
+          "Plusieurs comptes utilisent cet e-mail. Connectez-vous avec votre organisation puis liez Google depuis votre compte."
+        );
+      }
+      const existingUserByEmail = existingUsersByEmail[0];
 
       if (existingUserByEmail) {
+        if (existingUserByEmail.suspendedAt) {
+          throw new UnauthorizedException(
+            existingUserByEmail.suspendedReason ?? "Compte suspendu."
+          );
+        }
+        if (!existingUserByEmail.emailVerifiedAt) {
+          throw new UnauthorizedException(
+            "Ce compte local n'est pas encore vérifié. Réinitialisez son mot de passe avant de le lier à Google."
+          );
+        }
         await this.prisma.client.oAuthAccount.create({
           data: {
             userId: existingUserByEmail.id,
@@ -254,7 +305,15 @@ export class OAuthService {
     const uniqueSlug = await this.generateUniqueSlug(slugBase || "org");
 
     const tenant = await this.prisma.client.tenant.create({
-      data: { slug: uniqueSlug, displayName },
+      data: {
+        slug: uniqueSlug,
+        displayName,
+        offerType: TenantOfferType.ESCROW
+      }
+    });
+
+    await this.prisma.client.organizerWallet.create({
+      data: { tenantId: tenant.id }
     });
 
     const user = await this.prisma.client.user.create({

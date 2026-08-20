@@ -29,8 +29,9 @@ projet_vote/
 
 - Concours et votes payants via mobile money (XOF/FCFA)
 - Multitenant : chaque organisateur a son espace isolé
-- Abonnements (Free/Starter/Pro/Enterprise)
-- Programme partenaire (activate now, pay later)
+- Offre Escrow (parcours actif) : portefeuille, clôture, retraits validés admin
+- Offre External : en réflexion (désactivée pendant la phase de test)
+- Paiements démo pour la phase de test (`API_PAYMENT_DEMO_MODE`, interdit en prod)
 - Billetterie avec QR codes
 - Paiements automatisés aux organisateurs
 - Tableau de bord organisateur et administration plateforme
@@ -56,6 +57,9 @@ npm run db:seed
 ```bash
 npm run dev
 ```
+
+Guide complet pour le mode local et les paiements simulés :
+[`docs/guide-lancement-paiements-demo.md`](docs/guide-lancement-paiements-demo.md).
 
 ## Scripts disponibles
 

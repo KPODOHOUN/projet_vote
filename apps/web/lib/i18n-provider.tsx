@@ -2,13 +2,13 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { defaultLocale, localeLabels, type Locale, type MessageKey, translate } from "./i18n";
+import { defaultLocale, localeLabels, type Locale, type MessageKey, translate, translateVars } from "./i18n";
 import { LOCALE_COOKIE, LEGACY_STORAGE_KEY } from "./locale-constants";
 
 type I18nContextValue = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: MessageKey) => string;
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -43,7 +43,7 @@ export function I18nProvider({ children }: Readonly<{ children: React.ReactNode 
         persistLocale(newLocale);
         router.refresh();
       },
-      t: (key) => translate(locale, key)
+      t: (key, vars) => (vars ? translateVars(locale, key, vars) : translate(locale, key))
     }),
     [locale, router]
   );

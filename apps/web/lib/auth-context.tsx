@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, usePathname } from "next/navigation";
 import { apiFetch } from "./api";
 import { restoreSession, getStoredToken, clearAuthStorage } from "./auth";
@@ -51,6 +52,7 @@ async function getAccessToken(): Promise<string | null> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -88,8 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearAuthStorage();
     setUser(null);
+    queryClient.clear();
     router.replace(authLoginUrl());
-  }, [router]);
+  }, [queryClient, router]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

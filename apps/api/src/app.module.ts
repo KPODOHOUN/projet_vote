@@ -28,6 +28,7 @@ import { SubscriptionsModule } from "./subscriptions/subscriptions.module";
 import { TicketsModule } from "./tickets/tickets.module";
 import { DisplayPartnersModule } from "./display-partners/display-partners.module";
 import { ChatModule } from "./chat/chat.module";
+import { OffersModule } from "./offers/offers.module";
 
 // Shared Redis store when API_REDIS_URL is configured (limits hold across all
 // instances), else the default per-instance in-memory store. The login lockout
@@ -91,7 +92,8 @@ const throttleProviders =
     SubscriptionsModule,
     TicketsModule,
     DisplayPartnersModule,
-    ChatModule
+    ChatModule,
+    OffersModule
   ],
   controllers: [HealthController],
   providers: throttleProviders

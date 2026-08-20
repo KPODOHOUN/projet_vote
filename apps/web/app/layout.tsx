@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import localFont from "next/font/local";
 import "./globals.css";
 // Styles des primitives partagées (design-system/components). Classes scopées
@@ -98,12 +97,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
         </a>
         <QueryProvider>
           <I18nProvider>
-            <Suspense fallback={null}>
-              <AuthModalProvider>
-                <MaintenanceBanner />
-                {children}
-              </AuthModalProvider>
-            </Suspense>
+            {/* Pas de Suspense au-dessus de children : il amorçait le streaming
+                avant le rendu des pages et transformait leurs 404 en soft-200.
+                La boundary vit dans AuthModalProvider (AuthModalUrlSync). */}
+            <AuthModalProvider>
+              <MaintenanceBanner />
+              {children}
+            </AuthModalProvider>
             <CookieConsentCenter />
             <LegalFooter />
             <ChatWidget />

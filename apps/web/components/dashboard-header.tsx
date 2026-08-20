@@ -5,6 +5,7 @@ import { authLoginUrl } from "@/lib/auth-navigation";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search, UserCircle, Calendar, Users, CreditCard, UserPlus, Bell } from "lucide-react";
 import { useI18n } from "../lib/i18n-provider";
 import { apiFetch } from "../lib/api";
@@ -24,6 +25,7 @@ export function DashboardHeader() {
   const { t, locale } = useI18n();
   const isEn = locale === "en";
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -85,6 +87,7 @@ export function DashboardHeader() {
   const logout = async () => {
     try { await apiFetch("/auth/logout", { method: "POST" }); } catch { /* ignore */ }
     clearAuthStorage();
+    queryClient.clear();
     router.push(authLoginUrl());
   };
 

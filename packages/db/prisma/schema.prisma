@@ -50,6 +50,32 @@ enum PaymentPurpose {
   ACTIVATION
   SUBSCRIPTION
   TICKET
+  ORGANIZER_VOTE_TOPUP
+}
+
+enum TenantOfferType {
+  EXTERNAL
+  ESCROW
+}
+
+enum AuthOtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum WalletLedgerKind {
+  VOTE_CREDIT
+  TOPUP_CREDIT
+  RETENTION_DEBIT
+  WITHDRAWAL_DEBIT
+  ADJUSTMENT
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
 }
 
 enum TicketTypeStatus {
@@ -95,6 +121,8 @@ model Tenant {
   id          String   @id @default(cuid())
   slug        String   @unique
   displayName String
+  // Product offer chosen at registration (replaces Plans / Partner product path).
+  offerType   TenantOfferType @default(ESCROW)
   // Organizer-level branding defaults, inherited by events that don't override.
   logoUrl     String?
   brandColor  String?
@@ -104,6 +132,12 @@ model Tenant {
   commissionBps Int?
   // Organizer-level PSP routing choice. Null = inherit platform default.
   provider      PaymentProvider?
+  // FedaPay Marketplace sub-account used by Offer 1 native split. The
+  // reference is not a secret, but it is unusable until a platform operator
+  // validates the organizer's KYC/sub-account in FedaPay.
+  fedapaySubAccountRef        String?
+  fedapaySubAccountSubmittedAt DateTime?
+  fedapaySubAccountVerifiedAt  DateTime?
   // Partner program: activate-now-pay-later. Outstanding debt blocks new events.
   isPartner              Boolean @default(false)
   // Higher commission when isPartner=true. Null = fall back to commissionBps.
@@ -129,6 +163,8 @@ model Tenant {
   accountPartnerRequests  AccountPartnerRequest[]
   partnerRequests   PartnerRequest[]
   activationDebts   ActivationDebt[]
+  wallet              OrganizerWallet?
+  withdrawalRequests  WithdrawalRequest[]
 }
 
 enum AuthEmailTokenPurpose {
@@ -143,12 +179,13 @@ model User {
   passwordHash String?
   firstName    String?
   lastName     String?
+  phone        String?
   photoUrl     String?
   role         UserRole
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // Set when the user clicks the verification link sent after registration.
+  // Set when the user verifies OTP after registration.
   emailVerifiedAt DateTime?
 
   // Platform suspension — blocks login and invalidates active sessions.
@@ -165,9 +202,74 @@ model User {
   notifications Notification[]
   emailTokens AuthEmailToken[]
   oauthAccounts OAuthAccount[]
+  otpChallenges AuthOtpChallenge[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
+}
+
+model AuthOtpChallenge {
+  id          String         @id @default(cuid())
+  userId      String
+  purpose     AuthOtpPurpose
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int            @default(0)
+  maxAttempts Int            @default(5)
+  consumedAt  DateTime?
+  lastSentAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, consumedAt])
+  @@index([expiresAt])
+}
+
+model OrganizerWallet {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  availableCfa  Int      @default(0)
+  pendingCfa    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries WalletLedgerEntry[]
+}
+
+model WalletLedgerEntry {
+  id          String          @id @default(cuid())
+  walletId    String
+  kind        WalletLedgerKind
+  amountCfa   Int
+  eventId     String?
+  paymentId   String?
+  withdrawalId String?
+  note        String?
+  createdAt   DateTime        @default(now())
+
+  wallet OrganizerWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([eventId])
+}
+
+model WithdrawalRequest {
+  id           String           @id @default(cuid())
+  tenantId     String
+  amountCfa    Int
+  status       WithdrawalStatus @default(PENDING)
+  rejectReason String?
+  processedByUserId String?
+  processedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@index([status, createdAt])
 }
 
 model AuthEmailToken {
@@ -235,6 +337,8 @@ model Event {
   partnerPlatformShareBps  Int?
   estimatedRevenueCfa      Int?
   partnerOfferTierId       String?
+  // Manual or auto closure timestamp (Offer 2 retention trigger).
+  closedAt    DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -249,6 +353,7 @@ model Event {
   tickets     Ticket[]
 
   @@index([tenantId, status])
+  @@index([status, endsAt])
 }
 
 model TicketType {
@@ -387,6 +492,10 @@ model PaymentTransaction {
   purpose        PaymentPurpose @default(VOTE)
   // Platform commission captured on this payment (computed at confirmation).
   commissionCfa  Int?
+  // Expected native Marketplace split (Offer 1 / FedaPay). Persisted before
+  // the PSP call and verified again on provider status pull.
+  splitBeneficiaryRef String?
+  splitAmountCfa      Int?
   idempotencyKey String        @unique
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -431,7 +540,7 @@ model AuthSession {
   id                  String   @id @default(cuid())
   tenantId            String
   userId              String
-  refreshTokenHash    String
+  refreshTokenHash    String   @unique
   expiresAt           DateTime
   revokedAt           DateTime?
   rotatedFromSessionId String?

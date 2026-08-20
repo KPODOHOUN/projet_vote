@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { setStoredToken } from "@/lib/auth";
@@ -14,16 +14,19 @@ export default function OAuthCallbackPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const callbackStarted = useRef(false);
 
   useEffect(() => {
     const provider = params.provider as string;
     const code = searchParams.get("code");
     const state = searchParams.get("state");
 
-    if (!provider || !code || !state) {
+    if (provider !== "google" || !code || !state) {
       setError("Réponse OAuth invalide. Veuillez réessayer.");
       return;
     }
+    if (callbackStarted.current) return;
+    callbackStarted.current = true;
 
     apiFetch<CallbackResponse>("/auth/oauth/callback", {
       method: "POST",

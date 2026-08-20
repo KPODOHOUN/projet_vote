@@ -2,6 +2,7 @@
 import { authLoginUrl } from "@/lib/auth-navigation";
 
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Shield, LogOut } from "lucide-react";
 import { useI18n } from "../lib/i18n-provider";
@@ -13,6 +14,7 @@ export function AdminHeader() {
   const { t, locale } = useI18n();
   const isEn = locale === "en";
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
 
   const logout = async () => {
@@ -22,6 +24,7 @@ export function AdminHeader() {
       /* ignore */
     }
     clearAuthStorage();
+    queryClient.clear();
     router.push(authLoginUrl());
   };
 
