@@ -8,7 +8,7 @@ export default function TermsPage() {
 
   return (
     <main className="min-h-screen bg-background flex justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <article className="w-full max-w-3xl prose prose-slate dark:prose-invert">
+      <article className="w-full max-w-3xl prose prose-slate">
         <p className="text-sm text-muted-foreground uppercase tracking-widest font-semibold">{isEn ? "Last update · April 29, 2026" : "Dernière mise à jour · 29 avril 2026"}</p>
         <h1 className="text-4xl font-extrabold tracking-tight text-foreground mt-2 mb-8">{isEn ? "Terms of use." : "Conditions générales d'utilisation."}</h1>
 

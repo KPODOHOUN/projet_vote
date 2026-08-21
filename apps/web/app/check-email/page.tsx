@@ -195,7 +195,7 @@ function CheckEmailContent() {
         </p>
 
         {devOtp ? (
-          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
+          <div className="mb-4 rounded-xl border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-4 text-sm text-[var(--color-warning-text)]">
             <p className="font-semibold">
               {isEn ? "Local / development mode" : "Mode local / développement"}
             </p>
@@ -209,7 +209,7 @@ function CheckEmailContent() {
         ) : null}
 
         {success ? (
-          <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">
+          <div className="mb-4 rounded-xl border border-[var(--color-success)]/30 bg-emerald-500/10 p-4 text-sm text-[var(--color-success-text)]">
             {isEn ? "Email confirmed. Redirecting…" : "E-mail confirmé. Redirection…"}
           </div>
         ) : null}

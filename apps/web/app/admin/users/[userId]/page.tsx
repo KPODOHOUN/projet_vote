@@ -6,7 +6,8 @@ import { apiFetch } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
-import { Button, ConfirmDialog, Input, KpiCard, LoadingState, StatusChip } from "@/components/ui";
+import { Button, ConfirmDialog, DataTable, Input, KpiCard, LoadingState, StatusChip } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import { AdminPageHeader, AdminPageShell, AdminErrorAlert } from "@/components/admin/admin-shell";
 
 type UserDetail = {
@@ -220,29 +221,36 @@ export default function AdminUserDetailPage() {
           <h3 className="text-sm font-semibold text-foreground mb-4">
             {isEn ? "Active sessions" : "Sessions actives"} ({user.sessions.length})
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-border text-muted-foreground text-xs uppercase">
-                <th className="text-left py-2 px-2">{isEn ? "Created" : "Créée"}</th>
-                <th className="text-left py-2 px-2">{isEn ? "Expires" : "Expire"}</th>
-                <th className="text-left py-2 px-2">{isEn ? "Status" : "Statut"}</th>
-              </tr></thead>
-              <tbody>
-                {user.sessions.map((s) => (
-                  <tr key={s.id} className="border-b border-border/50">
-                    <td className="py-2 px-2">{new Date(s.createdAt).toLocaleString()}</td>
-                    <td className="py-2 px-2">{new Date(s.expiresAt).toLocaleString()}</td>
-                    <td className="py-2 px-2">
-                      <StatusChip
-                        tone={s.revokedAt ? "muted" : "active"}
-                        label={s.revokedAt ? (isEn ? "Revoked" : "Révoquée") : (isEn ? "Active" : "Active")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={
+              [
+                {
+                  key: "createdAt",
+                  header: isEn ? "Created" : "Créée",
+                  render: (s) => new Date(s.createdAt).toLocaleString()
+                },
+                {
+                  key: "expiresAt",
+                  header: isEn ? "Expires" : "Expire",
+                  render: (s) => new Date(s.expiresAt).toLocaleString()
+                },
+                {
+                  key: "status",
+                  header: isEn ? "Status" : "Statut",
+                  render: (s) => (
+                    <StatusChip
+                      tone={s.revokedAt ? "muted" : "active"}
+                      label={s.revokedAt ? (isEn ? "Revoked" : "Révoquée") : (isEn ? "Active" : "Active")}
+                    />
+                  )
+                }
+              ] satisfies Array<DataTableColumn<{ id: string; createdAt: string; expiresAt: string; revokedAt: string | null }>>
+            }
+            rows={user.sessions}
+            rowKey={(s) => s.id}
+            emptyLabel={isEn ? "No sessions." : "Aucune session."}
+            ariaLabel={isEn ? "Active sessions" : "Sessions actives"}
+          />
         </div>
       )}
 

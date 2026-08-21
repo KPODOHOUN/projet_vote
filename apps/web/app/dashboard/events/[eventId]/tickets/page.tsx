@@ -342,7 +342,7 @@ function TicketTypeForm({ eventId, isEn, initial, onClose, onSaved }: {
       <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-extrabold text-lg">{initial ? (isEn ? "Edit ticket type" : "Modifier le type de billet") : (isEn ? "New ticket type" : "Nouveau type de billet")}</h3>
-          <Button variant="ghost" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label={isEn ? "Close" : "Fermer"}><X className="w-4 h-4" /></Button>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">

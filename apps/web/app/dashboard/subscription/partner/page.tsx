@@ -177,7 +177,7 @@ export default function PartnerPage() {
       {success ? (
         <div className="max-w-md mx-auto text-center rounded-2xl border border-primary/20 bg-card p-8 shadow-lg space-y-6">
           <div className="flex justify-center">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-500">
+            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-[var(--color-success)]/15 border border-[var(--color-success)]/30 text-[var(--color-success)]">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
           </div>
@@ -195,7 +195,7 @@ export default function PartnerPage() {
       ) : hasPendingRequest ? (
         <div className="max-w-md mx-auto text-center rounded-2xl border border-amber-500/20 bg-card p-8 shadow-md space-y-6">
           <div className="flex justify-center">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500">
+            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-[var(--color-warning)]/15 border border-[var(--color-warning)]/30 text-[var(--color-warning)]">
               <AlertCircle className="w-8 h-8" />
             </div>
           </div>

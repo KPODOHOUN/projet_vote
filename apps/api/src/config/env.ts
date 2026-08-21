@@ -30,7 +30,7 @@ function loadEnv() {
           }
         }
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }

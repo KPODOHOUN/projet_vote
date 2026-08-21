@@ -140,7 +140,7 @@ export function FeexPaySecretPanel({
 
   if (isReady && organizerDone && compact) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700">
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-[var(--color-success-text)]">
         <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
         {isEn ? "Mobile Money connected" : "Mobile Money connecté"}
       </div>
@@ -176,7 +176,7 @@ export function FeexPaySecretPanel({
   const canConfigure = selectedProvider === "FEEXPAY";
 
   return (
-    <Card className="space-y-5 border border-amber-500/30 bg-amber-500/5 p-6">
+    <Card className="space-y-5 border border-[var(--color-warning)]/30 bg-amber-500/5 p-6">
       <div className="flex items-start gap-3">
         <CreditCard className="mt-0.5 h-6 w-6 shrink-0 text-amber-700" aria-hidden="true" />
         <div className="space-y-1">

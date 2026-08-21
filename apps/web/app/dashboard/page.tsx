@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, CreditCard, ArrowRight } from "lucide-react";
 
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { getStoredToken } from "../../lib/auth";
@@ -11,6 +12,7 @@ import {
   useOrganizerEvents,
   usePaymentReadiness,
 } from "../../lib/hooks/use-organizer-events";
+import { useSubscriptionUsage } from "../../lib/hooks/use-subscription";
 import { KpiCard, StatusChip, EmptyState, LoadingState, Button, FormError } from "@/components/ui";
 import { OnboardingChecklist } from "../../components/onboarding-checklist";
 import { CopyPublicLinkButton } from "../../components/copy-public-link-button";
@@ -18,7 +20,7 @@ import { formatEventStatus } from "../../lib/i18n";
 
 export default function DashboardHomePage() {
   const router = useRouter();
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
   const [hasToken] = useState(() => Boolean(getStoredToken()));
 
@@ -30,6 +32,8 @@ export default function DashboardHomePage() {
   const events = eventsQuery.data ?? [];
   const latest = events[0];
   const { ready: paymentReady, skipPaymentStep } = usePaymentReadiness(latest?.id);
+  const usageQuery = useSubscriptionUsage(hasToken);
+  const usage = usageQuery.data;
 
   useEffect(() => {
     if (!eventsQuery.isFetching && eventsQuery.isSuccess && events.length === 0) {
@@ -39,6 +43,13 @@ export default function DashboardHomePage() {
 
   const activeEvents = events.filter((item) => item.status === "ACTIVE").length;
   const recentEvents = events.slice(0, 5);
+
+  // Decision-first : le statut bloque-t-il l'organisateur ? (abonnement → encaissement)
+  const subscriptionBlocked =
+    Boolean(usage) && (usage!.hasSubscription === false || (usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit));
+  const subscriptionLimitReached =
+    Boolean(usage?.hasSubscription) && usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit;
+  const paymentBlocked = !subscriptionBlocked && !paymentReady && !skipPaymentStep;
 
   if (eventsQuery.isPending) {
     return <LoadingState variant="rows" count={4} label={isEn ? "Loading dashboard metrics…" : "Chargement des indicateurs…"} />;
@@ -57,6 +68,52 @@ export default function DashboardHomePage() {
   return (
     <div className="space-y-10">
       <OnboardingChecklist events={events} isEn={isEn} paymentReady={paymentReady} skipPaymentStep={skipPaymentStep} />
+
+      {subscriptionBlocked && (
+        <div
+          role="alert"
+          className="flex flex-col gap-4 rounded-xl border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--color-warning-text)]" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-bold text-[var(--color-warning-text)]">
+                {subscriptionLimitReached ? t("dash.banner.subLimitTitle") : t("dash.banner.subMissingTitle")}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {subscriptionLimitReached ? t("dash.banner.subLimitDesc") : t("dash.banner.subMissingDesc")}
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" className="shrink-0">
+            <Link href="/dashboard/subscription">
+              {t("dash.banner.manageSub")}
+              <ArrowRight className="ml-1.5 size-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
+
+      {paymentBlocked && (
+        <div
+          role="alert"
+          className="flex flex-col gap-4 rounded-xl border border-[var(--color-info)]/30 bg-[var(--color-info)]/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <CreditCard className="mt-0.5 size-5 shrink-0 text-[var(--color-info-text)]" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-bold text-[var(--color-info-text)]">{t("dash.banner.paymentTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("dash.banner.paymentDesc")}</p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="secondary" className="shrink-0">
+            <Link href="/dashboard/account">
+              {t("dash.banner.setupPayment")}
+              <ArrowRight className="ml-1.5 size-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <header className="flex flex-col justify-between gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center">
         <div className="space-y-1">

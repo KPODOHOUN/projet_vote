@@ -26,6 +26,8 @@ export type {
 // Nouveaux composants partagés (correctifs systémiques)
 export { FormError } from "./form-error";
 export type { FormErrorProps } from "./form-error";
+export { DataTable } from "./data-table";
+export type { DataTableColumn, DataTableProps } from "./data-table";
 export { LoadingState } from "./loading-state";
 export type { LoadingStateProps } from "./loading-state";
 export { ConfirmDialog } from "./confirm-dialog";

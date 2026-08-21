@@ -131,7 +131,7 @@ export function PartnerOfferPanel({
 
   if (status?.request?.status === "PENDING") {
     return (
-      <Card className="border border-amber-500/30 bg-amber-500/5 p-5">
+      <Card className="border border-[var(--color-warning)]/30 bg-amber-500/5 p-5">
         <p className="font-semibold text-foreground">
           {isEn ? "We're reviewing your request" : "Nous examinons votre demande"}
         </p>

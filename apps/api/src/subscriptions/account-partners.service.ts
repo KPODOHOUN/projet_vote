@@ -12,7 +12,7 @@ import { AuthUser } from '../auth/auth.types';
 import { isPlatformOperator } from '../auth/platform-roles';
 import { z } from 'zod';
 import { env } from '../config/env';
-import { COMMISSION_BPS_KEY, parseIntSetting } from '../common/platform-settings';
+import { parseIntSetting } from '../common/platform-settings';
 
 export const PARTNER_DEFAULT_COMMISSION_BPS_KEY = "partner_default_commission_bps";
 export const DEFAULT_PARTNER_COMMISSION_BPS = 2000;

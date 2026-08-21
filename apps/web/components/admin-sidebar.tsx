@@ -16,7 +16,9 @@ import {
   Banknote,
   CreditCard,
   CalendarDays,
-  Tags
+  Tags,
+  Archive,
+  IdCard
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useI18n } from "../lib/i18n-provider";
@@ -43,26 +45,39 @@ export function AdminSidebar() {
   const sections = useMemo((): NavSection[] => {
     return [
       {
-        title: isEn ? "Platform" : "Plateforme",
+        title: isEn ? "Offers & money" : "Offres & argent",
         items: [
           { href: "/admin", label: isEn ? "Overview" : "Vue d'ensemble", icon: LayoutDashboard },
-          { href: "/admin/users", label: t("nav.adminUsers"), icon: Users },
           { href: "/admin/offers", label: isEn ? "Offers & pricing" : "Offres & tarifs", icon: Tags },
           { href: "/admin/offers/events", label: isEn ? "Active events" : "Événements actifs", icon: CalendarDays },
           { href: "/admin/offers/withdrawals", label: isEn ? "Withdrawals" : "Retraits", icon: Banknote },
-          { href: "/admin/settings", label: isEn ? "Settings" : "Réglages", icon: Settings }
+          { href: "/admin/subscriptions", label: t("nav.subscriptions"), icon: IdCard }
         ]
       },
       {
-        title: isEn ? "System" : "Système",
+        title: isEn ? "Users" : "Utilisateurs",
+        items: [
+          { href: "/admin/users", label: t("nav.adminUsers"), icon: Users }
+        ]
+      },
+      {
+        title: isEn ? "Platform" : "Plateforme",
         items: [
           { href: "/admin/votes", label: isEn ? "Vote moderation" : "Modération votes", icon: Gavel },
           { href: "/admin/jobs", label: t("nav.jobs"), icon: ListTodo },
           { href: "/admin/feature-flags", label: t("nav.featureFlags"), icon: Flag },
           { href: "/admin/maintenance", label: isEn ? "Maintenance" : "Maintenance", icon: Wrench },
           { href: "/admin/audit", label: isEn ? "Audit log" : "Journal d'audit", icon: ScrollText },
-          // Legacy / soft-hidden from primary nav
-          { href: "/admin/payouts", label: isEn ? "Legacy payouts" : "Versements (legacy)", icon: CreditCard }
+          { href: "/admin/settings", label: isEn ? "Settings" : "Réglages", icon: Settings }
+        ]
+      },
+      {
+        title: isEn ? "Legacy" : "Hérité",
+        items: [
+          { href: "/admin/partners", label: isEn ? "Partners" : "Partenaires", icon: CreditCard },
+          { href: "/admin/account-partners", label: isEn ? "Partner requests" : "Demandes partenaire", icon: Users },
+          { href: "/admin/display-partners", label: isEn ? "Display partners" : "Partenaires affichage", icon: Tags },
+          { href: "/admin/payouts", label: isEn ? "Legacy payouts" : "Versements (legacy)", icon: Archive }
         ]
       }
     ];
@@ -94,7 +109,7 @@ export function AdminSidebar() {
           {!isCollapsed && (
             <div>
               <h1 className="truncate text-lg font-bold tracking-tight text-foreground">SHADOMA</h1>
-              <p className="text-[11px] font-medium text-gold-700/80 dark:text-gold-400/90">
+              <p className="text-[11px] font-medium text-gold-700/80">
                 {isEn ? "Platform admin" : "Admin plateforme"}
               </p>
             </div>
@@ -126,12 +141,12 @@ export function AdminSidebar() {
                     className={cn(
                       "flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-medium transition-all active:scale-[0.97] active:opacity-80",
                       isActive
-                        ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700 shadow-sm dark:text-gold-400"
+                        ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700 shadow-sm"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                     )}
                   >
                     <span className="relative shrink-0">
-                      <Icon className={cn("h-5 w-5", isActive && "text-gold-600 dark:text-gold-400")} />
+                      <Icon className={cn("h-5 w-5", isActive && "text-gold-600")} />
                     </span>
                     {!isCollapsed && <span className="truncate">{item.label}</span>}
                   </Link>

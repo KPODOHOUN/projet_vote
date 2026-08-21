@@ -7,17 +7,13 @@ import { authedFetch, ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
-import { Button, EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import { Button, DataTable, EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import {
-  AdminDataTable,
   AdminErrorAlert,
   AdminPageHeader,
   AdminPageShell,
-  AdminSelect,
-  AdminTableHead,
-  AdminTableRow,
-  AdminTd,
-  AdminTh
+  AdminSelect
 } from "@/components/admin/admin-shell";
 
 type WithdrawalStatus = "PENDING" | "APPROVED" | "REJECTED" | "PAID";
@@ -128,6 +124,69 @@ export default function AdminWithdrawalsPage() {
     return <LoadingState variant="rows" count={5} label={isEn ? "Loading withdrawals…" : "Chargement des retraits…"} />;
   }
 
+  const withdrawalColumns: Array<DataTableColumn<WithdrawalRow>> = [
+    {
+      key: "tenant",
+      header: isEn ? "Organizer" : "Organisation",
+      render: (row) => (
+        <div>
+          <p className="font-semibold">{row.tenant.displayName}</p>
+          <p className="text-xs text-muted-foreground">{row.tenant.slug}</p>
+        </div>
+      )
+    },
+    {
+      key: "amount",
+      header: isEn ? "Amount" : "Montant",
+      align: "right",
+      render: (row) => <span className="font-semibold">{formatCfa(row.amountCfa, isEn)}</span>
+    },
+    {
+      key: "status",
+      header: isEn ? "Status" : "Statut",
+      render: (row) => (
+        <div>
+          <StatusChip label={row.status} tone={statusTone(row.status)} />
+          {row.rejectReason ? (
+            <p className="mt-1 text-xs text-muted-foreground">{row.rejectReason}</p>
+          ) : null}
+        </div>
+      )
+    },
+    {
+      key: "createdAt",
+      header: isEn ? "Requested" : "Demandé le",
+      render: (row) => (
+        <span className="text-sm text-muted-foreground">
+          {new Date(row.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+        </span>
+      )
+    },
+    {
+      key: "actions",
+      header: isEn ? "Actions" : "Actions",
+      render: (row) => (
+        <div className="flex flex-wrap gap-2">
+          {row.status === "PENDING" ? (
+            <>
+              <Button size="sm" loading={busyId === row.id} onClick={() => void runAction(row.id, "approve")}>
+                {isEn ? "Approve" : "Approuver"}
+              </Button>
+              <Button size="sm" variant="secondary" loading={busyId === row.id} onClick={() => void runAction(row.id, "reject")}>
+                {isEn ? "Reject" : "Refuser"}
+              </Button>
+            </>
+          ) : null}
+          {row.status === "APPROVED" ? (
+            <Button size="sm" loading={busyId === row.id} onClick={() => void runAction(row.id, "mark-paid")}>
+              {isEn ? "Mark paid (demo)" : "Marquer payé (démo)"}
+            </Button>
+          ) : null}
+        </div>
+      )
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -166,69 +225,13 @@ export default function AdminWithdrawalsPage() {
       ) : null}
 
       {rows.length > 0 ? (
-        <AdminDataTable minWidth="1000px">
-          <AdminTableHead>
-            <AdminTableRow>
-              <AdminTh>{isEn ? "Organizer" : "Organisation"}</AdminTh>
-              <AdminTh>{isEn ? "Amount" : "Montant"}</AdminTh>
-              <AdminTh>{isEn ? "Status" : "Statut"}</AdminTh>
-              <AdminTh>{isEn ? "Requested" : "Demandé le"}</AdminTh>
-              <AdminTh>{isEn ? "Actions" : "Actions"}</AdminTh>
-            </AdminTableRow>
-          </AdminTableHead>
-          <tbody>
-            {rows.map((row) => (
-              <AdminTableRow key={row.id}>
-                <AdminTd>
-                  <p className="font-semibold">{row.tenant.displayName}</p>
-                  <p className="text-xs text-muted-foreground">{row.tenant.slug}</p>
-                </AdminTd>
-                <AdminTd className="font-semibold">{formatCfa(row.amountCfa, isEn)}</AdminTd>
-                <AdminTd>
-                  <StatusChip label={row.status} tone={statusTone(row.status)} />
-                  {row.rejectReason ? (
-                    <p className="mt-1 text-xs text-muted-foreground">{row.rejectReason}</p>
-                  ) : null}
-                </AdminTd>
-                <AdminTd className="text-sm text-muted-foreground">
-                  {new Date(row.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                </AdminTd>
-                <AdminTd>
-                  <div className="flex flex-wrap gap-2">
-                    {row.status === "PENDING" ? (
-                      <>
-                        <Button
-                          size="sm"
-                          loading={busyId === row.id}
-                          onClick={() => void runAction(row.id, "approve")}
-                        >
-                          {isEn ? "Approve" : "Approuver"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={busyId === row.id}
-                          onClick={() => void runAction(row.id, "reject")}
-                        >
-                          {isEn ? "Reject" : "Refuser"}
-                        </Button>
-                      </>
-                    ) : null}
-                    {row.status === "APPROVED" ? (
-                      <Button
-                        size="sm"
-                        loading={busyId === row.id}
-                        onClick={() => void runAction(row.id, "mark-paid")}
-                      >
-                        {isEn ? "Mark paid (demo)" : "Marquer payé (démo)"}
-                      </Button>
-                    ) : null}
-                  </div>
-                </AdminTd>
-              </AdminTableRow>
-            ))}
-          </tbody>
-        </AdminDataTable>
+        <DataTable
+          columns={withdrawalColumns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          emptyLabel={isEn ? "No withdrawals" : "Aucun retrait"}
+          ariaLabel={isEn ? "Withdrawals" : "Retraits"}
+        />
       ) : null}
     </AdminPageShell>
   );

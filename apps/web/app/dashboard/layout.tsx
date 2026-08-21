@@ -39,7 +39,7 @@ function SubscriptionBanner() {
 
   if (!current) {
     return (
-      <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2.5 text-center text-sm text-destructive dark:text-destructive-foreground flex items-center justify-center gap-2 font-medium">
+      <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2.5 text-center text-sm text-destructive flex items-center justify-center gap-2 font-medium">
         <AlertTriangle className="w-4 h-4 shrink-0" />
         <span>Aucun abonnement actif. Vous ne pouvez plus créer de concours ou recevoir des votes.</span>
         <Link href="/dashboard/subscription" className="underline font-bold hover:opacity-80 ml-1">
@@ -51,7 +51,7 @@ function SubscriptionBanner() {
 
   if (progress && progress.daysRemaining <= 7) {
     return (
-      <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-center text-sm text-amber-900 dark:text-amber-100 flex items-center justify-center gap-2 font-medium">
+      <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2.5 text-center text-sm text-[var(--color-warning-text)] flex items-center justify-center gap-2 font-medium">
         <AlertTriangle className="w-4 h-4 shrink-0" />
         <span>Votre abonnement expire dans {progress.daysRemaining} jour(s). Pensez à le renouveler.</span>
         <Link href="/dashboard/subscription" className="underline font-bold hover:opacity-80 ml-1">
@@ -67,7 +67,7 @@ function SubscriptionBanner() {
 function DemoModeBanner() {
   if (process.env.NODE_ENV !== "development") return null;
   return (
-    <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-900 dark:text-amber-100">
+    <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-center text-sm text-[var(--color-warning-text)]">
       Mode démo actif — les paiements sont confirmés automatiquement (sans Mobile Money réel).
     </div>
   );

@@ -532,7 +532,7 @@ export default function TicketDesignerPage() {
                     <option value="#1f2937">{isEn ? "Gray" : "Gris"}</option>
                   </select>
                   {design.backgroundImage && (
-                    <button onClick={() => setDesign({ ...design, backgroundImage: null })} className="text-xs text-destructive font-bold whitespace-nowrap">
+                    <button onClick={() => setDesign({ ...design, backgroundImage: null })} className="text-xs text-destructive font-bold whitespace-nowrap" aria-label={isEn ? "Remove background image" : "Retirer l'image de fond"}>
                       <X className="w-4 h-4" />
                     </button>
                   )}

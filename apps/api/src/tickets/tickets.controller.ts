@@ -16,10 +16,8 @@ import { Response } from "express";
 import * as QRCode from "qrcode";
 import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
-import { CurrentUser } from "../auth/current-user.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
-import type { AuthUser } from "../auth/auth.types";
 import { TicketsService } from "./tickets.service";
 import { env } from "../config/env";
 

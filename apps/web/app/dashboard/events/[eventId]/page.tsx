@@ -485,7 +485,7 @@ export default function EventOverviewPage() {
               </div>
             ) : null}
             {paymentHint ? (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+              <div className="rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-3 text-sm text-[var(--color-warning-text)]">
                 {paymentHint}
               </div>
             ) : null}

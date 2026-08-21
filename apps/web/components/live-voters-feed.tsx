@@ -72,7 +72,7 @@ export function LiveVotersFeed({ isEn }: { isEn: boolean }) {
 
                 <div className="text-right">
                   <span className="block text-sm font-black text-foreground">+{vote.count}</span>
-                  <span className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <span className="block text-[10px] font-bold text-[var(--color-success-text)]">
                     {formatFCFA(vote.amount)}
                   </span>
                 </div>

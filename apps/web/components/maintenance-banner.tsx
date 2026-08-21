@@ -16,7 +16,7 @@ export function MaintenanceBanner() {
 
   return (
     <div
-      className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-sm font-medium text-amber-900 dark:text-amber-200"
+      className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-3 text-center text-sm font-medium text-[var(--color-warning-text)]"
       role="status"
     >
       {status.message}

@@ -32,7 +32,7 @@ export function PaymentProvidersShowcase({ isEn = false, compact = false }: Paym
               )}
             </div>
             {provider.available ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-500/20">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-success)]/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[var(--color-success-text)] ring-1 ring-emerald-500/20">
                 <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                 {isEn ? "Active" : "Actif"}
               </span>

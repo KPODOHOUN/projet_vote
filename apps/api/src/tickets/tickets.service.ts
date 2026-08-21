@@ -6,15 +6,16 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   EventStatus,
   PaymentPurpose,
+  PaymentProvider,
   PaymentStatus,
   TicketStatus,
-  TicketTypeStatus,
-  UserRole
+  TicketTypeStatus
 } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma/prisma.service";
 import { env } from "../config/env";
@@ -132,7 +133,7 @@ export class TicketsService {
     if (!tt) throw new NotFoundException("Type de ticket introuvable.");
     return this.prisma.client.ticketType.update({
       where: { id: ticketTypeId },
-      data: { design: design as any }
+      data: { design: design as Prisma.InputJsonValue }
     });
   }
 
@@ -275,7 +276,7 @@ export class TicketsService {
         amountCfa,
         status: PaymentStatus.PENDING,
         purpose: PaymentPurpose.TICKET,
-        provider: "FEEXPAY" as any,
+        provider: PaymentProvider.FEEXPAY,
         idempotencyKey: `ticket-purchase-${tickets[0]!.id}-${Date.now()}`
       }
     });

@@ -16,21 +16,18 @@ import { showToast } from "@/lib/toast";
 import {
   Button,
   ConfirmDialog,
+  DataTable,
   EmptyState,
   Input,
   LoadingState,
   StatusChip
 } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import {
-  AdminDataTable,
   AdminErrorAlert,
   AdminFilterCard,
   AdminPageHeader,
-  AdminPageShell,
-  AdminTableHead,
-  AdminTableRow,
-  AdminTd,
-  AdminTh
+  AdminPageShell
 } from "@/components/admin/admin-shell";
 
 function formatCfa(amount: number, isEn: boolean) {
@@ -118,6 +115,90 @@ export default function AdminVotesPage() {
     }
   };
 
+  const voteColumns: Array<DataTableColumn<PlatformVote>> = [
+    {
+      key: "vote",
+      header: isEn ? "Vote" : "Vote",
+      render: (vote) => (
+        <div>
+          <p className="font-mono text-xs text-muted-foreground">{vote.id}</p>
+          <p className="text-xs text-muted-foreground">
+            {isEn ? "Event" : "Évènement"} {vote.eventId.slice(0, 10)}… ·{" "}
+            {new Date(vote.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+          </p>
+        </div>
+      )
+    },
+    {
+      key: "amount",
+      header: isEn ? "Amount" : "Montant",
+      align: "right",
+      render: (vote) => <span className="font-medium">{formatCfa(vote.amountCfa, isEn)}</span>
+    },
+    {
+      key: "status",
+      header: isEn ? "Status" : "Statut",
+      render: (vote) =>
+        vote.cancelledAt ? (
+          <div className="space-y-1">
+            <StatusChip label={isEn ? "CANCELLED" : "ANNULÉ"} tone="error" />
+            {vote.cancelledReason ? (
+              <p className="max-w-xs text-xs text-muted-foreground">{vote.cancelledReason}</p>
+            ) : null}
+          </div>
+        ) : (
+          <StatusChip label={isEn ? "ACTIVE" : "ACTIF"} tone="active" />
+        )
+    },
+    {
+      key: "moderation",
+      header: isEn ? "Moderation" : "Modération",
+      render: (vote) =>
+        vote.cancelledAt ? (
+          <span className="text-xs text-muted-foreground">{isEn ? "Already vaulted" : "Déjà coffré"}</span>
+        ) : (
+          <div className="space-y-2">
+            <Input
+              id={`reason-${vote.id}`}
+              label={isEn ? "Cancel reason" : "Motif d'annulation"}
+              value={cancelReason[vote.id] ?? ""}
+              onChange={(e) => setCancelReason((prev) => ({ ...prev, [vote.id]: e.target.value }))}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={busyId === vote.id}
+                onClick={() => void onCancel(vote.id)}
+              >
+                <Ban className="mr-1.5 size-4" />
+                {isEn ? "Cancel" : "Annuler"}
+              </Button>
+              <ConfirmDialog
+                disabled={busyId === vote.id}
+                title={isEn ? "Delete vote silently?" : "Supprimer le vote silencieusement ?"}
+                description={
+                  isEn
+                    ? "Hard-deletes the vote and its payment, keeping only an encrypted vault copy. No audit trail."
+                    : "Supprime définitivement le vote et son paiement, en ne gardant qu'une copie chiffrée au coffre. Aucune trace d'audit."
+                }
+                confirmLabel={isEn ? "Delete" : "Supprimer"}
+                cancelLabel={isEn ? "Cancel" : "Annuler"}
+                onConfirm={() => void onDelete(vote.id)}
+                trigger={
+                  <Button type="button" size="sm" variant="destructive">
+                    <Trash2 className="mr-1.5 size-4" />
+                    {isEn ? "Delete" : "Supprimer"}
+                  </Button>
+                }
+              />
+            </div>
+          </div>
+        )
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -167,91 +248,13 @@ export default function AdminVotesPage() {
           description={isEn ? "No vote matches the filters." : "Aucun vote ne correspond aux filtres."}
         />
       ) : (
-        <AdminDataTable>
-          <AdminTableHead>
-            <tr>
-              <AdminTh>{isEn ? "Vote" : "Vote"}</AdminTh>
-              <AdminTh>{isEn ? "Amount" : "Montant"}</AdminTh>
-              <AdminTh>{isEn ? "Status" : "Statut"}</AdminTh>
-              <AdminTh>{isEn ? "Moderation" : "Modération"}</AdminTh>
-            </tr>
-          </AdminTableHead>
-          <tbody>
-            {votes.map((vote) => {
-              const isCancelled = Boolean(vote.cancelledAt);
-              return (
-                <AdminTableRow key={vote.id} className="align-top">
-                  <AdminTd>
-                    <p className="font-mono text-xs text-muted-foreground">{vote.id}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {isEn ? "Event" : "Évènement"} {vote.eventId.slice(0, 10)}… ·{" "}
-                      {new Date(vote.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                    </p>
-                  </AdminTd>
-                  <AdminTd className="font-medium">{formatCfa(vote.amountCfa, isEn)}</AdminTd>
-                  <AdminTd>
-                    {isCancelled ? (
-                      <div className="space-y-1">
-                        <StatusChip label={isEn ? "CANCELLED" : "ANNULÉ"} tone="error" />
-                        {vote.cancelledReason ? (
-                          <p className="max-w-xs text-xs text-muted-foreground">{vote.cancelledReason}</p>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <StatusChip label={isEn ? "ACTIVE" : "ACTIF"} tone="active" />
-                    )}
-                  </AdminTd>
-                  <AdminTd>
-                    {isCancelled ? (
-                      <span className="text-xs text-muted-foreground">{isEn ? "Already vaulted" : "Déjà coffré"}</span>
-                    ) : (
-                      <div className="space-y-2">
-                        <Input
-                          id={`reason-${vote.id}`}
-                          label={isEn ? "Cancel reason" : "Motif d'annulation"}
-                          value={cancelReason[vote.id] ?? ""}
-                          onChange={(e) =>
-                            setCancelReason((prev) => ({ ...prev, [vote.id]: e.target.value }))
-                          }
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            loading={busyId === vote.id}
-                            onClick={() => void onCancel(vote.id)}
-                          >
-                            <Ban className="mr-1.5 size-4" />
-                            {isEn ? "Cancel" : "Annuler"}
-                          </Button>
-                          <ConfirmDialog
-                            disabled={busyId === vote.id}
-                            title={isEn ? "Delete vote silently?" : "Supprimer le vote silencieusement ?"}
-                            description={
-                              isEn
-                                ? "Hard-deletes the vote and its payment, keeping only an encrypted vault copy. No audit trail."
-                                : "Supprime définitivement le vote et son paiement, en ne gardant qu'une copie chiffrée au coffre. Aucune trace d'audit."
-                            }
-                            confirmLabel={isEn ? "Delete" : "Supprimer"}
-                            cancelLabel={isEn ? "Cancel" : "Annuler"}
-                            onConfirm={() => void onDelete(vote.id)}
-                            trigger={
-                              <Button type="button" size="sm" variant="destructive">
-                                <Trash2 className="mr-1.5 size-4" />
-                                {isEn ? "Delete" : "Supprimer"}
-                              </Button>
-                            }
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </AdminTd>
-                </AdminTableRow>
-              );
-            })}
-          </tbody>
-        </AdminDataTable>
+        <DataTable
+          columns={voteColumns}
+          rows={votes}
+          rowKey={(vote) => vote.id}
+          emptyLabel={isEn ? "No votes" : "Aucun vote"}
+          ariaLabel={isEn ? "Platform votes" : "Votes plateforme"}
+        />
       )}
 
       {nextCursor ? (

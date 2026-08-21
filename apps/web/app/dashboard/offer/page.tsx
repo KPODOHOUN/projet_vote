@@ -63,7 +63,7 @@ export default function OrganizerOfferPage() {
       ) : null}
 
       {offer?.offerType === "EXTERNAL" ? (
-        <Card className="space-y-4 border-amber-500/30 bg-amber-500/5 p-6">
+        <Card className="space-y-4 border-[var(--color-warning)]/30 bg-amber-500/5 p-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-amber-700">En réflexion</p>
             <h2 className="mt-1 text-xl font-bold">Offre External indisponible</h2>

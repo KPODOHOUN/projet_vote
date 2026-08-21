@@ -13,23 +13,20 @@ import { showToast } from "@/lib/toast";
 import {
   Button,
   ConfirmDialog,
+  DataTable,
   EmptyState,
   Input,
   KpiCard,
   LoadingState,
   StatusChip
 } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import {
-  AdminDataTable,
   AdminErrorAlert,
   AdminFilterCard,
   AdminPageHeader,
   AdminPageShell,
-  AdminSelect,
-  AdminTableHead,
-  AdminTableRow,
-  AdminTd,
-  AdminTh
+  AdminSelect
 } from "@/components/admin/admin-shell";
 
 const ROLE_TONE: Record<string, "warning" | "active" | "muted" | "error"> = {
@@ -151,6 +148,112 @@ export default function AdminUsersPage() {
 
   const canAssignSuperAdmin = myRole === "PLATFORM_SUPER_ADMIN";
 
+  const userColumns: Array<DataTableColumn<AdminUser>> = [
+    {
+      key: "user",
+      header: isEn ? "User" : "Utilisateur",
+      render: (userItem) => (
+        <div>
+          <Link href={`/admin/users/${userItem.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+            {userItem.email}
+          </Link>
+          <p className="text-xs text-muted-foreground">
+            {userItem.tenantId.slice(0, 12)}… ·{" "}
+            {new Date(userItem.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}
+          </p>
+        </div>
+      )
+    },
+    {
+      key: "role",
+      header: isEn ? "Role" : "Rôle",
+      render: (userItem) => {
+        const isSelf = userItem.id === me?.userId;
+        if (isSelf) {
+          return <StatusChip label={userItem.role} tone={ROLE_TONE[userItem.role] ?? "muted"} />;
+        }
+        const rolesForRow = ASSIGNABLE_ROLES.filter(
+          (r) => r !== "PLATFORM_SUPER_ADMIN" || canAssignSuperAdmin
+        );
+        return (
+          <select
+            value={userItem.role}
+            disabled={busyUserId === userItem.id || Boolean(userItem.suspendedAt)}
+            onChange={(e) => void onRoleChange(userItem.id, e.target.value)}
+            className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+          >
+            {rolesForRow.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        );
+      }
+    },
+    {
+      key: "status",
+      header: isEn ? "Status" : "Statut",
+      render: (userItem) =>
+        userItem.suspendedAt ? (
+          <div className="space-y-1">
+            <StatusChip label={isEn ? "SUSPENDED" : "SUSPENDU"} tone="error" />
+            {userItem.suspendedReason ? (
+              <p className="max-w-xs text-xs text-muted-foreground">{userItem.suspendedReason}</p>
+            ) : null}
+          </div>
+        ) : (
+          <StatusChip label={isEn ? "ACTIVE" : "ACTIF"} tone="live" />
+        )
+    },
+    {
+      key: "actions",
+      header: isEn ? "Actions" : "Actions",
+      render: (userItem) => {
+        const isSelf = userItem.id === me?.userId;
+        const isSuspended = Boolean(userItem.suspendedAt);
+        if (isSelf) {
+          return <span className="text-xs text-muted-foreground">{isEn ? "Your account" : "Votre compte"}</span>;
+        }
+        if (isSuspended) {
+          return (
+            <ConfirmDialog
+              title={isEn ? "Reactivate account?" : "Réactiver le compte ?"}
+              description={userItem.email}
+              confirmLabel={isEn ? "Reactivate" : "Réactiver"}
+              cancelLabel={isEn ? "Cancel" : "Annuler"}
+              destructive={false}
+              onConfirm={() => void onUnsuspend(userItem.id)}
+              trigger={
+                <Button type="button" size="sm" variant="secondary" disabled={busyUserId === userItem.id}>
+                  {isEn ? "Reactivate" : "Réactiver"}
+                </Button>
+              }
+            />
+          );
+        }
+        return (
+          <ConfirmDialog
+            title={isEn ? "Suspend account?" : "Suspendre le compte ?"}
+            description={
+              isEn
+                ? `${userItem.email} will be signed out immediately and cannot log in.`
+                : `${userItem.email} sera déconnecté immédiatement et ne pourra plus se connecter.`
+            }
+            confirmLabel={isEn ? "Suspend" : "Suspendre"}
+            cancelLabel={isEn ? "Cancel" : "Annuler"}
+            onConfirm={() => void onSuspend(userItem.id)}
+            trigger={
+              <Button type="button" size="sm" variant="destructive" disabled={busyUserId === userItem.id}>
+                {isEn ? "Suspend" : "Suspendre"}
+              </Button>
+            }
+          />
+        );
+      }
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -210,104 +313,13 @@ export default function AdminUsersPage() {
               description={isEn ? "Adjust filters." : "Ajustez les filtres."}
             />
           ) : (
-            <AdminDataTable>
-              <AdminTableHead>
-                <tr>
-                  <AdminTh>{isEn ? "User" : "Utilisateur"}</AdminTh>
-                  <AdminTh>{isEn ? "Role" : "Rôle"}</AdminTh>
-                  <AdminTh>{isEn ? "Status" : "Statut"}</AdminTh>
-                  <AdminTh>{isEn ? "Actions" : "Actions"}</AdminTh>
-                </tr>
-              </AdminTableHead>
-              <tbody>
-                {users.map((userItem) => {
-                    const isSelf = userItem.id === me?.userId;
-                    const isSuspended = Boolean(userItem.suspendedAt);
-                    const rolesForRow = ASSIGNABLE_ROLES.filter(
-                      (r) => r !== "PLATFORM_SUPER_ADMIN" || canAssignSuperAdmin
-                    );
-                    return (
-                      <AdminTableRow key={userItem.id}>
-                        <AdminTd>
-                          <Link href={`/admin/users/${userItem.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
-                            {userItem.email}
-                          </Link>
-                          <p className="text-xs text-muted-foreground">
-                            {userItem.tenantId.slice(0, 12)}… ·{" "}
-                            {new Date(userItem.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}
-                          </p>
-                        </AdminTd>
-                        <AdminTd>
-                          {isSelf ? (
-                            <StatusChip label={userItem.role} tone={ROLE_TONE[userItem.role] ?? "muted"} />
-                          ) : (
-                            <select
-                              value={userItem.role}
-                              disabled={busyUserId === userItem.id || isSuspended}
-                              onChange={(e) => void onRoleChange(userItem.id, e.target.value)}
-                              className="rounded-md border border-input bg-background px-2 py-1 text-xs"
-                            >
-                              {rolesForRow.map((r) => (
-                                <option key={r} value={r}>
-                                  {r}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </AdminTd>
-                        <AdminTd>
-                          {isSuspended ? (
-                            <div className="space-y-1">
-                              <StatusChip label={isEn ? "SUSPENDED" : "SUSPENDU"} tone="error" />
-                              {userItem.suspendedReason ? (
-                                <p className="max-w-xs text-xs text-muted-foreground">{userItem.suspendedReason}</p>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <StatusChip label={isEn ? "ACTIVE" : "ACTIF"} tone="live" />
-                          )}
-                        </AdminTd>
-                        <AdminTd>
-                          {isSelf ? (
-                            <span className="text-xs text-muted-foreground">{isEn ? "Your account" : "Votre compte"}</span>
-                          ) : isSuspended ? (
-                            <ConfirmDialog
-                              title={isEn ? "Reactivate account?" : "Réactiver le compte ?"}
-                              description={userItem.email}
-                              confirmLabel={isEn ? "Reactivate" : "Réactiver"}
-                              cancelLabel={isEn ? "Cancel" : "Annuler"}
-                              destructive={false}
-                              onConfirm={() => void onUnsuspend(userItem.id)}
-                              trigger={
-                                <Button type="button" size="sm" variant="secondary" disabled={busyUserId === userItem.id}>
-                                  {isEn ? "Reactivate" : "Réactiver"}
-                                </Button>
-                              }
-                            />
-                          ) : (
-                            <ConfirmDialog
-                              title={isEn ? "Suspend account?" : "Suspendre le compte ?"}
-                              description={
-                                isEn
-                                  ? `${userItem.email} will be signed out immediately and cannot log in.`
-                                  : `${userItem.email} sera déconnecté immédiatement et ne pourra plus se connecter.`
-                              }
-                              confirmLabel={isEn ? "Suspend" : "Suspendre"}
-                              cancelLabel={isEn ? "Cancel" : "Annuler"}
-                              onConfirm={() => void onSuspend(userItem.id)}
-                              trigger={
-                                <Button type="button" size="sm" variant="destructive" disabled={busyUserId === userItem.id}>
-                                  {isEn ? "Suspend" : "Suspendre"}
-                                </Button>
-                              }
-                            />
-                          )}
-                        </AdminTd>
-                      </AdminTableRow>
-                    );
-                  })}
-                </tbody>
-            </AdminDataTable>
+            <DataTable
+              columns={userColumns}
+              rows={users}
+              rowKey={(userItem) => userItem.id}
+              emptyLabel={isEn ? "No users" : "Aucun utilisateur"}
+              ariaLabel={isEn ? "Users" : "Utilisateurs"}
+            />
           )}
 
           {nextCursor ? (

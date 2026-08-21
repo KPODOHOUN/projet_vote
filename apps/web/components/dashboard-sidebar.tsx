@@ -14,6 +14,8 @@ import {
   Bell,
   Shield,
   CreditCard,
+  IdCard,
+  Rocket,
   Ticket,
   Search,
   Wallet
@@ -48,14 +50,16 @@ export function DashboardSidebar() {
   const navItems = useMemo(() => {
     const items: NavItem[] = [
       { href: "/dashboard", label: t("nav.overview"), icon: LayoutDashboard },
+      { href: "/dashboard/start", label: t("nav.start"), icon: Rocket },
       { href: "/dashboard/events", label: t("nav.events"), icon: Calendar },
       { href: "/dashboard/ticketing", label: t("nav.ticketing"), icon: Ticket },
       { href: "/dashboard/search", label: t("nav.search"), icon: Search },
-      { href: "/dashboard/team", label: t("nav.team"), icon: UserPlus },
-      { href: "/dashboard/account", label: t("nav.account"), icon: CircleUser },
       { href: "/dashboard/wallet", label: t("nav.wallet"), icon: Wallet },
       { href: "/dashboard/offer", label: t("nav.offer"), icon: CreditCard },
-      { href: "/dashboard/notifications", label: t("nav.notifications"), icon: Bell }
+      { href: "/dashboard/subscription", label: t("nav.subscription"), icon: IdCard },
+      { href: "/dashboard/team", label: t("nav.team"), icon: UserPlus },
+      { href: "/dashboard/notifications", label: t("nav.notifications"), icon: Bell },
+      { href: "/dashboard/account", label: t("nav.account"), icon: CircleUser }
     ];
     if (isPlatformAdmin) {
       items.push({
@@ -115,7 +119,7 @@ export function DashboardSidebar() {
                   "group relative flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                   isActive
                     ? isAdminLink
-                      ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700 dark:text-gold-400"
+                      ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700"
                       : "border-l-2 border-primary bg-primary/8 text-primary shadow-sm"
                     : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                   item.className
@@ -123,7 +127,7 @@ export function DashboardSidebar() {
                 title={isCollapsed ? item.label : undefined}
               >
                 <Icon
-                  className={cn("h-5 w-5 shrink-0", isActive && (isAdminLink ? "text-gold-600 dark:text-gold-400" : "text-primary"))}
+                  className={cn("h-5 w-5 shrink-0", isActive && (isAdminLink ? "text-gold-600" : "text-primary"))}
                   aria-hidden="true"
                 />
                 {!isCollapsed && <span className="truncate">{item.label}</span>}

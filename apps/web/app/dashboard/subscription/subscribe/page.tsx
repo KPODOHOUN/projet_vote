@@ -344,7 +344,7 @@ export default function SubscribePage() {
             </p>
           </div>
           {liveStatus && (
-            <div className="px-4 py-2.5 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 font-semibold text-xs inline-flex items-center gap-1.5">
+            <div className="px-4 py-2.5 rounded-xl border border-amber-500/20 bg-amber-500/10 text-[var(--color-warning-text)] font-semibold text-xs inline-flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
               {paymentStatusLabel(liveStatus, isEn)}
             </div>
@@ -355,7 +355,7 @@ export default function SubscribePage() {
       {phase === "success" && (
         <div className="max-w-md mx-auto text-center rounded-2xl border border-primary/20 bg-card p-8 shadow-lg space-y-6 animate-fade-in">
           <div className="flex justify-center">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-500">
+            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-[var(--color-success)]/15 border border-[var(--color-success)]/30 text-[var(--color-success)]">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
           </div>

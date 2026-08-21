@@ -9,12 +9,14 @@ import {
   Button,
   Card,
   ConfirmDialog,
+  DataTable,
   EmptyState,
   Input,
   KpiCard,
   LoadingState,
   StatusChip
 } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import { AdminErrorAlert, AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
 import { getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
@@ -52,6 +54,102 @@ export default function DashboardAdminPartnersPage() {
   const [isSavingTier, setIsSavingTier] = useState(false);
 
   const [approveTierByRequest, setApproveTierByRequest] = useState<Record<string, string>>({});
+
+  const tierColumns: Array<DataTableColumn<PartnerOfferTier>> = [
+    {
+      key: "label",
+      header: isEn ? "Label" : "Libellé",
+      render: (tier) => <span className="font-medium">{tier.label}</span>
+    },
+    {
+      key: "range",
+      header: isEn ? "Revenue range" : "Fourchette recettes",
+      render: (tier) => formatRevenueRange(tier, isEn)
+    },
+    {
+      key: "share",
+      header: isEn ? "SHADOMA %" : "Commission SHADOMA",
+      align: "right",
+      render: (tier) => `${(tier.platformShareBps / 100).toFixed(1)} %`
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      hideInCard: true,
+      render: (tier) => (
+        <ConfirmDialog
+          title={isEn ? "Remove tier?" : "Supprimer le palier ?"}
+          description={
+            isEn
+              ? `Remove "${tier.label}" from the partner program. Existing approved events keep their commission.`
+              : `Retirer « ${tier.label} » du programme partenaire. Les évènements déjà approuvés conservent leur commission.`
+          }
+          confirmLabel={isEn ? "Remove" : "Supprimer"}
+          cancelLabel={isEn ? "Cancel" : "Annuler"}
+          onConfirm={() => void onDeleteTier(tier.id)}
+          trigger={<Button size="sm" variant="secondary">{isEn ? "Remove" : "Supprimer"}</Button>}
+        />
+      )
+    }
+  ];
+
+  const financialColumns: Array<DataTableColumn<PartnerEventFinancials>> = [
+    {
+      key: "event",
+      header: isEn ? "Vote" : "Vote",
+      render: (row) => <p className="font-medium">{row.eventTitle}</p>
+    },
+    {
+      key: "tenant",
+      header: isEn ? "Organizer" : "Organisateur",
+      render: (row) => row.tenantName
+    },
+    {
+      key: "gross",
+      header: isEn ? "Vote total" : "Total votes",
+      align: "right",
+      render: (row) => (
+        <span className="font-medium">{row.votesGrossCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")}</span>
+      )
+    },
+    {
+      key: "commission",
+      header: isEn ? "Commission" : "Commission",
+      align: "right",
+      render: (row) => (
+        <>
+          {row.platformSharePercent.toFixed(1)} %
+          {row.offerTierLabel ? (
+            <span className="block text-xs text-muted-foreground">{row.offerTierLabel}</span>
+          ) : null}
+        </>
+      )
+    },
+    {
+      key: "kept",
+      header: isEn ? "SHADOMA kept" : "Prélevé SHADOMA",
+      align: "right",
+      render: (row) => row.platformCommissionCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")
+    },
+    {
+      key: "feeOwed",
+      header: isEn ? "Launch fee owed" : "Forfait dû",
+      align: "right",
+      render: (row) => row.activationRemainingCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")
+    },
+    {
+      key: "payable",
+      header: isEn ? "To pay out" : "À reverser",
+      align: "right",
+      render: (row) => (
+        <span className="font-semibold text-[var(--color-success-text)]">
+          {row.organizerNetPayableCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")}
+        </span>
+      )
+    }
+  ];
+
 
   const load = useCallback(async () => {
     const token = getStoredToken();
@@ -224,41 +322,17 @@ export default function DashboardAdminPartnersPage() {
                     : "Définissez une fourchette de recettes et la commission SHADOMA."}
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-muted/50 text-left">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold">{isEn ? "Label" : "Libellé"}</th>
-                        <th className="px-4 py-3 font-semibold">{isEn ? "Revenue range" : "Fourchette recettes"}</th>
-                        <th className="px-4 py-3 font-semibold">{isEn ? "SHADOMA %" : "Commission SHADOMA"}</th>
-                        <th className="px-4 py-3 font-semibold" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiers.map((tier) => (
-                        <tr key={tier.id} className="border-t border-border">
-                          <td className="px-4 py-3 font-medium">{tier.label}</td>
-                          <td className="px-4 py-3">{formatRevenueRange(tier, isEn)}</td>
-                          <td className="px-4 py-3">{(tier.platformShareBps / 100).toFixed(1)} %</td>
-                          <td className="px-4 py-3 text-right">
-                            <ConfirmDialog
-                              title={isEn ? "Remove tier?" : "Supprimer le palier ?"}
-                              description={
-                                isEn
-                                  ? `Remove "${tier.label}" from the partner program. Existing approved events keep their commission.`
-                                  : `Retirer « ${tier.label} » du programme partenaire. Les évènements déjà approuvés conservent leur commission.`
-                              }
-                              confirmLabel={isEn ? "Remove" : "Supprimer"}
-                              cancelLabel={isEn ? "Cancel" : "Annuler"}
-                              onConfirm={() => void onDeleteTier(tier.id)}
-                              trigger={<Button size="sm" variant="secondary">{isEn ? "Remove" : "Supprimer"}</Button>}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  columns={tierColumns}
+                  rows={tiers}
+                  rowKey={(tier) => tier.id}
+                  emptyLabel={
+                    isEn
+                      ? "Set a revenue range and the commission SHADOMA keeps."
+                      : "Définissez une fourchette de recettes et la commission SHADOMA."
+                  }
+                  ariaLabel={isEn ? "Commission grid" : "Grille de commissions"}
+                />
               )}
               <form className="grid grid-cols-1 gap-3 md:grid-cols-5 md:items-end" onSubmit={onCreateTier}>
                 <Input id="tierLabel" label={isEn ? "Label" : "Libellé"} value={tierLabel} onChange={(e) => setTierLabel(e.target.value)} required />
@@ -356,49 +430,13 @@ export default function DashboardAdminPartnersPage() {
                 {isEn ? "No partner events yet." : "Aucun évènement partenaire pour l'instant."}
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-border">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-muted/50 text-left">
-                    <tr>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "Vote" : "Vote"}</th>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "Organizer" : "Organisateur"}</th>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "Vote total" : "Total votes"}</th>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "Commission" : "Commission"}</th>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "SHADOMA kept" : "Prélevé SHADOMA"}</th>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "Launch fee owed" : "Forfait dû"}</th>
-                      <th className="px-3 py-3 font-semibold">{isEn ? "To pay out" : "À reverser"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {financials.map((row) => (
-                      <tr key={row.eventId} className="border-t border-border">
-                        <td className="px-3 py-3">
-                          <p className="font-medium">{row.eventTitle}</p>
-                        </td>
-                        <td className="px-3 py-3">{row.tenantName}</td>
-                        <td className="px-3 py-3 font-medium">
-                          {row.votesGrossCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                        </td>
-                        <td className="px-3 py-3">
-                          {row.platformSharePercent.toFixed(1)} %
-                          {row.offerTierLabel ? (
-                            <span className="block text-xs text-muted-foreground">{row.offerTierLabel}</span>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-3">
-                          {row.platformCommissionCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                        </td>
-                        <td className="px-3 py-3">
-                          {row.activationRemainingCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                        </td>
-                        <td className="px-3 py-3 font-semibold text-emerald-700">
-                          {row.organizerNetPayableCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                columns={financialColumns}
+                rows={financials}
+                rowKey={(row) => row.eventId}
+                emptyLabel={isEn ? "No partner events yet." : "Aucun évènement partenaire pour l'instant."}
+                ariaLabel={isEn ? "Partner events finances" : "Évènements partenaires · finances"}
+              />
             )}
           </section>
 

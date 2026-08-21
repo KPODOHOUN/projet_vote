@@ -144,8 +144,8 @@ function TicketValidationContent() {
 
           {validationResult && validationResult.valid && (
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="p-6 rounded-xl bg-emerald-500/5 border border-emerald-500/10 space-y-2">
-              <CheckCircle2 className="w-12 h-12 mx-auto text-emerald-500" />
-              <p className="font-black text-lg text-emerald-600 dark:text-emerald-400">{isEn ? "Entry validated!" : "Entrée validée !"}</p>
+              <CheckCircle2 className="w-12 h-12 mx-auto text-[var(--color-success)]" />
+              <p className="font-black text-lg text-[var(--color-success-text)]">{isEn ? "Entry validated!" : "Entrée validée !"}</p>
               <p className="text-sm text-muted-foreground">
                 {validationResult.ticket?.holderName && `${validationResult.ticket.holderName} · `}
                 {validationResult.ticket?.ticketType}

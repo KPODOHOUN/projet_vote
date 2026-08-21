@@ -8,6 +8,7 @@ import {
   PaymentPurpose,
   PaymentProvider,
   PaymentStatus,
+  TicketStatus,
   UserRole,
   AccountPlanType,
   AccountPlanStatus,
@@ -221,8 +222,8 @@ export class PaymentVerifyService {
         await this.activateSubscriptionFromPayment(trx, tx.tenantId, tx.id, tx.amountCfa);
       } else if (tx.purpose === PaymentPurpose.TICKET) {
         await trx.ticket.updateMany({
-          where: { eventId: tx.eventId, status: "RESERVED" as any },
-          data: { status: "PAID" as any, paidAt: new Date(), confirmedAt: new Date() }
+          where: { eventId: tx.eventId, status: TicketStatus.RESERVED },
+          data: { status: TicketStatus.PAID, paidAt: new Date(), confirmedAt: new Date() }
         });
       }
 
@@ -346,8 +347,8 @@ export class PaymentVerifyService {
         });
       } else if (tx.purpose === PaymentPurpose.TICKET) {
         await trx.ticket.updateMany({
-          where: { eventId: tx.eventId, status: "RESERVED" as any },
-          data: { status: "PAID" as any, paidAt: new Date(), confirmedAt: new Date() }
+          where: { eventId: tx.eventId, status: TicketStatus.RESERVED },
+          data: { status: TicketStatus.PAID, paidAt: new Date(), confirmedAt: new Date() }
         });
       }
 
@@ -708,7 +709,7 @@ export class PaymentVerifyService {
     const expiresAt = new Date(startsAt);
     expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
 
-    await (trx as any).accountSubscription.create({
+    await trx.accountSubscription.create({
       data: {
         tenantId,
         planType: AccountPlanType.STANDARD,

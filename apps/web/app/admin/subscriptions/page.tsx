@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
-import { Button, Input, KpiCard, StatusChip, LoadingState } from "@/components/ui";
+import { Button, Input, KpiCard, StatusChip, LoadingState, DataTable } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import { showToast } from "@/lib/toast";
 import { AdminErrorAlert, AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
 import { ShieldCheck, CreditCard, Sparkles, Save, Check } from "lucide-react";
@@ -148,6 +149,89 @@ export default function DashboardAdminSubscriptionsPage() {
     finally { setActionLoading(false); }
   };
 
+  const subscriptionColumns: Array<DataTableColumn<AccountSubscription>> = [
+    {
+      key: "tenant",
+      header: isEn ? "Tenant" : "Organisateur",
+      render: (sub) => (
+        <div>
+          <div className="font-semibold text-foreground">
+            {sub.tenant?.displayName || sub.tenantId}
+          </div>
+          <div className="text-[10px] text-muted-foreground">slug: {sub.tenant?.slug || "unknown"}</div>
+        </div>
+      )
+    },
+    {
+      key: "plan",
+      header: isEn ? "Plan" : "Formule",
+      render: (sub) => (
+        <div>
+          <span className="flex items-center gap-1 font-medium text-foreground">
+            {sub.planType === "PARTNER" ? (
+              <>
+                <ShieldCheck className="w-4 h-4 text-primary" />
+                {isEn ? "Partner" : "Partenaire"}
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-4 h-4 text-primary" />
+                Standard
+              </>
+            )}
+          </span>
+          {sub.priceCfa && (
+            <div className="text-xs text-muted-foreground">{sub.priceCfa.toLocaleString()} CFA</div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: "expiresAt",
+      header: isEn ? "Expires At" : "Expiration",
+      render: (sub) => (
+        <span className="text-muted-foreground">
+          {new Date(sub.expiresAt).toLocaleDateString("fr-FR")}
+        </span>
+      )
+    },
+    {
+      key: "commission",
+      header: isEn ? "Comm." : "Comm.",
+      align: "right",
+      render: (sub) => <span className="font-bold text-foreground">{sub.frozenCommissionBps / 100}%</span>
+    },
+    {
+      key: "status",
+      header: "Statut",
+      render: (sub) => (
+        <StatusChip label={sub.status} tone={sub.status === "ACTIVE" ? "success" : "warning"} />
+      )
+    },
+    {
+      key: "actions",
+      header: "",
+      hideInCard: true,
+      render: (sub) => (
+        <div className="flex gap-1">
+          {sub.status !== "ACTIVE" && (
+            <Button size="sm" variant="secondary" onClick={() => { setActionSubId(sub.id); setActionType("activate"); }}>
+              {isEn ? "Activate" : "Activer"}
+            </Button>
+          )}
+          {sub.status === "ACTIVE" && (
+            <Button size="sm" variant="secondary" onClick={() => { setActionSubId(sub.id); setActionType("suspend"); }}>
+              {isEn ? "Suspend" : "Suspendre"}
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={() => { setActionSubId(sub.id); setActionType("renew"); setRenewMonths(sub.durationMonths); }}>
+            {isEn ? "Renew" : "Renouveler"}
+          </Button>
+        </div>
+      )
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -189,84 +273,13 @@ export default function DashboardAdminSubscriptionsPage() {
                 {isEn ? "No subscriptions recorded." : "Aucun abonnement enregistré."}
               </div>
             ) : (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                        <th className="p-4">{isEn ? "Tenant" : "Organisateur"}</th>
-                        <th className="p-4">{isEn ? "Plan" : "Formule"}</th>
-                        <th className="p-4">{isEn ? "Expires At" : "Expiration"}</th>
-                        <th className="p-4">{isEn ? "Comm." : "Comm."}</th>
-                        <th className="p-4">Statut</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {subscriptions.map((sub) => (
-                        <tr key={sub.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-4">
-                            <div className="font-semibold text-foreground">
-                              {sub.tenant?.displayName || sub.tenantId}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground">
-                              slug: {sub.tenant?.slug || "unknown"}
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <span className="flex items-center gap-1 font-medium text-foreground">
-                              {sub.planType === "PARTNER" ? (
-                                <>
-                                  <ShieldCheck className="w-4 h-4 text-primary" />
-                                  {isEn ? "Partner" : "Partenaire"}
-                                </>
-                              ) : (
-                                <>
-                                  <CreditCard className="w-4 h-4 text-primary" />
-                                  Standard
-                                </>
-                              )}
-                            </span>
-                            {sub.priceCfa && (
-                              <div className="text-xs text-muted-foreground">
-                                {sub.priceCfa.toLocaleString()} CFA
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-4 text-muted-foreground">
-                            {new Date(sub.expiresAt).toLocaleDateString("fr-FR")}
-                          </td>
-                          <td className="p-4 font-bold text-foreground">
-                            {sub.frozenCommissionBps / 100}%
-                          </td>
-                          <td className="p-4">
-                            <StatusChip
-                              label={sub.status}
-                              tone={sub.status === "ACTIVE" ? "success" : "warning"}
-                            />
-                          </td>
-                          <td className="p-4">
-                            <div className="flex gap-1">
-                              {sub.status !== "ACTIVE" && (
-                                <Button size="sm" variant="secondary" onClick={() => { setActionSubId(sub.id); setActionType("activate"); }}>
-                                  {isEn ? "Activate" : "Activer"}
-                                </Button>
-                              )}
-                              {sub.status === "ACTIVE" && (
-                                <Button size="sm" variant="secondary" onClick={() => { setActionSubId(sub.id); setActionType("suspend"); }}>
-                                  {isEn ? "Suspend" : "Suspendre"}
-                                </Button>
-                              )}
-                              <Button size="sm" variant="secondary" onClick={() => { setActionSubId(sub.id); setActionType("renew"); setRenewMonths(sub.durationMonths); }}>
-                                {isEn ? "Renew" : "Renouveler"}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <DataTable
+                columns={subscriptionColumns}
+                rows={subscriptions}
+                rowKey={(sub) => sub.id}
+                emptyLabel={isEn ? "No subscriptions recorded." : "Aucun abonnement enregistré."}
+                ariaLabel={isEn ? "Active subscriptions" : "Abonnements en cours"}
+              />
             )}
           </div>
 

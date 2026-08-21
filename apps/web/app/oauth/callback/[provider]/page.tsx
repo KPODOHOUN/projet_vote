@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { XCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { setStoredToken } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n-provider";
+import { Button, LoadingState } from "@/components/ui";
+import { AuthSimpleLayout } from "@/components/auth-simple-layout";
+import { GlassCard } from "@/components/glass-card";
 
 type CallbackResponse = {
   accessToken: string;
@@ -13,6 +19,7 @@ export default function OAuthCallbackPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { t } = useI18n();
   const [error, setError] = useState<string | null>(null);
   const callbackStarted = useRef(false);
 
@@ -22,7 +29,7 @@ export default function OAuthCallbackPage() {
     const state = searchParams.get("state");
 
     if (provider !== "google" || !code || !state) {
-      setError("Réponse OAuth invalide. Veuillez réessayer.");
+      setError(t("auth.oauth.callbackInvalid"));
       return;
     }
     if (callbackStarted.current) return;
@@ -37,34 +44,32 @@ export default function OAuthCallbackPage() {
         router.push("/dashboard");
       })
       .catch((err) => {
-        setError(err.message || "La connexion via OAuth a échoué.");
+        setError(err.message || t("auth.oauth.callbackFailed"));
       });
-  }, [params, searchParams, router]);
-
-  if (error) {
-    return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-8 text-center">
-        <div className="rounded-full bg-destructive/10 p-4">
-          <svg className="h-8 w-8 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </div>
-        <p className="text-lg font-semibold text-destructive">Connexion impossible</p>
-        <p className="text-muted-foreground">{error}</p>
-        <button
-          onClick={() => router.push("/")}
-          className="mt-4 rounded-xl bg-primary px-6 py-3 font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          Retour à l&apos;accueil
-        </button>
-      </div>
-    );
-  }
+  }, [params, searchParams, router, t]);
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      <p className="text-muted-foreground">Connexion en cours...</p>
-    </div>
+    <AuthSimpleLayout contentClassName="max-w-[420px]">
+      <GlassCard intensity="strong" className="w-full p-6 text-center sm:p-8">
+        {error ? (
+          <>
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-error)]/10">
+              <XCircle className="h-7 w-7 text-[var(--color-error-text)]" aria-hidden="true" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              {t("auth.oauth.callbackErrorTitle")}
+            </h1>
+            <p role="alert" className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              {error}
+            </p>
+            <Button asChild className="mt-6 w-full">
+              <Link href="/">{t("auth.oauth.backHome")}</Link>
+            </Button>
+          </>
+        ) : (
+          <LoadingState label={t("auth.oauth.callbackLoading")} />
+        )}
+      </GlassCard>
+    </AuthSimpleLayout>
   );
 }

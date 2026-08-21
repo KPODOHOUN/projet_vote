@@ -7,16 +7,12 @@ import { authLoginUrl } from "@/lib/auth-navigation";
 import { authedFetch } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
-import { EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import { DataTable, EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import {
-  AdminDataTable,
   AdminErrorAlert,
   AdminPageHeader,
-  AdminPageShell,
-  AdminTableHead,
-  AdminTableRow,
-  AdminTd,
-  AdminTh
+  AdminPageShell
 } from "@/components/admin/admin-shell";
 
 type ActiveEventRow = {
@@ -71,6 +67,64 @@ export default function AdminOffersEventsPage() {
     return <LoadingState variant="rows" count={6} label={isEn ? "Loading events…" : "Chargement des événements…"} />;
   }
 
+  const eventColumns: Array<DataTableColumn<ActiveEventRow>> = [
+    {
+      key: "event",
+      header: isEn ? "Event" : "Événement",
+      render: (row) => (
+        <div>
+          <p className="font-semibold text-foreground">{row.title}</p>
+          <p className="text-xs text-muted-foreground">/{row.slug}</p>
+        </div>
+      )
+    },
+    {
+      key: "tenant",
+      header: isEn ? "Organizer" : "Organisation",
+      render: (row) => (
+        <div>
+          <p>{row.tenant.displayName}</p>
+          <p className="text-xs text-muted-foreground">{row.tenant.slug}</p>
+        </div>
+      )
+    },
+    {
+      key: "offer",
+      header: isEn ? "Offer" : "Offre",
+      render: (row) => (
+        <StatusChip
+          label={row.tenant.offerType}
+          tone={row.tenant.offerType === "ESCROW" ? "live" : "muted"}
+        />
+      )
+    },
+    {
+      key: "votes",
+      header: isEn ? "Votes" : "Votes",
+      align: "right",
+      render: (row) => row.stats.votesCount
+    },
+    {
+      key: "total",
+      header: isEn ? "Total" : "Total",
+      align: "right",
+      render: (row) => formatCfa(row.stats.totalCollectedCfa, isEn)
+    },
+    {
+      key: "detail",
+      header: "",
+      align: "right",
+      render: (row) => (
+        <Link
+          href={`/admin/offers/events/${row.id}`}
+          className="font-semibold text-primary hover:underline"
+        >
+          {isEn ? "Detail" : "Détail"}
+        </Link>
+      )
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -93,48 +147,13 @@ export default function AdminOffersEventsPage() {
       ) : null}
 
       {rows.length > 0 ? (
-        <AdminDataTable minWidth="960px">
-          <AdminTableHead>
-            <AdminTableRow>
-              <AdminTh>{isEn ? "Event" : "Événement"}</AdminTh>
-              <AdminTh>{isEn ? "Organizer" : "Organisation"}</AdminTh>
-              <AdminTh>{isEn ? "Offer" : "Offre"}</AdminTh>
-              <AdminTh>{isEn ? "Votes" : "Votes"}</AdminTh>
-              <AdminTh>{isEn ? "Total" : "Total"}</AdminTh>
-              <AdminTh />
-            </AdminTableRow>
-          </AdminTableHead>
-          <tbody>
-            {rows.map((row) => (
-              <AdminTableRow key={row.id}>
-                <AdminTd>
-                  <p className="font-semibold text-foreground">{row.title}</p>
-                  <p className="text-xs text-muted-foreground">/{row.slug}</p>
-                </AdminTd>
-                <AdminTd>
-                  <p>{row.tenant.displayName}</p>
-                  <p className="text-xs text-muted-foreground">{row.tenant.slug}</p>
-                </AdminTd>
-                <AdminTd>
-                  <StatusChip
-                    label={row.tenant.offerType}
-                    tone={row.tenant.offerType === "ESCROW" ? "live" : "muted"}
-                  />
-                </AdminTd>
-                <AdminTd>{row.stats.votesCount}</AdminTd>
-                <AdminTd>{formatCfa(row.stats.totalCollectedCfa, isEn)}</AdminTd>
-                <AdminTd>
-                  <Link
-                    href={`/admin/offers/events/${row.id}`}
-                    className="font-semibold text-primary hover:underline"
-                  >
-                    {isEn ? "Detail" : "Détail"}
-                  </Link>
-                </AdminTd>
-              </AdminTableRow>
-            ))}
-          </tbody>
-        </AdminDataTable>
+        <DataTable
+          columns={eventColumns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          emptyLabel={isEn ? "No active events" : "Aucun événement actif"}
+          ariaLabel={isEn ? "Active events" : "Événements actifs"}
+        />
       ) : null}
     </AdminPageShell>
   );

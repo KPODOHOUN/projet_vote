@@ -97,6 +97,7 @@ export function PlanUpgradeModal({
                         <button
                             type="button"
                             onClick={onClose}
+                            aria-label={isEn ? "Close" : "Fermer"}
                             className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                         >
                             <X className="h-4 w-4" />
@@ -183,7 +184,7 @@ export function PlanUpgradeModal({
 
                                         {/* Savings */}
                                         {plan.commissionRate < 1500 && (
-                                            <p className="mb-4 text-xs text-green-600 dark:text-green-400 font-semibold">
+                                            <p className="mb-4 text-xs text-[var(--color-success-text)] font-semibold">
                                                 {isEn
                                                     ? `Save ${commissionPercent(1500 - plan.commissionRate)}% commission vs Free`
                                                     : `Économisez ${commissionPercent(1500 - plan.commissionRate)}% de commission vs Free`}

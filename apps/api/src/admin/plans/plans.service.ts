@@ -4,7 +4,7 @@ import {
     Injectable,
     NotFoundException
 } from "@nestjs/common";
-import { Prisma, UserRole } from "@prisma/client";
+import { AccountPlanStatus, Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../../auth/auth.types";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -293,7 +293,7 @@ export class PlansService {
         const activeSub = await this.prisma.client.accountSubscription.findFirst({
             where: {
                 tenantId,
-                status: "ACTIVE" as any,
+                status: AccountPlanStatus.ACTIVE,
                 expiresAt: { gt: new Date() }
             },
             orderBy: { expiresAt: "desc" },
@@ -320,7 +320,7 @@ export class PlansService {
         const activeSub = await this.prisma.client.accountSubscription.findFirst({
             where: {
                 tenantId,
-                status: "ACTIVE" as any,
+                status: AccountPlanStatus.ACTIVE,
                 expiresAt: { gt: new Date() }
             },
             orderBy: { expiresAt: "desc" },
@@ -360,7 +360,7 @@ export class PlansService {
         const activeSub = await this.prisma.client.accountSubscription.findFirst({
             where: {
                 tenantId,
-                status: "ACTIVE" as any,
+                status: AccountPlanStatus.ACTIVE,
                 expiresAt: { gt: new Date() }
             },
             orderBy: { expiresAt: "desc" },

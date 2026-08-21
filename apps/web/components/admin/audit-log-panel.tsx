@@ -13,16 +13,9 @@ import {
 import { getStoredToken } from "@/lib/auth";
 import { runDataPurge, type PurgeResult } from "@/lib/platform-maintenance";
 import { showToast } from "@/lib/toast";
-import { Button, ConfirmDialog, EmptyState, Input, LoadingState, StatusChip } from "@/components/ui";
-import {
-  AdminDataTable,
-  AdminErrorAlert,
-  AdminFilterCard,
-  AdminTableHead,
-  AdminTableRow,
-  AdminTd,
-  AdminTh
-} from "@/components/admin/admin-shell";
+import { Button, ConfirmDialog, DataTable, EmptyState, Input, LoadingState, StatusChip } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
+import { AdminErrorAlert, AdminFilterCard } from "@/components/admin/admin-shell";
 
 type AuditLogPanelProps = {
   isEn: boolean;
@@ -161,6 +154,83 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
     }
   };
 
+  const logColumns: Array<DataTableColumn<AuditLog>> = [
+    {
+      key: "select",
+      header: (
+        <input
+          type="checkbox"
+          checked={selected.size === logs.length && logs.length > 0}
+          onChange={toggleAll}
+          aria-label={isEn ? "Select all" : "Tout sélectionner"}
+        />
+      ),
+      render: (entry) => (
+        <input
+          type="checkbox"
+          checked={selected.has(entry.id)}
+          onChange={() => toggleOne(entry.id)}
+          aria-label={isEn ? "Select log" : "Sélectionner"}
+        />
+      )
+    },
+    {
+      key: "date",
+      header: isEn ? "Date" : "Date",
+      render: (entry) => (
+        <span className="whitespace-nowrap text-muted-foreground">
+          {new Date(entry.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+        </span>
+      )
+    },
+    {
+      key: "action",
+      header: isEn ? "Action" : "Action",
+      render: (entry) => (
+        <div className="flex items-center gap-2">
+          <StatusChip label={entry.actorRole} tone="muted" />
+          <span className="font-medium">{entry.action}</span>
+        </div>
+      )
+    },
+    {
+      key: "actor",
+      header: isEn ? "Actor" : "Acteur",
+      render: (entry) => <span className="text-muted-foreground">{entry.actorUserId}</span>
+    },
+    {
+      key: "target",
+      header: isEn ? "Target" : "Cible",
+      render: (entry) => (
+        <span className="text-muted-foreground">
+          {entry.targetType}
+          {entry.targetId ? ` · ${entry.targetId}` : ""}
+        </span>
+      )
+    },
+    {
+      key: "delete",
+      header: "",
+      align: "right",
+      hideInCard: true,
+      render: (entry) => (
+        <ConfirmDialog
+          disabled={isBusy}
+          title={isEn ? "Delete this log?" : "Supprimer cette entrée ?"}
+          description={entry.action}
+          confirmLabel={isEn ? "Delete" : "Supprimer"}
+          cancelLabel={isEn ? "Cancel" : "Annuler"}
+          onConfirm={() => void onDeleteOne(entry.id)}
+          trigger={
+            <Button type="button" size="sm" variant="ghost" className="text-destructive" aria-label={isEn ? "Delete log" : "Supprimer le log"}>
+              <Trash2 className="size-4" />
+            </Button>
+          }
+        />
+      )
+    }
+  ];
+
   return (
     <div className="space-y-6">
       <AdminFilterCard columns="md:grid-cols-2 lg:grid-cols-3">
@@ -267,68 +337,13 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
           description={isEn ? "No entries match your filters." : "Aucune entrée ne correspond aux filtres."}
         />
       ) : (
-        <AdminDataTable minWidth="720px">
-          <AdminTableHead>
-            <tr>
-              <AdminTh className="w-10">
-                <input
-                  type="checkbox"
-                  checked={selected.size === logs.length && logs.length > 0}
-                  onChange={toggleAll}
-                  aria-label={isEn ? "Select all" : "Tout sélectionner"}
-                />
-              </AdminTh>
-              <AdminTh>{isEn ? "Date" : "Date"}</AdminTh>
-              <AdminTh>{isEn ? "Action" : "Action"}</AdminTh>
-              <AdminTh>{isEn ? "Actor" : "Acteur"}</AdminTh>
-              <AdminTh>{isEn ? "Target" : "Cible"}</AdminTh>
-              <AdminTh />
-            </tr>
-          </AdminTableHead>
-          <tbody>
-            {logs.map((entry) => (
-              <AdminTableRow key={entry.id}>
-                <AdminTd>
-                  <input
-                    type="checkbox"
-                    checked={selected.has(entry.id)}
-                    onChange={() => toggleOne(entry.id)}
-                    aria-label={isEn ? "Select log" : "Sélectionner"}
-                  />
-                </AdminTd>
-                <AdminTd className="whitespace-nowrap text-muted-foreground">
-                  {new Date(entry.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
-                </AdminTd>
-                <AdminTd>
-                  <div className="flex items-center gap-2">
-                    <StatusChip label={entry.actorRole} tone="muted" />
-                    <span className="font-medium">{entry.action}</span>
-                  </div>
-                </AdminTd>
-                <AdminTd className="text-muted-foreground">{entry.actorUserId}</AdminTd>
-                <AdminTd className="text-muted-foreground">
-                  {entry.targetType}
-                  {entry.targetId ? ` · ${entry.targetId}` : ""}
-                </AdminTd>
-                <AdminTd className="text-right">
-                  <ConfirmDialog
-                    disabled={isBusy}
-                    title={isEn ? "Delete this log?" : "Supprimer cette entrée ?"}
-                    description={entry.action}
-                    confirmLabel={isEn ? "Delete" : "Supprimer"}
-                    cancelLabel={isEn ? "Cancel" : "Annuler"}
-                    onConfirm={() => void onDeleteOne(entry.id)}
-                    trigger={
-                      <Button type="button" size="sm" variant="ghost" className="text-destructive">
-                        <Trash2 className="size-4" />
-                      </Button>
-                    }
-                  />
-                </AdminTd>
-              </AdminTableRow>
-            ))}
-          </tbody>
-        </AdminDataTable>
+        <DataTable
+          columns={logColumns}
+          rows={logs}
+          rowKey={(entry) => entry.id}
+          emptyLabel={isEn ? "No audit logs" : "Aucun log"}
+          ariaLabel={isEn ? "Audit log" : "Journal d'audit"}
+        />
       )}
 
       {nextCursor ? (

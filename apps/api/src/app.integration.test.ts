@@ -16,7 +16,7 @@ import { AuthService } from "./auth/auth.service";
 import { UserRole } from "@prisma/client";
 import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter";
-import { ObservabilityService } from "./observability/observability.service";
+
 
 /**
  * In-memory Feexpay client for the full-stack integration test (ADR-017).

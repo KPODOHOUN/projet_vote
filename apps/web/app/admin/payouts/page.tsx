@@ -20,21 +20,18 @@ import {
   Button,
   Card,
   ConfirmDialog,
+  DataTable,
   EmptyState,
   Input,
   LoadingState,
   StatusChip
 } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import {
-  AdminDataTable,
   AdminErrorAlert,
   AdminPageHeader,
   AdminPageShell,
-  AdminSection,
-  AdminTableHead,
-  AdminTableRow,
-  AdminTd,
-  AdminTh
+  AdminSection
 } from "@/components/admin/admin-shell";
 
 const STATUS_FILTERS: Array<{ value: "" | PayoutStatus; labelFr: string; labelEn: string }> = [
@@ -164,6 +161,75 @@ export default function AdminPayoutsPage() {
     }
   };
 
+  const payoutColumns: Array<DataTableColumn<Payout>> = [
+    {
+      key: "beneficiary",
+      header: isEn ? "Beneficiary" : "Bénéficiaire",
+      render: (payout) => (
+        <div>
+          <p className="font-medium text-foreground">
+            {payout.kind === "PLATFORM" ? (isEn ? "Platform" : "Plateforme") : payout.beneficiaryTenantId?.slice(0, 12) + "…"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {payout.provider} · {new Date(payout.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}
+          </p>
+          {payout.errorMessage ? (
+            <p className="mt-1 max-w-xs text-xs text-destructive">{payout.errorMessage}</p>
+          ) : null}
+        </div>
+      )
+    },
+    {
+      key: "amount",
+      header: isEn ? "Amount" : "Montant",
+      align: "right",
+      render: (payout) => <span className="font-medium">{formatCfa(payout.amountCfa, isEn)}</span>
+    },
+    {
+      key: "status",
+      header: isEn ? "Status" : "Statut",
+      render: (payout) => <StatusChip label={payout.status} tone={PAYOUT_STATUS_TONE[payout.status]} />
+    },
+    {
+      key: "resolve",
+      header: isEn ? "Resolve (uncertain)" : "Résoudre (incertain)",
+      render: (payout) =>
+        payout.status === "UNCERTAIN" ? (
+          <div className="space-y-2">
+            <Input
+              id={`ref-${payout.id}`}
+              label={isEn ? "Provider ref / reason" : "Réf PSP / motif"}
+              value={resolveRef[payout.id] ?? ""}
+              onChange={(e) => setResolveRef((prev) => ({ ...prev, [payout.id]: e.target.value }))}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={busyId === payout.id}
+                onClick={() => void onResolve(payout.id, "SUCCEEDED")}
+              >
+                {isEn ? "Mark succeeded" : "Marquer réussi"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                loading={busyId === payout.id}
+                onClick={() => void onResolve(payout.id, "FAILED")}
+              >
+                {isEn ? "Mark failed" : "Marquer échoué"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -266,72 +332,13 @@ export default function AdminPayoutsPage() {
             description={isEn ? "No payout matches this status." : "Aucun versement pour ce statut."}
           />
         ) : (
-          <AdminDataTable>
-            <AdminTableHead>
-              <tr>
-                <AdminTh>{isEn ? "Beneficiary" : "Bénéficiaire"}</AdminTh>
-                <AdminTh>{isEn ? "Amount" : "Montant"}</AdminTh>
-                <AdminTh>{isEn ? "Status" : "Statut"}</AdminTh>
-                <AdminTh>{isEn ? "Resolve (uncertain)" : "Résoudre (incertain)"}</AdminTh>
-              </tr>
-            </AdminTableHead>
-            <tbody>
-              {payouts.map((payout) => (
-                <AdminTableRow key={payout.id} className="align-top">
-                  <AdminTd>
-                      <p className="font-medium text-foreground">
-                        {payout.kind === "PLATFORM" ? (isEn ? "Platform" : "Plateforme") : payout.beneficiaryTenantId?.slice(0, 12) + "…"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {payout.provider} · {new Date(payout.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}
-                      </p>
-                      {payout.errorMessage ? (
-                        <p className="mt-1 max-w-xs text-xs text-destructive">{payout.errorMessage}</p>
-                      ) : null}
-                    </AdminTd>
-                    <AdminTd className="font-medium">{formatCfa(payout.amountCfa, isEn)}</AdminTd>
-                    <AdminTd>
-                      <StatusChip label={payout.status} tone={PAYOUT_STATUS_TONE[payout.status]} />
-                    </AdminTd>
-                    <AdminTd>
-                      {payout.status === "UNCERTAIN" ? (
-                        <div className="space-y-2">
-                          <Input
-                            id={`ref-${payout.id}`}
-                            label={isEn ? "Provider ref / reason" : "Réf PSP / motif"}
-                            value={resolveRef[payout.id] ?? ""}
-                            onChange={(e) => setResolveRef((prev) => ({ ...prev, [payout.id]: e.target.value }))}
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              loading={busyId === payout.id}
-                              onClick={() => void onResolve(payout.id, "SUCCEEDED")}
-                            >
-                              {isEn ? "Mark succeeded" : "Marquer réussi"}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive"
-                              loading={busyId === payout.id}
-                              onClick={() => void onResolve(payout.id, "FAILED")}
-                            >
-                              {isEn ? "Mark failed" : "Marquer échoué"}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </AdminTd>
-                  </AdminTableRow>
-                ))}
-              </tbody>
-          </AdminDataTable>
+          <DataTable
+            columns={payoutColumns}
+            rows={payouts}
+            rowKey={(payout) => payout.id}
+            emptyLabel={isEn ? "No payouts" : "Aucun versement"}
+            ariaLabel={isEn ? "Payouts" : "Versements"}
+          />
         )}
       </AdminSection>
     </AdminPageShell>

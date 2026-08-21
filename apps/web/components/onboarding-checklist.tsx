@@ -107,7 +107,7 @@ export function OnboardingChecklist({
         {steps.map((step, index) => (
           <li key={step.label} className="flex items-center gap-3">
             {step.done ? (
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-[var(--color-success-text)]" aria-hidden="true" />
             ) : (
               <Circle className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
             )}

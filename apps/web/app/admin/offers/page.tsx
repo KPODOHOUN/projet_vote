@@ -159,7 +159,7 @@ export default function AdminOffersSettingsPage() {
         }
       />
 
-      <Card className="border-amber-500/30 bg-amber-500/5 p-4 text-sm">
+      <Card className="border-[var(--color-warning)]/30 bg-amber-500/5 p-4 text-sm">
         <p className="font-semibold text-amber-800">
           {isEn ? "Test phase — Escrow only" : "Phase de test — Escrow uniquement"}
         </p>
@@ -235,7 +235,7 @@ export default function AdminOffersSettingsPage() {
                   </p>
                 </div>
                 {account.fedapaySubAccountVerifiedAt ? (
-                  <span className="text-sm font-medium text-emerald-600">
+                  <span className="text-sm font-medium text-[var(--color-success-text)]">
                     {isEn ? "Verified" : "Validé"}
                   </span>
                 ) : (
@@ -423,7 +423,7 @@ export default function AdminOffersSettingsPage() {
               {isEn ? "Save settings" : "Enregistrer"}
             </Button>
             {saved ? (
-              <span className="text-sm text-emerald-600 dark:text-emerald-400">
+              <span className="text-sm text-[var(--color-success-text)]">
                 {isEn ? "Saved." : "Enregistré."}
               </span>
             ) : null}

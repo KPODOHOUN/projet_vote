@@ -404,8 +404,8 @@ export default function DashboardAdminSettingsPage() {
             </div>
 
             {showNewKey && (
-              <div className="mt-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                <p className="text-sm font-semibold text-amber-600 mb-2">
+              <div className="mt-4 p-4 rounded-xl border border-[var(--color-warning)]/30 bg-amber-500/5">
+                <p className="text-sm font-semibold text-[var(--color-warning-text)] mb-2">
                   {isEn ? "Save this key now — it won't be shown again!" : "Enregistrez cette clé — elle ne sera plus affichée !"}
                 </p>
                 <code className="block p-3 rounded-lg bg-background text-xs font-mono break-all select-all">

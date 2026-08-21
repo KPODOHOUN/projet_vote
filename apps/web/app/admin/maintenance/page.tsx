@@ -107,7 +107,7 @@ export default function AdminMaintenancePage() {
 
       <Card className="max-w-2xl space-y-5 border-border p-6">
         <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-amber-500/15 p-2 text-amber-700 dark:text-amber-400">
+          <div className="rounded-lg bg-[var(--color-warning)]/15 p-2 text-[var(--color-warning-text)]">
             <Power className="size-5" />
           </div>
           <div>

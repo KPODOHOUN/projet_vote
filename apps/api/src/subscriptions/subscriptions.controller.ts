@@ -8,10 +8,14 @@ import { AuthUser } from '../auth/auth.types';
 import { UserRole } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { env } from '../config/env';
+import { PlansService } from '../admin/plans/plans.service';
 
 @Controller('subscriptions')
 export class SubscriptionsController {
-  constructor(private readonly subscriptionsService: SubscriptionsService) {}
+  constructor(
+    private readonly subscriptionsService: SubscriptionsService,
+    private readonly plansService: PlansService
+  ) {}
 
   @Post('cron/process')
   async runCron(
@@ -47,6 +51,18 @@ export class SubscriptionsController {
   @Get('me')
   getMySubscription(@CurrentUser() user: AuthUser) {
     return this.subscriptionsService.getMySubscription(user);
+  }
+
+  /**
+   * Usage de l'abonnement courant : plan actif, commission appliquée,
+   * événements utilisés vs limite du plan (null = illimité).
+   * GET /subscriptions/usage
+   */
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER_OWNER, UserRole.ORGANIZER_STAFF)
+  @Get('usage')
+  getMyUsage(@CurrentUser() user: AuthUser) {
+    return this.plansService.getUsageStats(user.tenantId);
   }
 
   @UseGuards(AuthGuard, RolesGuard)

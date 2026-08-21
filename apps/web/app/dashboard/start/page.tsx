@@ -92,7 +92,7 @@ export default function QuickStartPage() {
       <div className="mx-auto max-w-2xl space-y-6 py-4">
         <Card className={`space-y-6 p-8 ${isLive ? "border border-emerald-500/20 bg-emerald-500/5" : "border border-border bg-card"}`}>
           <div className="flex items-start gap-4">
-            <PartyPopper className={`mt-1 h-8 w-8 shrink-0 ${isLive ? "text-emerald-600" : "text-primary"}`} aria-hidden="true" />
+            <PartyPopper className={`mt-1 h-8 w-8 shrink-0 ${isLive ? "text-[var(--color-success-text)]" : "text-primary"}`} aria-hidden="true" />
             <div className="space-y-2">
               <h2 className="text-2xl font-extrabold tracking-tight text-foreground">
                 {isLive

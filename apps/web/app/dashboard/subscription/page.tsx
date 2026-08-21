@@ -6,8 +6,9 @@ import Link from "next/link";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
+import { useSubscriptionUsage } from "../../../lib/hooks/use-subscription";
 import { Button, LoadingState, StatusChip } from "@/components/ui";
-import { Calendar, CreditCard, Sparkles, AlertTriangle, ArrowRight, ShieldCheck, History } from "lucide-react";
+import { Calendar, CreditCard, Sparkles, AlertTriangle, ArrowRight, ShieldCheck, History, Gauge, Infinity as InfinityIcon } from "lucide-react";
 import { authLoginUrl } from "@/lib/auth-navigation";
 
 type SubscriptionProgress = {
@@ -42,6 +43,7 @@ export default function DashboardSubscriptionPage() {
   const [data, setData] = useState<SubscriptionMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const usageQuery = useSubscriptionUsage(true);
 
   const loadData = async () => {
     const token = getStoredToken();
@@ -70,6 +72,18 @@ export default function DashboardSubscriptionPage() {
   }
 
   const { current, past, progress } = data || { current: null, past: [], progress: null };
+  const usage = usageQuery.data;
+  const commissionBps = usage?.commissionRate ?? current?.frozenCommissionBps ?? null;
+  const commissionLabel = commissionBps != null ? `${(commissionBps / 100).toFixed(commissionBps % 100 === 0 ? 0 : 1)}%` : "—";
+  const planTitle =
+    usage?.planName ??
+    (current?.planType === "PARTNER"
+      ? isEn ? "Platform Partner" : "Partenaire Plateforme"
+      : isEn ? "Standard Member" : "Abonnement Standard");
+  const eventsLimit = usage?.eventsLimit ?? null;
+  const eventsUsed = usage?.eventsUsed ?? 0;
+  const eventsPercent =
+    eventsLimit != null && eventsLimit > 0 ? Math.min(100, Math.round((eventsUsed / eventsLimit) * 100)) : 0;
 
   return (
     <div className="space-y-8 max-w-5xl">
@@ -97,7 +111,7 @@ export default function DashboardSubscriptionPage() {
             <Sparkles className="w-48 h-48" />
           </div>
           <div className="space-y-3 z-10 max-w-xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 font-semibold text-xs">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[var(--color-warning-text)] font-semibold text-xs">
               <AlertTriangle className="w-3.5 h-3.5" />
               {isEn ? "No active plan" : "Aucun plan actif"}
             </div>
@@ -138,12 +152,12 @@ export default function DashboardSubscriptionPage() {
                     {current.planType === "PARTNER" ? (
                       <>
                         <ShieldCheck className="w-7 h-7 text-primary" />
-                        {isEn ? "Platform Partner" : "Partenaire Plateforme"}
+                        {planTitle}
                       </>
                     ) : (
                       <>
                         <CreditCard className="w-7 h-7 text-primary" />
-                        {isEn ? "Standard Member" : "Abonnement Standard"}
+                        {planTitle}
                       </>
                     )}
                   </h2>
@@ -187,10 +201,8 @@ export default function DashboardSubscriptionPage() {
               <div className="flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-primary" />
                 <span>
-                  {isEn ? "Commission: " : "Commission: "}
-                  <strong className="text-foreground">
-                    {current.frozenCommissionBps / 100}%
-                  </strong>
+                  {isEn ? "Commission: " : "Commission : "}
+                  <strong className="text-foreground">{commissionLabel}</strong>
                 </span>
               </div>
               <div>
@@ -203,46 +215,115 @@ export default function DashboardSubscriptionPage() {
             </div>
           </div>
 
-          {/* Quick Stats / Privileges */}
+          {/* Usage / Privileges */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
-            <h3 className="font-bold text-lg text-foreground">{isEn ? "Active Benefits" : "Vos privilèges actifs"}</h3>
-            <ul className="space-y-3 text-sm">
-              <li className="flex items-start gap-2.5">
-                <span className="text-emerald-500 font-bold">✓</span>
-                <span>{isEn ? "Unlimited event creation" : "Création d'évènements illimitée"}</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span className="text-emerald-500 font-bold">✓</span>
-                <span>{isEn ? "Accept paid votes via Mobile Money" : "Réception des votes payés (Mobile Money)"}</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span className="text-emerald-500 font-bold">✓</span>
-                <span>
-                  {isEn
-                    ? `Locked commission rate at ${current.frozenCommissionBps / 100}%`
-                    : `Commission bloquée à ${current.frozenCommissionBps / 100}%`}
-                </span>
-              </li>
-              {current.planType === "PARTNER" ? (
-                <li className="flex items-start gap-2.5 border-t border-border pt-2 text-muted-foreground text-xs leading-relaxed">
-                  <span>ℹ</span>
-                  <span>
-                    {isEn
-                      ? "Partner benefit: ongoing events stay open for votes until their schedule ends, even if the partnership period expires."
-                      : "Avantage partenaire : vos concours déjà en cours restent ouverts aux votes jusqu'à la fin prévue, même après l'expiration."}
-                  </span>
-                </li>
-              ) : (
-                <li className="flex items-start gap-2.5 border-t border-border pt-2 text-muted-foreground text-xs leading-relaxed">
-                  <span>ℹ</span>
-                  <span>
-                    {isEn
-                      ? "Standard status: upon expiration, vote reception and event creation are immediately suspended."
-                      : "Statut Standard : à l'expiration, la réception des votes et la création de concours sont immédiatement suspendues."}
-                  </span>
-                </li>
-              )}
-            </ul>
+            <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-primary" />
+              {isEn ? "Your usage" : "Votre utilisation"}
+            </h3>
+
+            {usageQuery.isLoading ? (
+              <div className="space-y-3 animate-pulse" aria-hidden="true">
+                <div className="h-4 w-2/3 rounded bg-muted" />
+                <div className="h-3.5 w-full rounded-full bg-muted" />
+                <div className="h-4 w-1/2 rounded bg-muted" />
+              </div>
+            ) : usageQuery.isError ? (
+              <p role="alert" className="text-sm text-[var(--color-error-text)]">
+                {isEn
+                  ? "Unable to load your usage. Please retry."
+                  : "Impossible de charger votre utilisation. Réessayez."}
+              </p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm font-semibold">
+                    <span className="text-muted-foreground">{isEn ? "Events created" : "Événements créés"}</span>
+                    <span className="inline-flex items-center gap-1 text-foreground">
+                      {eventsLimit == null ? (
+                        <>
+                          <InfinityIcon className="w-4 h-4 text-primary" aria-hidden="true" />
+                          {eventsUsed} · {isEn ? "Unlimited" : "Illimité"}
+                        </>
+                      ) : (
+                        `${eventsUsed} / ${eventsLimit}`
+                      )}
+                    </span>
+                  </div>
+                  {eventsLimit != null && (
+                    <div
+                      className="w-full bg-border/60 rounded-full h-3 overflow-hidden"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={eventsLimit}
+                      aria-valuenow={eventsUsed}
+                      aria-label={isEn ? "Events used out of plan limit" : "Événements utilisés sur la limite du plan"}
+                    >
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ease-out ${
+                          eventsPercent >= 100
+                            ? "bg-[var(--color-error)]"
+                            : eventsPercent >= 80
+                              ? "bg-[var(--color-warning)]"
+                              : "bg-primary"
+                        }`}
+                        style={{ width: `${eventsPercent}%` }}
+                      />
+                    </div>
+                  )}
+                  {eventsLimit != null && eventsPercent >= 100 && (
+                    <p className="text-xs font-medium text-[var(--color-warning-text)]">
+                      {isEn
+                        ? "Plan limit reached — upgrade to create more events."
+                        : "Limite du plan atteinte — passez à un plan supérieur pour créer plus d'événements."}
+                    </p>
+                  )}
+                </div>
+
+                <ul className="space-y-3 text-sm border-t border-border pt-3">
+                  <li className="flex items-start gap-2.5">
+                    <span className="font-bold text-[var(--color-success)]">✓</span>
+                    <span>{isEn ? "Accept paid votes via Mobile Money" : "Réception des votes payés (Mobile Money)"}</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="font-bold text-[var(--color-success)]">✓</span>
+                    <span>
+                      {isEn
+                        ? `Commission rate locked at ${commissionLabel}`
+                        : `Commission bloquée à ${commissionLabel}`}
+                    </span>
+                  </li>
+                  {current.planType === "PARTNER" ? (
+                    <li className="flex items-start gap-2.5 border-t border-border pt-2 text-muted-foreground text-xs leading-relaxed">
+                      <span>ℹ</span>
+                      <span>
+                        {isEn
+                          ? "Partner benefit: ongoing events stay open for votes until their schedule ends, even if the partnership period expires."
+                          : "Avantage partenaire : vos concours déjà en cours restent ouverts aux votes jusqu'à la fin prévue, même après l'expiration."}
+                      </span>
+                    </li>
+                  ) : (
+                    <li className="flex items-start gap-2.5 border-t border-border pt-2 text-muted-foreground text-xs leading-relaxed">
+                      <span>ℹ</span>
+                      <span>
+                        {isEn
+                          ? "Standard status: upon expiration, vote reception and event creation are immediately suspended."
+                          : "Statut Standard : à l'expiration, la réception des votes et la création de concours sont immédiatement suspendues."}
+                      </span>
+                    </li>
+                  )}
+                </ul>
+
+                {eventsLimit != null && (
+                  <Link href="/pricing" className="block">
+                    <Button variant="secondary" size="sm" className="w-full">
+                      {isEn ? "Compare plans" : "Comparer les plans"}
+                      <ArrowRight className="w-4 h-4 ml-1.5" />
+                    </Button>
+                  </Link>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

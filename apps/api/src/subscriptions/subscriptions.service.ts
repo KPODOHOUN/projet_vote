@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
@@ -101,7 +101,7 @@ export class SubscriptionsService {
 
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId }
-    }) as any;
+    });
 
     if (!event) throw new NotFoundException("Évènement introuvable.");
 
@@ -193,7 +193,7 @@ export class SubscriptionsService {
     const gateway = this.pspRegistry.get(provider);
     const creds = await this.pspRegistry.resolvePlatformCredentials(provider);
     
-    const payin = await (gateway as any).initPayin({ 
+    const payin = await gateway.initPayin({ 
       amountCfa: pricing.priceCfa, 
       phoneNumber: phone, 
       operator: resolvedOperator, 
@@ -365,7 +365,7 @@ export class SubscriptionsService {
       }
 
       if (reminderKey) {
-        const updateData: any = { [reminderKey]: true };
+        const updateData: Partial<Record<'reminderJ1Sent' | 'reminderJ3Sent' | 'reminderJ7Sent', boolean>> = { [reminderKey]: true };
         if (reminderKey === 'reminderJ1Sent') {
           updateData.reminderJ3Sent = true;
           updateData.reminderJ7Sent = true;
@@ -402,7 +402,7 @@ export class SubscriptionsService {
     return sentCount;
   }
 
-  async listAllSubscriptions(admin: AuthUser, query: any) {
+  async listAllSubscriptions(admin: AuthUser, _query: unknown) {
     if (admin.role !== UserRole.PLATFORM_ADMIN && admin.role !== UserRole.PLATFORM_SUPER_ADMIN) {
       throw new ForbiddenException();
     }
@@ -422,7 +422,7 @@ export class SubscriptionsService {
     });
   }
 
-  async updatePricing(admin: AuthUser, payload: any) {
+  async updatePricing(admin: AuthUser, payload: unknown) {
     if (admin.role !== UserRole.PLATFORM_ADMIN && admin.role !== UserRole.PLATFORM_SUPER_ADMIN) {
       throw new ForbiddenException();
     }

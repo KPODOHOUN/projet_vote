@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { AcceptInvitationClient } from "./AcceptInvitationClient";
+import { AuthSimpleLayout } from "../../../components/auth-simple-layout";
+import { GlassCard } from "../../../components/glass-card";
 
 export const metadata: Metadata = {
   title: "Rejoindre l'organisation · SHADOMA Votes",
@@ -11,12 +13,10 @@ type PageProps = { params: Promise<{ token: string }> };
 export default async function AcceptInvitationPage({ params }: PageProps) {
   const { token } = await params;
   return (
-    <main className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <section className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-card py-8 px-4 shadow-xl sm:rounded-2xl border border-border sm:px-10">
-          <AcceptInvitationClient token={token} />
-        </div>
-      </section>
-    </main>
+    <AuthSimpleLayout contentClassName="max-w-[420px]">
+      <GlassCard intensity="strong" className="w-full p-6 sm:p-8">
+        <AcceptInvitationClient token={token} />
+      </GlassCard>
+    </AuthSimpleLayout>
   );
 }

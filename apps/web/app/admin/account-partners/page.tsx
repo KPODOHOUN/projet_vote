@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
-import { Button, Input, StatusChip, LoadingState } from "@/components/ui";
+import { Button, Input, StatusChip, LoadingState, DataTable } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
 import { AdminErrorAlert, AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
 import { ShieldCheck, FileText, Check, X, AlertCircle, History, Loader2 } from "lucide-react";
 import { authLoginUrl } from "@/lib/auth-navigation";
@@ -133,6 +134,55 @@ export default function AccountPartnersAdminPage() {
   const pending = requests.filter(r => r.status === "PENDING");
   const decided = requests.filter(r => r.status !== "PENDING");
 
+  const decidedColumns: Array<DataTableColumn<AccountPartnerRequest>> = [
+    {
+      key: "tenant",
+      header: isEn ? "Tenant" : "Organisateur",
+      render: (r) => (
+        <div>
+          <div className="font-semibold text-foreground">{r.tenant?.displayName || r.tenantId}</div>
+          <div className="text-[10px] text-muted-foreground">slug: {r.tenant?.slug}</div>
+        </div>
+      )
+    },
+    {
+      key: "duration",
+      header: isEn ? "Duration" : "Durée",
+      render: (r) => <span className="text-muted-foreground">{r.durationMonths} mois</span>
+    },
+    {
+      key: "commission",
+      header: isEn ? "Commission Rate" : "Taux de commission",
+      align: "right",
+      render: (r) => (
+        <span className="font-bold text-foreground">
+          {r.negotiatedCommissionBps ? `${r.negotiatedCommissionBps / 100}%` : "20%"}
+        </span>
+      )
+    },
+    {
+      key: "decidedAt",
+      header: isEn ? "Decision Date" : "Date décision",
+      render: (r) => (
+        <span className="text-muted-foreground">
+          {r.decidedAt ? new Date(r.decidedAt).toLocaleDateString("fr-FR") : "—"}
+        </span>
+      )
+    },
+    {
+      key: "note",
+      header: isEn ? "Admin notes" : "Remarques",
+      render: (r) => <span className="text-muted-foreground">{r.decisionNote || "—"}</span>
+    },
+    {
+      key: "status",
+      header: "Statut",
+      render: (r) => (
+        <StatusChip label={r.status} tone={r.status === "APPROVED" ? "success" : "error"} />
+      )
+    }
+  ];
+
   return (
     <AdminPageShell>
       <AdminPageHeader
@@ -150,7 +200,7 @@ export default function AccountPartnersAdminPage() {
         {/* Pending requests */}
         <section className="space-y-4">
           <h3 className="font-extrabold text-xl text-foreground flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-amber-500" />
+            <AlertCircle className="w-5 h-5 text-[var(--color-warning)]" />
             {isEn ? "Pending Partnership Requests" : "Demandes en attente"}
           </h3>
 
@@ -254,48 +304,13 @@ export default function AccountPartnersAdminPage() {
               {isEn ? "No past requests decided." : "Aucune demande passée traitée."}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-border bg-card">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                      <th className="p-4">{isEn ? "Tenant" : "Organisateur"}</th>
-                      <th className="p-4">{isEn ? "Duration" : "Durée"}</th>
-                      <th className="p-4">{isEn ? "Commission Rate" : "Taux de commission"}</th>
-                      <th className="p-4">{isEn ? "Decision Date" : "Date décision"}</th>
-                      <th className="p-4">{isEn ? "Admin notes" : "Remarques"}</th>
-                      <th className="p-4">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {decided.map((r) => (
-                      <tr key={r.id} className="hover:bg-muted/10 transition-colors">
-                        <td className="p-4">
-                          <div className="font-semibold text-foreground">{r.tenant?.displayName || r.tenantId}</div>
-                          <div className="text-[10px] text-muted-foreground">slug: {r.tenant?.slug}</div>
-                        </td>
-                        <td className="p-4 text-muted-foreground">{r.durationMonths} mois</td>
-                        <td className="p-4 font-bold text-foreground">
-                          {r.negotiatedCommissionBps ? `${r.negotiatedCommissionBps / 100}%` : "20%"}
-                        </td>
-                        <td className="p-4 text-muted-foreground">
-                          {r.decidedAt ? new Date(r.decidedAt).toLocaleDateString("fr-FR") : "—"}
-                        </td>
-                        <td className="p-4 text-muted-foreground max-w-xs truncate">
-                          {r.decisionNote || "—"}
-                        </td>
-                        <td className="p-4">
-                          <StatusChip
-                            label={r.status}
-                            tone={r.status === "APPROVED" ? "success" : "error"}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <DataTable
+              columns={decidedColumns}
+              rows={decided}
+              rowKey={(r) => r.id}
+              emptyLabel={isEn ? "No past requests decided." : "Aucune demande passée traitée."}
+              ariaLabel={isEn ? "Partnership history" : "Historique des décisions"}
+            />
           )}
         </section>
       </div>

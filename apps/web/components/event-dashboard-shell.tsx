@@ -6,6 +6,7 @@ import {
   BarChart3,
   LayoutTemplate,
   Settings2,
+  Ticket,
   Users,
   ExternalLink,
   Trash2
@@ -29,6 +30,7 @@ type EventDashboardShellProps = {
 const tabs = [
   { id: "overview", suffix: "", icon: BarChart3, labelFr: "Vue d'ensemble", labelEn: "Overview" },
   { id: "candidates", suffix: "/candidates", icon: Users, labelFr: "Candidats", labelEn: "Candidates" },
+  { id: "tickets", suffix: "/tickets", icon: Ticket, labelFr: "Billetterie", labelEn: "Tickets" },
   { id: "design", suffix: "/design", icon: LayoutTemplate, labelFr: "Design", labelEn: "Design" },
   { id: "edit", suffix: "/edit", icon: Settings2, labelFr: "Réglages", labelEn: "Settings" }
 ] as const;

@@ -75,7 +75,7 @@ export function AcceptInvitationClient({ token }: { token: string }) {
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">{t("accept.lead")}</p>
       </div>
       {isAlreadyLoggedIn && (
-        <div className="p-4 mb-6 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-sm font-medium leading-relaxed" role="alert">
+        <div className="p-4 mb-6 rounded-xl border border-[var(--color-warning)]/20 bg-[var(--color-warning)]/10 text-[var(--color-warning-text)] text-sm font-medium leading-relaxed" role="alert">
           {t("accept.alreadyLoggedInWarning")}
         </div>
       )}

@@ -40,6 +40,8 @@
 - [x] Créer composant `plan-upgrade-modal.tsx` → ✅ Modal avec sélection de plans payants
 - [x] Intégrer dans le flow de création d'événement → ✅ Composant prêt à être utilisé
 
-## ❌ Phase 8 — Dashboard utilisateur : section abonnement
+## ✅ Phase 8 — Dashboard utilisateur : section abonnement
 
-- [ ] Afficher le plan actuel, commission, limite d'événements → À faire si nécessaire
+- [x] Exposer `GET /subscriptions/usage` (plansService.getUsageStats) → ✅ dans `subscriptions.controller.ts`
+- [x] Hook React Query `useSubscriptionUsage()` → ✅ `lib/hooks/use-subscription.ts`
+- [x] Afficher le plan actuel, commission, limite d'événements → ✅ carte "Votre utilisation" dans `/dashboard/subscription` (progression eventsUsed/eventsLimit, alerte limite atteinte, CTA /pricing)

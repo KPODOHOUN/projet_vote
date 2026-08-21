@@ -33,13 +33,13 @@ function VerifyEmailContent() {
 
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-8 text-center">
+      <GlassCard intensity="strong" className="w-full p-8 text-center" role="status" aria-live="polite">
         {status === "loading" ? (
           <p className="text-muted-foreground">{isEn ? "Verifying…" : "Vérification en cours…"}</p>
         ) : null}
         {status === "ok" ? (
           <>
-            <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-emerald-500" aria-hidden="true" />
+            <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-[var(--color-success)]" aria-hidden="true" />
             <h1 className="mb-2 text-2xl font-bold">{isEn ? "Email confirmed!" : "E-mail confirmé !"}</h1>
             <p className="mb-6 text-muted-foreground">
               {isEn ? "Your account is active. You can sign in now." : "Votre compte est actif. Vous pouvez vous connecter."}

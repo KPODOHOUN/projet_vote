@@ -56,7 +56,7 @@ export function ActivationPaymentPanel({
     return (
       <Card className="border border-emerald-500/20 bg-emerald-500/5 p-6">
         <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[var(--color-success-text)]" aria-hidden="true" />
           <div>
             <p className="font-semibold text-foreground">
               {isEn ? "Your event is live!" : "Votre évènement est en ligne !"}
@@ -103,7 +103,7 @@ export function ActivationPaymentPanel({
 
   return (
     <div className="space-y-4">
-      <Card className="border border-amber-500/30 bg-amber-500/5 p-6 space-y-5">
+      <Card className="border border-[var(--color-warning)]/30 bg-amber-500/5 p-6 space-y-5">
       <div className="flex items-start gap-3">
         <Smartphone className="mt-0.5 h-6 w-6 shrink-0 text-amber-700" aria-hidden="true" />
         <div className="space-y-1">

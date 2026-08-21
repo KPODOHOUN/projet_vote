@@ -31,7 +31,7 @@ export function AdminHeader() {
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between gap-4 border-b border-gold-500/15 bg-card/80 px-6 shadow-sm backdrop-blur-md sm:px-8">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Shield className="h-4 w-4 text-gold-600 dark:text-gold-400" aria-hidden="true" />
+        <Shield className="h-4 w-4 text-gold-600" aria-hidden="true" />
         <span className="hidden sm:inline">
           {isEn ? "Restricted area — platform operators only" : "Espace restreint — opérateurs plateforme uniquement"}
         </span>
