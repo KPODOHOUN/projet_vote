@@ -30,19 +30,57 @@ test("wallet credit puis debit conserve le solde", async () => {
     tenantId: tenant.id,
     amountCfa: 10_000,
     kind: WalletLedgerKind.VOTE_CREDIT,
-    target: "available",
+    target: "withdrawable",
     note: "test credit"
   });
   let w = await wallet.getWallet(tenant.id);
-  assert.equal(w.availableCfa, 10_000);
+  assert.equal(w.withdrawableCfa, 10_000);
 
   await wallet.debit({
     tenantId: tenant.id,
     amountCfa: 3_000,
     kind: WalletLedgerKind.WITHDRAWAL_DEBIT,
-    from: "available",
+    from: "withdrawable",
     note: "test debit"
   });
   w = await wallet.getWallet(tenant.id);
-  assert.equal(w.availableCfa, 7_000);
+  assert.equal(w.withdrawableCfa, 7_000);
+});
+
+test("creditSplit répartit net en held + withdrawable selon heldBps", async () => {
+  const tenant = await prisma.client.tenant.create({
+    data: {
+      slug: `wal-split-${Date.now().toString(36)}`,
+      displayName: "Wallet Split Test"
+    }
+  });
+  await wallet.creditSplit({
+    tenantId: tenant.id,
+    netCfa: 10_000,
+    heldBps: 5_000, // 50%
+    kind: WalletLedgerKind.VOTE_CREDIT,
+    note: "test split"
+  });
+  const w = await wallet.getWallet(tenant.id);
+  assert.equal(w.heldCfa, 5_000);
+  assert.equal(w.withdrawableCfa, 5_000);
+});
+
+test("creditSplit avec heldBps=0 crédite tout en withdrawable", async () => {
+  const tenant = await prisma.client.tenant.create({
+    data: {
+      slug: `wal-split0-${Date.now().toString(36)}`,
+      displayName: "Wallet Split Zero"
+    }
+  });
+  await wallet.creditSplit({
+    tenantId: tenant.id,
+    netCfa: 7_000,
+    heldBps: 0,
+    kind: WalletLedgerKind.VOTE_CREDIT,
+    note: "test split zero held"
+  });
+  const w = await wallet.getWallet(tenant.id);
+  assert.equal(w.heldCfa, 0);
+  assert.equal(w.withdrawableCfa, 7_000);
 });

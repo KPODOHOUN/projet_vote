@@ -548,7 +548,7 @@ export class PaymentVerifyService {
               tenantId: tx.tenantId,
               amountCfa: net,
               kind: WalletLedgerKind.VOTE_CREDIT,
-              target: "pending",
+              target: "held",
               eventId: tx.eventId,
               paymentId: tx.id,
               note: "Crédit vote (escrow)"
@@ -564,7 +564,7 @@ export class PaymentVerifyService {
               tenantId: tx.tenantId,
               amountCfa: tx.amountCfa,
               kind: WalletLedgerKind.TOPUP_CREDIT,
-              target: "pending",
+              target: "held",
               eventId: tx.eventId,
               paymentId: tx.id,
               note: "Crédit top-up orga (escrow)"

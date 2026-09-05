@@ -192,14 +192,14 @@ export class OrganizerOffersService {
         );
       }
       const wallet = await this.wallet.getOrCreateWallet(user.tenantId);
-      if (wallet.availableCfa > 0) {
+      if (wallet.withdrawableCfa > 0) {
         throw new ConflictException(
-          `Solde disponible non nul (${wallet.availableCfa} FCFA). Videz le portefeuille avant de changer d'offre.`
+          `Solde disponible non nul (${wallet.withdrawableCfa} FCFA). Videz le portefeuille avant de changer d'offre.`
         );
       }
-      if (wallet.pendingCfa > 0) {
+      if (wallet.heldCfa > 0) {
         throw new ConflictException(
-          `Solde en attente non nul (${wallet.pendingCfa} FCFA). Clôturez les évènements concernés avant de changer d'offre.`
+          `Solde en attente non nul (${wallet.heldCfa} FCFA). Clôturez les évènements concernés avant de changer d'offre.`
         );
       }
       const pendingWithdrawal = await this.prisma.client.withdrawalRequest.count({

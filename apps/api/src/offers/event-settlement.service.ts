@@ -99,7 +99,7 @@ export class EventSettlementService {
                 tenantId: user.tenantId,
                 amountCfa: retentionCfa,
                 kind: WalletLedgerKind.RETENTION_DEBIT,
-                from: "pending",
+                from: "held",
                 eventId: event.id,
                 note: `Retenue plateforme ${settings.offer2RetentionBps} bps`
               },
@@ -108,7 +108,7 @@ export class EventSettlementService {
           }
 
           if (toRelease > 0) {
-            await this.wallet.releasePendingToAvailable(
+            await this.wallet.releaseHeldToWithdrawable(
               {
                 tenantId: user.tenantId,
                 amountCfa: toRelease,

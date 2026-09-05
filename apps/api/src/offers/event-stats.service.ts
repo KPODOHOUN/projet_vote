@@ -80,8 +80,8 @@ export class EventStatsService {
     let walletPendingCfa: number | null = null;
     if (event.tenant.offerType === TenantOfferType.ESCROW) {
       const w = await this.wallet.getOrCreateWallet(event.tenantId);
-      walletAvailableCfa = w.availableCfa;
-      walletPendingCfa = w.pendingCfa;
+      walletAvailableCfa = w.withdrawableCfa;
+      walletPendingCfa = w.heldCfa;
     }
 
     return {
