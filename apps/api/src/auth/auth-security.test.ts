@@ -118,9 +118,10 @@ test("l'OTP est stocké avec un pepper serveur, pas avec un SHA-256 devinable", 
     AuthOtpPurpose.EMAIL_VERIFICATION
   );
 
-  assert.ok(createdChallenge);
+  const storedHash = (createdChallenge as { codeHash: string } | null)?.codeHash;
+  assert.ok(storedHash);
   assert.notEqual(
-    createdChallenge.codeHash,
+    storedHash,
     createHash("sha256").update(result.code).digest("hex")
   );
 });

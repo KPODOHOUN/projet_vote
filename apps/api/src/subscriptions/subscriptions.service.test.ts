@@ -122,8 +122,16 @@ async function createPlanWithSubscription(input: {
   const expiresAt = new Date(now);
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  const plan = await prisma.plan.create({
-    data: {
+  const plan = await prisma.plan.upsert({
+    where: { slug: input.planSlug },
+    update: {
+      name: input.planName,
+      priceCfa: 5000,
+      maxEvents: input.maxEvents,
+      commissionRate: input.commissionRate ?? 1500,
+      isActive: true
+    },
+    create: {
       name: input.planName,
       slug: input.planSlug,
       priceCfa: 5000,
@@ -152,7 +160,7 @@ async function createPlanWithSubscription(input: {
 
 test("PlansService.getUsageStats retourne hasSubscription=false sans abonnement actif", async () => {
   const tenant = await prisma.tenant.create({
-    data: { slug: "usage-none", displayName: "Usage None" }
+    data: { slug: `usage-none-${Date.now()}`, displayName: "Usage None" }
   });
 
   const usage = await plansService.getUsageStats(tenant.id);
@@ -164,7 +172,7 @@ test("PlansService.getUsageStats retourne hasSubscription=false sans abonnement 
 
 test("PlansService.getUsageStats compte les événements et applique la limite du plan", async () => {
   const tenant = await prisma.tenant.create({
-    data: { slug: "usage-limited", displayName: "Usage Limited" }
+    data: { slug: `usage-limited-${Date.now()}`, displayName: "Usage Limited" }
   });
   await createPlanWithSubscription({
     tenantId: tenant.id,
@@ -177,7 +185,8 @@ test("PlansService.getUsageStats compte les événements et applique la limite d
   const startsAt = new Date();
   const endsAt = new Date(startsAt);
   endsAt.setDate(endsAt.getDate() + 7);
-  for (const slug of ["usage-ev-1", "usage-ev-2"]) {
+  const runId = Date.now();
+  for (const slug of [`usage-ev-1-${runId}`, `usage-ev-2-${runId}`]) {
     await prisma.event.create({
       data: {
         tenantId: tenant.id,
