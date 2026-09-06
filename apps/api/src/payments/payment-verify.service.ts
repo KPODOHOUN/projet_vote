@@ -482,8 +482,8 @@ export class PaymentVerifyService {
         select: { offerType: true }
       });
       if (tenant?.offerType === TenantOfferType.ESCROW) {
-        const settings = await this.offerSettings.getSettings();
-        return this.offerSettings.computeEscrowVoteCommissionCfa(settings, tx.amountCfa);
+        const bps = await this.offerSettings.resolveEscrowCommissionBps(tx.eventId);
+        return this.offerSettings.computeEscrowVoteCommissionCfaFromBps(tx.amountCfa, bps);
       }
       if (tenant?.offerType === TenantOfferType.EXTERNAL) {
         const settings = await this.offerSettings.getSettings();
@@ -501,8 +501,8 @@ export class PaymentVerifyService {
         return tx.amountCfa;
       }
       if (tenant?.offerType === TenantOfferType.ESCROW) {
-        const settings = await this.offerSettings.getSettings();
-        return this.offerSettings.computeEscrowVoteCommissionCfa(settings, tx.amountCfa);
+        const bps = await this.offerSettings.resolveEscrowCommissionBps(tx.eventId);
+        return this.offerSettings.computeEscrowVoteCommissionCfaFromBps(tx.amountCfa, bps);
       }
       return 0;
     }
@@ -510,7 +510,9 @@ export class PaymentVerifyService {
   }
 
   /**
-   * ESCROW: credit pending wallet (net for votes, full for topup).
+   * ESCROW: for votes, split the net amount between held (reserve) and
+   * withdrawable per the event's heldBps; for organizer top-ups, credit the
+   * full amount directly to withdrawable (it's the organizer's own money).
    * EXTERNAL: no wallet mutation. Regular votes were already split natively
    * by FedaPay; organizer top-ups contain only the platform commission.
    */
@@ -543,12 +545,16 @@ export class PaymentVerifyService {
       if (tx.purpose === PaymentPurpose.VOTE) {
         const net = Math.max(0, tx.amountCfa - commission);
         if (net > 0) {
-          await this.wallet.credit(
+          const event = await trx.event.findUnique({
+            where: { id: tx.eventId },
+            select: { heldBps: true }
+          });
+          await this.wallet.creditSplit(
             {
               tenantId: tx.tenantId,
-              amountCfa: net,
+              netCfa: net,
+              heldBps: event?.heldBps ?? 0,
               kind: WalletLedgerKind.VOTE_CREDIT,
-              target: "held",
               eventId: tx.eventId,
               paymentId: tx.id,
               note: "Crédit vote (escrow)"
@@ -557,14 +563,16 @@ export class PaymentVerifyService {
           );
         }
       } else {
-        // ORGANIZER_VOTE_TOPUP: full amount credited to pending wallet.
+        // ORGANIZER_VOTE_TOPUP: full amount credited directly to withdrawable
+        // (a top-up is the organizer's own money, not at-risk vote revenue —
+        // it does not go through the held reserve).
         if (tx.amountCfa > 0) {
           await this.wallet.credit(
             {
               tenantId: tx.tenantId,
               amountCfa: tx.amountCfa,
               kind: WalletLedgerKind.TOPUP_CREDIT,
-              target: "held",
+              target: "withdrawable",
               eventId: tx.eventId,
               paymentId: tx.id,
               note: "Crédit top-up orga (escrow)"
