@@ -52,8 +52,7 @@ export function AdminSidebar() {
           { href: "/admin", label: isEn ? "Overview" : "Vue d'ensemble", icon: LayoutDashboard },
           { href: "/admin/offers", label: isEn ? "Offers & pricing" : "Offres & tarifs", icon: Tags },
           { href: "/admin/offers/events", label: isEn ? "Active events" : "Événements actifs", icon: CalendarDays },
-          { href: "/admin/offers/withdrawals", label: isEn ? "Withdrawals" : "Retraits", icon: Banknote },
-          { href: "/admin/subscriptions", label: t("nav.subscriptions"), icon: IdCard }
+          { href: "/admin/offers/withdrawals", label: isEn ? "Withdrawals" : "Retraits", icon: Banknote }
         ]
       },
       {
@@ -77,6 +76,8 @@ export function AdminSidebar() {
         title: isEn ? "Legacy" : "Hérité",
         legacy: true,
         items: [
+          { href: "/admin/subscriptions", label: t("nav.subscriptions"), icon: IdCard },
+          { href: "/admin/plans", label: isEn ? "Legacy plans" : "Plans (legacy)", icon: IdCard },
           { href: "/admin/partners", label: isEn ? "Partners" : "Partenaires", icon: CreditCard },
           { href: "/admin/account-partners", label: isEn ? "Partner requests" : "Demandes partenaire", icon: Users },
           { href: "/admin/display-partners", label: isEn ? "Display partners" : "Partenaires affichage", icon: Tags },
