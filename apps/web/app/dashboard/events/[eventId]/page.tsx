@@ -58,8 +58,8 @@ type EventOfferStats = {
   topupVotesCount: number;
   platformCommissionCfa: number;
   organizerNetCfa: number;
-  walletAvailableCfa: number | null;
-  walletPendingCfa: number | null;
+  eventHeldCfa: number | null;
+  eventWithdrawableContributedCfa: number | null;
 };
 
 type TopupQuote = {
@@ -330,12 +330,20 @@ export default function EventOverviewPage() {
             </div>
             {offerStats.offerType === "ESCROW" ? (
               <div className="sm:col-span-2">
-                <p className="text-xs text-muted-foreground">{isEn ? "Wallet balance" : "Solde portefeuille"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {isEn ? "Contributed to withdrawable (lifetime)" : "Versé au solde retirable (cumulé)"}
+                </p>
                 <p className="text-lg font-bold">
-                  {formatCfa(offerStats.walletAvailableCfa ?? 0, isEn)}
+                  {formatCfa(offerStats.eventWithdrawableContributedCfa ?? 0, isEn)}
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({isEn ? "pending" : "en attente"} {formatCfa(offerStats.walletPendingCfa ?? 0, isEn)})
+                    ({isEn ? "still held for this event" : "encore en réserve pour cet event"}{" "}
+                    {formatCfa(offerStats.eventHeldCfa ?? 0, isEn)})
                   </span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {isEn
+                    ? "Withdrawals draw from your total wallet balance, shared across all your events — see Wallet."
+                    : "Les retraits puisent dans le solde total de votre portefeuille, partagé entre tous vos events — voir Portefeuille."}
                 </p>
               </div>
             ) : null}

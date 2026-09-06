@@ -27,8 +27,8 @@ type EventOfferStats = {
   topupVotesCount: number;
   platformCommissionCfa: number;
   organizerNetCfa: number;
-  walletAvailableCfa: number | null;
-  walletPendingCfa: number | null;
+  eventHeldCfa: number | null;
+  eventWithdrawableContributedCfa: number | null;
 };
 
 function formatCfa(amount: number, isEn: boolean) {
@@ -133,12 +133,16 @@ export default function AdminOfferEventDetailPage() {
               </Card>
               {stats.offerType === "ESCROW" ? (
                 <Card className="p-5">
-                  <p className="text-sm text-muted-foreground">{isEn ? "Wallet" : "Portefeuille"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {isEn ? "This event's contribution to wallet" : "Contribution de cet event au portefeuille"}
+                  </p>
                   <p className="mt-1 text-sm">
-                    {isEn ? "Available" : "Disponible"}: {formatCfa(stats.walletAvailableCfa ?? 0, isEn)}
+                    {isEn ? "Sent to withdrawable (lifetime)" : "Versé au retirable (cumulé)"}:{" "}
+                    {formatCfa(stats.eventWithdrawableContributedCfa ?? 0, isEn)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {isEn ? "Pending" : "En attente"}: {formatCfa(stats.walletPendingCfa ?? 0, isEn)}
+                    {isEn ? "Still held for this event" : "Encore en réserve pour cet event"}:{" "}
+                    {formatCfa(stats.eventHeldCfa ?? 0, isEn)}
                   </p>
                 </Card>
               ) : null}

@@ -109,6 +109,7 @@ export default function DashboardWalletPage() {
             <p className="text-sm text-muted-foreground">{t("dash.wallet.pending")}</p>
             <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.heldCfa, isEn)}</p>
           </Card>
+          <p className="sm:col-span-2 text-sm text-muted-foreground">{t("dash.wallet.aggregateNote")}</p>
         </div>
       ) : !isError ? (
         <EmptyState

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { PaymentPurpose, PaymentStatus, TenantOfferType } from "@prisma/client";
+import { PaymentPurpose, PaymentStatus, TenantOfferType, WalletLedgerKind } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "./wallet.service";
 
@@ -15,8 +15,19 @@ export type EventOfferStats = {
   topupVotesCount: number;
   platformCommissionCfa: number;
   organizerNetCfa: number;
-  walletAvailableCfa: number | null;
-  walletPendingCfa: number | null;
+  /**
+   * Réserve encore détenue pour CET event précisément (HELD_ALLOCATION − HELD_RELEASE
+   * de ses propres entrées de ledger) — exact, car ces deux écritures sont toujours
+   * rattachées à un eventId.
+   */
+  eventHeldCfa: number | null;
+  /**
+   * Montant total versé par CET event au solde retirable au fil de sa vie
+   * (VOTE_CREDIT + TOPUP_CREDIT + HELD_RELEASE de ses entrées). C'est une
+   * contribution cumulée, PAS un solde isolé : les retraits ne sont pas
+   * rattachés à un event et puisent dans le pool global du portefeuille.
+   */
+  eventWithdrawableContributedCfa: number | null;
 };
 
 @Injectable()
@@ -76,12 +87,23 @@ export class EventStatsService {
 
     const organizerNetCfa = Math.max(0, totalCollectedCfa - platformCommissionCfa);
 
-    let walletAvailableCfa: number | null = null;
-    let walletPendingCfa: number | null = null;
+    let eventHeldCfa: number | null = null;
+    let eventWithdrawableContributedCfa: number | null = null;
     if (event.tenant.offerType === TenantOfferType.ESCROW) {
-      const w = await this.wallet.getOrCreateWallet(event.tenantId);
-      walletAvailableCfa = w.withdrawableCfa;
-      walletPendingCfa = w.heldCfa;
+      const wallet = await this.wallet.getOrCreateWallet(event.tenantId);
+      const grouped = await this.prisma.client.walletLedgerEntry.groupBy({
+        by: ["kind"],
+        where: { walletId: wallet.id, eventId: event.id },
+        _sum: { amountCfa: true }
+      });
+      const sumOf = (kind: WalletLedgerKind) =>
+        grouped.find((g) => g.kind === kind)?._sum.amountCfa ?? 0;
+
+      const allocated = sumOf(WalletLedgerKind.HELD_ALLOCATION);
+      const released = sumOf(WalletLedgerKind.HELD_RELEASE);
+      eventHeldCfa = Math.max(0, allocated - released);
+      eventWithdrawableContributedCfa =
+        sumOf(WalletLedgerKind.VOTE_CREDIT) + sumOf(WalletLedgerKind.TOPUP_CREDIT) + released;
     }
 
     return {
@@ -96,8 +118,8 @@ export class EventStatsService {
       topupVotesCount,
       platformCommissionCfa,
       organizerNetCfa,
-      walletAvailableCfa,
-      walletPendingCfa
+      eventHeldCfa,
+      eventWithdrawableContributedCfa
     };
   }
 
