@@ -40,8 +40,8 @@ export class PayoutsController {
   }
 
   @Post(":id/resolve")
-  resolveUncertain(@Param("id") id: string, @Body() body: unknown) {
-    return this.payouts.resolveUncertain(id, body);
+  resolveUncertain(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body() body: unknown) {
+    return this.payouts.resolveUncertain(user, id, body);
   }
 }
 

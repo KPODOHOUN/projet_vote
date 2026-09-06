@@ -13,6 +13,7 @@ import {
   PayoutStatus
 } from "@prisma/client";
 import { z } from "zod";
+import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { isUniqueConstraintViolation } from "../common/prisma-errors";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -272,19 +273,39 @@ export class PayoutsService {
    * once — we never pin from this method directly (the lines aren't recomputed
    * here), keeping the one-revenue-one-payout invariant in a single code path.
    */
-  async resolveUncertain(id: string, payload: unknown) {
+  async resolveUncertain(user: AuthUser, id: string, payload: unknown) {
     const input = resolveSchema.parse(payload);
     const payout = await this.prisma.client.payout.findUnique({ where: { id } });
     if (!payout) throw new NotFoundException("Versement introuvable.");
     if (payout.status !== PayoutStatus.UNCERTAIN) {
       throw new BadRequestException("Seul un versement UNCERTAIN peut être résolu.");
     }
+    // Sans ceci, un versement jamais réellement envoyé pourrait être marqué
+    // SUCCEEDED sans qu'aucune trace n'indique qui l'a fait. Log contre le
+    // tenant bénéficiaire s'il existe (versement ORGANIZER), sinon contre le
+    // tenant de l'admin auteur (versement PLATFORM, cf. convention
+    // AdminService.addAdmin — les admins plateforme vivent sous le tenant
+    // sentinelle "shadoma-platform").
+    const auditTenantId = payout.beneficiaryTenantId ?? user.tenantId;
     if (input.resolution === "SUCCEEDED") {
       if (!input.providerRef) throw new BadRequestException("providerRef requis pour SUCCEEDED.");
-      await this.prisma.client.payout.update({
-        where: { id },
-        data: { status: PayoutStatus.SUCCEEDED, providerRef: input.providerRef, completedAt: new Date() }
-      });
+      await this.prisma.client.$transaction([
+        this.prisma.client.payout.update({
+          where: { id },
+          data: { status: PayoutStatus.SUCCEEDED, providerRef: input.providerRef, completedAt: new Date() }
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            tenantId: auditTenantId,
+            actorUserId: user.userId,
+            actorRole: user.role,
+            action: "payout.resolved_uncertain",
+            targetType: "Payout",
+            targetId: id,
+            metadata: { resolution: "SUCCEEDED", providerRef: input.providerRef, amountCfa: payout.amountCfa }
+          }
+        })
+      ]);
       if (payout.beneficiaryTenantId) {
         void this.notifications.create(payout.beneficiaryTenantId, "PAYOUT_SUCCEEDED", {
           payoutId: payout.id,
@@ -292,14 +313,27 @@ export class PayoutsService {
         });
       }
     } else {
-      await this.prisma.client.payout.update({
-        where: { id },
-        data: {
-          status: PayoutStatus.FAILED,
-          errorMessage: input.reason ?? "Résolu FAILED par admin",
-          completedAt: new Date()
-        }
-      });
+      await this.prisma.client.$transaction([
+        this.prisma.client.payout.update({
+          where: { id },
+          data: {
+            status: PayoutStatus.FAILED,
+            errorMessage: input.reason ?? "Résolu FAILED par admin",
+            completedAt: new Date()
+          }
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            tenantId: auditTenantId,
+            actorUserId: user.userId,
+            actorRole: user.role,
+            action: "payout.resolved_uncertain",
+            targetType: "Payout",
+            targetId: id,
+            metadata: { resolution: "FAILED", reason: input.reason ?? null, amountCfa: payout.amountCfa }
+          }
+        })
+      ]);
       if (payout.beneficiaryTenantId) {
         void this.notifications.create(payout.beneficiaryTenantId, "PAYOUT_FAILED", {
           payoutId: payout.id,

@@ -8,8 +8,10 @@ import {
   PaymentStatus,
   PayoutKind,
   PayoutPeriodStatus,
-  PayoutStatus
+  PayoutStatus,
+  UserRole
 } from "@prisma/client";
+import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { PayoutsService } from "./payouts.service";
 import { PayoutBalanceService } from "./payout-balance.service";
@@ -243,10 +245,32 @@ test("resolveUncertain SUCCEEDED exige un providerRef et marque SUCCEEDED", asyn
   await s.processPeriod(period.id);
   const uncertain = await prisma.payout.findFirstOrThrow({ where: { status: PayoutStatus.UNCERTAIN } });
 
-  await assert.rejects(s.resolveUncertain(uncertain.id, { resolution: "SUCCEEDED" }), /providerRef/i);
-  const ok = await s.resolveUncertain(uncertain.id, { resolution: "SUCCEEDED", providerRef: "manual-ref-1" });
+  // Le fallback tenantId de l'audit log (payout.beneficiaryTenantId ?? admin
+  // tenant) exige que admin.tenantId pointe vers un vrai tenant même quand le
+  // payout résolu est le PLATFORM kind (beneficiaryTenantId null).
+  const adminTenant = await prisma.tenant.create({
+    data: { slug: `admin-tenant-${Date.now().toString(36)}`, displayName: "Admin" }
+  });
+  const admin: AuthUser = {
+    userId: "platform-admin-resolve-1",
+    tenantId: adminTenant.id,
+    email: "admin@votezpro.africa",
+    role: UserRole.PLATFORM_ADMIN
+  };
+
+  await assert.rejects(s.resolveUncertain(admin, uncertain.id, { resolution: "SUCCEEDED" }), /providerRef/i);
+  const ok = await s.resolveUncertain(admin, uncertain.id, {
+    resolution: "SUCCEEDED",
+    providerRef: "manual-ref-1"
+  });
   assert.equal(ok.status, "SUCCEEDED");
   const after = await prisma.payout.findUniqueOrThrow({ where: { id: uncertain.id } });
   assert.equal(after.status, PayoutStatus.SUCCEEDED);
   assert.equal(after.providerRef, "manual-ref-1");
+
+  const audit = await prisma.auditLog.findFirst({
+    where: { action: "payout.resolved_uncertain", targetId: uncertain.id }
+  });
+  assert.ok(audit, "attendu une entrée AuditLog pour la résolution du payout");
+  assert.equal(audit?.actorUserId, admin.userId);
 });
