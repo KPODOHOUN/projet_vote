@@ -6,13 +6,21 @@ import { WalletService } from "./wallet.service";
 import { OfferSettingsService } from "./offer-settings.service";
 import { EventStatsService } from "./event-stats.service";
 import { EventSettlementService } from "./event-settlement.service";
+import { PayoutJobLockService } from "../payouts/payout-job-lock.service";
 import { OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY } from "../common/platform-settings";
 
 const prisma = new PrismaService();
 const wallet = new WalletService(prisma);
 const offerSettings = new OfferSettingsService(prisma);
 const eventStats = new EventStatsService(prisma, wallet);
-const settlement = new EventSettlementService(prisma, wallet, offerSettings, eventStats);
+const jobLock = new PayoutJobLockService(prisma);
+const settlement = new EventSettlementService(
+  prisma,
+  wallet,
+  offerSettings,
+  eventStats,
+  jobLock
+);
 
 test("closeEvent: n'applique PAS la retenue 5% quand la commission par vote est active", async () => {
   await prisma.client.platformSetting.upsert({

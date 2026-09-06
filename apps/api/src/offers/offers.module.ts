@@ -8,6 +8,7 @@ import { OfferSettingsService } from "./offer-settings.service";
 import { OrganizerOffersController } from "./organizer-offers.controller";
 import { OrganizerOffersService } from "./organizer-offers.service";
 import { OffersCronController } from "./offers-cron.controller";
+import { PayoutJobLockService } from "../payouts/payout-job-lock.service";
 import { WalletService } from "./wallet.service";
 import { WithdrawalsService } from "./withdrawals.service";
 
@@ -21,7 +22,10 @@ import { WithdrawalsService } from "./withdrawals.service";
     EventStatsService,
     EventSettlementService,
     OrganizerOffersService,
-    CommissionOverrideService
+    CommissionOverrideService,
+    // Mutex persistant réutilisé par EventSettlementService.releaseMaturedHeld
+    // (ne dépend que de PrismaService — pas besoin d'importer PayoutsModule).
+    PayoutJobLockService
   ],
   exports: [OfferSettingsService, WalletService, EventStatsService, EventSettlementService]
 })

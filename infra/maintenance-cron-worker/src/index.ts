@@ -10,6 +10,7 @@ interface Env {
   RECONCILE_EXPIRE_AFTER_MINUTES?: string;
   RECONCILE_LIMIT?: string;
   CLOSE_EXPIRED_EVENTS_LIMIT?: string;
+  RELEASE_HELD_LIMIT?: string;
 }
 
 function stableStringify(value: unknown): string {
@@ -104,6 +105,19 @@ export default {
     };
     ctx.waitUntil(
       signedPost(env, "/api/v1/offers/cron/close-expired", closeExpiredPayload)
+    );
+
+    // Escrow held → withdrawable release (every tick): frees the reserve of
+    // events closed more than `held_release_delay_hours` ago (48h by default).
+    // Unlike close-expired there is no per-event atomic claim here — the API
+    // serialises overlapping runs behind a distributed job lock instead, so a
+    // second tick (or a replayed signed request inside the skew window) no-ops.
+    const releaseHeldPayload = {
+      limit: parseRetention(env.RELEASE_HELD_LIMIT, 100),
+      runAtIso
+    };
+    ctx.waitUntil(
+      signedPost(env, "/api/v1/offers/cron/release-held", releaseHeldPayload)
     );
 
     // Retention purge only on the daily schedule.

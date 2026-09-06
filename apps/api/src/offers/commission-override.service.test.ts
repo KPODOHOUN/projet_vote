@@ -73,7 +73,9 @@ test("setEventCommission: un super-admin peut sortir de la fourchette 4-12%, et 
     where: { targetType: "Event", targetId: event.id, action: "commission.override_event" }
   });
   assert.equal(audits.length, 1);
-  assert.equal((audits[0].metadata as { newBps: number }).newBps, 300);
+  const audit = audits[0];
+  assert.ok(audit);
+  assert.equal((audit.metadata as { newBps: number }).newBps, 300);
 });
 
 test("setEventCommission: rejette un event déjà activé (gel total)", async () => {

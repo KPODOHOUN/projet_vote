@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException
 } from "@nestjs/common";
 import {
@@ -9,8 +10,10 @@ import {
   UserRole,
   WalletLedgerKind
 } from "@prisma/client";
+import { createHash } from "crypto";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { PayoutJobLockService } from "../payouts/payout-job-lock.service";
 import { OfferSettingsService } from "./offer-settings.service";
 import { EventStatsService } from "./event-stats.service";
 import { WalletService } from "./wallet.service";
@@ -20,13 +23,19 @@ import {
   parseIntSetting
 } from "../common/platform-settings";
 
+const RELEASE_HELD_LOCK_NAME = "settlement-release-held";
+const RELEASE_HELD_LOCK_TTL_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class EventSettlementService {
+  private readonly logger = new Logger(EventSettlementService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly wallet: WalletService,
     private readonly offerSettings: OfferSettingsService,
-    private readonly eventStats: EventStatsService
+    private readonly eventStats: EventStatsService,
+    private readonly jobLock: PayoutJobLockService
   ) {}
 
   /**
@@ -220,8 +229,44 @@ export class EventSettlementService {
    * Ne touche jamais un event dont le held a déjà été entièrement libéré :
    * on somme les entrées HELD_ALLOCATION vs HELD_RELEASE déjà écrites pour cet
    * event et on ne libère que le reliquat.
+   *
+   * Contrairement à closeEvent, il n'y a pas de claim atomique par event ici :
+   * le reliquat est calculé à partir du ledger puis libéré, ce qui n'est sûr
+   * que si une seule exécution tourne à la fois. Deux ticks cron qui se
+   * chevauchent (ou un rejeu signé dans la fenêtre de skew) liraient le même
+   * état et libéreraient deux fois. On sérialise donc via le mutex persistant
+   * PayoutJobLockService (même patron que PayoutsService.processPeriod) :
+   * une seconde exécution concurrente ne fait rien au lieu de doubler.
    */
   async releaseMaturedHeld(limit = 100): Promise<{
+    selected: number;
+    released: number;
+    skipped: number;
+    failed: number;
+    failures: Array<{ eventId: string; reason: string }>;
+  }> {
+    const owner = `pid-${process.pid}-${createHash("sha256")
+      .update(`${process.hrtime.bigint()}`)
+      .digest("hex")
+      .slice(0, 12)}`;
+    const got = await this.jobLock.acquire(
+      RELEASE_HELD_LOCK_NAME,
+      owner,
+      RELEASE_HELD_LOCK_TTL_MS
+    );
+    if (!got) {
+      this.logger.warn("releaseMaturedHeld: lock occupé, exécution ignorée");
+      return { selected: 0, released: 0, skipped: 0, failed: 0, failures: [] };
+    }
+
+    try {
+      return await this.runReleaseMaturedHeld(limit);
+    } finally {
+      await this.jobLock.release(RELEASE_HELD_LOCK_NAME, owner);
+    }
+  }
+
+  private async runReleaseMaturedHeld(limit: number): Promise<{
     selected: number;
     released: number;
     skipped: number;

@@ -278,7 +278,11 @@ export class OrganizerOffersService {
       };
     }
 
-    // ESCROW: full amount
+    // ESCROW: full amount. La commission affichée doit être celle qui sera
+    // réellement prélevée par payment-verify (event override → tenant override
+    // → taux plateforme), sinon le devis diverge du débit dès qu'un admin pose
+    // une surcharge.
+    const escrowCommissionBps = await this.offerSettings.resolveEscrowCommissionBps(event.id);
     return {
       votesCount,
       unitPriceCfa: unitPrice,
@@ -288,9 +292,9 @@ export class OrganizerOffersService {
       breakdown: {
         description:
           "Offre Escrow : le montant total (votes × prix) est encaissé puis crédité sur votre portefeuille.",
-        platformCommissionCfa: this.offerSettings.computeEscrowVoteCommissionCfa(
-          settings,
-          grossCfa
+        platformCommissionCfa: this.offerSettings.computeEscrowVoteCommissionCfaFromBps(
+          grossCfa,
+          escrowCommissionBps
         )
       }
     };
