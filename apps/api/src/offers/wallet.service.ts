@@ -186,24 +186,31 @@ export class WalletService {
     }
     const run = async (db: Prisma.TransactionClient) => {
       const wallet = await this.getOrCreateWallet(input.tenantId, db);
-      if (input.from === "withdrawable" && wallet.withdrawableCfa < input.amountCfa) {
-        throw new ConflictException(
-          `Solde disponible insuffisant (${wallet.withdrawableCfa} FCFA) pour débiter ${input.amountCfa} FCFA.`
-        );
-      }
-      if (input.from === "held" && wallet.heldCfa < input.amountCfa) {
-        throw new ConflictException(
-          `Solde en réserve insuffisant (${wallet.heldCfa} FCFA) pour débiter ${input.amountCfa} FCFA.`
-        );
-      }
-      const data =
+
+      // CAS (compare-and-swap): the WHERE re-asserts a sufficient balance at
+      // write time, not just at the read above — closes a TOCTOU race where
+      // two concurrent debits (e.g. two withdrawal requests) both pass the
+      // plain read-then-check and both decrement, driving the balance
+      // negative. Same pattern as the atomic `updateMany` claim already used
+      // for event closure (EventSettlementService.closeEvent).
+      const claim =
         input.from === "held"
-          ? { heldCfa: { decrement: input.amountCfa } }
-          : { withdrawableCfa: { decrement: input.amountCfa } };
-      const updated = await db.organizerWallet.update({
-        where: { id: wallet.id },
-        data
-      });
+          ? await db.organizerWallet.updateMany({
+              where: { id: wallet.id, heldCfa: { gte: input.amountCfa } },
+              data: { heldCfa: { decrement: input.amountCfa } }
+            })
+          : await db.organizerWallet.updateMany({
+              where: { id: wallet.id, withdrawableCfa: { gte: input.amountCfa } },
+              data: { withdrawableCfa: { decrement: input.amountCfa } }
+            });
+      if (claim.count === 0) {
+        const balance = input.from === "held" ? wallet.heldCfa : wallet.withdrawableCfa;
+        const label = input.from === "held" ? "en réserve" : "disponible";
+        throw new ConflictException(
+          `Solde ${label} insuffisant (${balance} FCFA) pour débiter ${input.amountCfa} FCFA.`
+        );
+      }
+      const updated = await db.organizerWallet.findUniqueOrThrow({ where: { id: wallet.id } });
       const entry = await db.walletLedgerEntry.create({
         data: {
           walletId: wallet.id,
@@ -239,18 +246,21 @@ export class WalletService {
     }
     const run = async (db: Prisma.TransactionClient) => {
       const wallet = await this.getOrCreateWallet(args.tenantId, db);
-      if (wallet.heldCfa < args.amountCfa) {
-        throw new ConflictException(
-          `Impossible de libérer ${args.amountCfa} FCFA : solde en réserve insuffisant (${wallet.heldCfa} FCFA).`
-        );
-      }
-      const updated = await db.organizerWallet.update({
-        where: { id: wallet.id },
+      // Same CAS pattern as debit(): re-assert the held balance at write
+      // time, not just at the read above.
+      const claim = await db.organizerWallet.updateMany({
+        where: { id: wallet.id, heldCfa: { gte: args.amountCfa } },
         data: {
           heldCfa: { decrement: args.amountCfa },
           withdrawableCfa: { increment: args.amountCfa }
         }
       });
+      if (claim.count === 0) {
+        throw new ConflictException(
+          `Impossible de libérer ${args.amountCfa} FCFA : solde en réserve insuffisant (${wallet.heldCfa} FCFA).`
+        );
+      }
+      const updated = await db.organizerWallet.findUniqueOrThrow({ where: { id: wallet.id } });
       const entry = await db.walletLedgerEntry.create({
         data: {
           walletId: wallet.id,
