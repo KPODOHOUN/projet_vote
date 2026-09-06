@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Shield, LogOut } from "lucide-react";
-import { useI18n } from "../lib/i18n-provider";
+import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
 import { useAuth } from "../lib/auth-context";
 import { apiFetch } from "../lib/api";
 import { clearAuthStorage } from "../lib/auth";
@@ -38,6 +38,7 @@ export function AdminHeader() {
       </div>
 
       <div className="flex items-center gap-3">
+        <LanguageSwitcher />
         {user ? (
           <span className="hidden max-w-[240px] truncate text-sm font-medium text-foreground md:inline">{user.email}</span>
         ) : null}

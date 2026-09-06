@@ -91,7 +91,7 @@ export default function SubscribePage() {
           stopPolling();
           setPhase("success");
           setTimeout(() => {
-            router.push("/dashboard/subscription");
+            router.push("/dashboard/offer");
           }, 3000);
         } else if (res.status === "FAILED" || res.status === "VOIDED") {
           stopPolling();
@@ -154,7 +154,7 @@ export default function SubscribePage() {
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       <div className="flex items-center gap-2">
-        <Link href="/dashboard/subscription" className="text-muted-foreground hover:text-foreground transition-colors">
+        <Link href="/dashboard/offer" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>

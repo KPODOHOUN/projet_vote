@@ -1,13 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { authLoginUrl } from "@/lib/auth-navigation";
-import { authedFetch, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
+import {
+  useWalletQuery,
+  useWithdrawalsQuery,
+  useWithdrawalMutation
+} from "@/lib/hooks/use-wallet";
 import {
   Button,
   Card,
@@ -16,30 +21,6 @@ import {
   LoadingState,
   StatusChip
 } from "@/components/ui";
-import { GlassCard } from "@/components/glass-card";
-
-type WalletResponse = {
-  id: string;
-  tenantId: string;
-  availableCfa: number;
-  pendingCfa: number;
-  updatedAt: string;
-  recentEntries: Array<{
-    id: string;
-    kind: string;
-    amountCfa: number;
-    createdAt: string;
-    note: string | null;
-  }>;
-};
-
-type Withdrawal = {
-  id: string;
-  amountCfa: number;
-  status: string;
-  createdAt: string;
-  rejectReason: string | null;
-};
 
 function formatCfa(amount: number, isEn: boolean) {
   return new Intl.NumberFormat(isEn ? "en-GB" : "fr-FR", {
@@ -51,124 +32,99 @@ function formatCfa(amount: number, isEn: boolean) {
 
 export default function DashboardWalletPage() {
   const router = useRouter();
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
-  const [wallet, setWallet] = useState<WalletResponse | null>(null);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
-  const [amount, setAmount] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const load = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) {
-      router.push(authLoginUrl());
-      return;
-    }
-    const [w, list] = await Promise.all([
-      authedFetch<WalletResponse>("/organizer/wallet"),
-      authedFetch<Withdrawal[]>("/organizer/withdrawals")
-    ]);
-    setWallet(w);
-    setWithdrawals(list);
-  }, [router]);
+  const [hasToken] = useState(() => Boolean(getStoredToken()));
 
   useEffect(() => {
-    setIsLoading(true);
-    setError("");
-    void load()
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Erreur"))
-      .finally(() => setIsLoading(false));
-  }, [load]);
+    if (!hasToken) {
+      router.push(authLoginUrl());
+    }
+  }, [hasToken, router]);
+
+  const walletQuery = useWalletQuery(hasToken);
+  const withdrawalsQuery = useWithdrawalsQuery(hasToken);
+  const withdrawalMutation = useWithdrawalMutation();
+
+  const [amount, setAmount] = useState("");
+
+  const isLoading = walletQuery.isPending || withdrawalsQuery.isPending;
+  const isError = walletQuery.isError || withdrawalsQuery.isError;
+  const wallet = walletQuery.data;
+  const withdrawals = withdrawalsQuery.data ?? [];
 
   const onWithdraw = async (event: FormEvent) => {
     event.preventDefault();
     const amountCfa = Number.parseInt(amount, 10);
     if (!Number.isInteger(amountCfa) || amountCfa <= 0) {
-      showToast.error(isEn ? "Enter a valid amount." : "Saisissez un montant valide.");
+      showToast.error(t("dash.wallet.invalidAmount"));
       return;
     }
-    setIsSubmitting(true);
     try {
-      await authedFetch("/organizer/withdrawals", {
-        method: "POST",
-        body: JSON.stringify({ amountCfa })
-      });
-      showToast.success(isEn ? "Withdrawal requested." : "Retrait demandé.");
+      await withdrawalMutation.mutateAsync(amountCfa);
+      showToast.success(t("dash.wallet.requestedSuccess"));
       setAmount("");
-      await load();
     } catch (caught) {
       showToast.error(
         caught instanceof ApiError
           ? caught.message
           : caught instanceof Error
             ? caught.message
-            : isEn
-              ? "Request failed."
-              : "Demande impossible."
+            : t("dash.wallet.requestFailed")
       );
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   if (isLoading) {
-    return <LoadingState variant="rows" count={4} label={isEn ? "Loading wallet…" : "Chargement du portefeuille…"} />;
+    return <LoadingState variant="rows" count={4} label={t("dash.wallet.loading")} />;
   }
 
   return (
     <div className="space-y-8">
       <header className="space-y-2 border-b border-border/50 pb-6">
         <span className="text-sm font-bold uppercase tracking-widest text-primary">
-          {isEn ? "Escrow" : "Escrow"}
+          {t("dash.wallet.kicker")}
         </span>
         <h1 className="text-3xl font-extrabold tracking-tight">
-          {isEn ? "Wallet" : "Portefeuille"}
+          {t("dash.wallet.title")}
         </h1>
         <p className="max-w-2xl text-muted-foreground">
-          {isEn
-            ? "Available balance from confirmed escrow payments. Request a withdrawal for admin approval."
-            : "Solde disponible issu des paiements escrow confirmés. Demandez un retrait pour validation admin."}
+          {t("dash.wallet.subtitle")}
         </p>
       </header>
 
-      {error ? (
+      {isError ? (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive" role="alert">
-          {error}
+          {walletQuery.error instanceof Error ? walletQuery.error.message : t("dash.wallet.requestFailed")}
         </div>
       ) : null}
 
       {wallet ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          <GlassCard intensity="subtle" className="p-6">
-            <p className="text-sm text-muted-foreground">{isEn ? "Available" : "Disponible"}</p>
+          <Card className="p-6">
+            <p className="text-sm text-muted-foreground">{t("dash.wallet.available")}</p>
             <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.availableCfa, isEn)}</p>
-          </GlassCard>
-          <GlassCard intensity="subtle" className="p-6">
-            <p className="text-sm text-muted-foreground">{isEn ? "Pending (events not closed)" : "En attente (événements non clôturés)"}</p>
+          </Card>
+          <Card className="p-6">
+            <p className="text-sm text-muted-foreground">{t("dash.wallet.pending")}</p>
             <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.pendingCfa, isEn)}</p>
-          </GlassCard>
+          </Card>
         </div>
-      ) : !error ? (
+      ) : !isError ? (
         <EmptyState
-          title={isEn ? "No wallet" : "Pas de portefeuille"}
-          description={
-            isEn
-              ? "Wallet is available for the Escrow offer."
-              : "Le portefeuille est disponible pour l'offre Escrow."
-          }
+          title={t("dash.wallet.noWalletTitle")}
+          description={t("dash.wallet.noWalletDesc")}
         />
       ) : null}
 
       {wallet ? (
         <Card className="space-y-4 p-6">
-          <h2 className="text-lg font-bold">{isEn ? "Request withdrawal" : "Demander un retrait"}</h2>
+          <h2 className="text-lg font-bold">{t("dash.wallet.requestTitle")}</h2>
           <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onWithdraw}>
             <div className="flex-1">
               <Input
                 id="amount"
-                label={isEn ? "Amount (CFA)" : "Montant (FCFA)"}
+                label={t("dash.wallet.amountLabel")}
                 type="number"
                 min={1}
                 max={wallet.availableCfa}
@@ -177,19 +133,19 @@ export default function DashboardWalletPage() {
                 required
               />
             </div>
-            <Button type="submit" loading={isSubmitting} disabled={wallet.availableCfa <= 0}>
-              {isEn ? "Withdraw" : "Retirer"}
+            <Button type="submit" loading={withdrawalMutation.isPending} disabled={wallet.availableCfa <= 0}>
+              {t("dash.wallet.withdrawButton")}
             </Button>
           </form>
         </Card>
       ) : null}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-bold">{isEn ? "Withdrawal history" : "Historique des retraits"}</h2>
+        <h2 className="text-lg font-bold">{t("dash.wallet.historyTitle")}</h2>
         {withdrawals.length === 0 ? (
           <EmptyState
-            title={isEn ? "No withdrawals yet" : "Aucun retrait"}
-            description={isEn ? "Your requests will appear here." : "Vos demandes apparaîtront ici."}
+            title={t("dash.wallet.noWithdrawalsTitle")}
+            description={t("dash.wallet.noWithdrawalsDesc")}
           />
         ) : (
           <ul className="space-y-3">
@@ -216,7 +172,7 @@ export default function DashboardWalletPage() {
 
       {wallet && wallet.recentEntries.length > 0 ? (
         <section className="space-y-4">
-          <h2 className="text-lg font-bold">{isEn ? "Recent ledger" : "Journal récent"}</h2>
+          <h2 className="text-lg font-bold">{t("dash.wallet.ledgerTitle")}</h2>
           <ul className="divide-y divide-border rounded-xl border border-border">
             {wallet.recentEntries.map((entry) => (
               <li key={entry.id} className="flex items-center justify-between px-4 py-3 text-sm">

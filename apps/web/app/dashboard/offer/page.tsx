@@ -1,101 +1,123 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { authedFetch } from "@/lib/api";
+
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { getStoredToken } from "@/lib/auth";
-import { Button, Card, LoadingState } from "@/components/ui";
+import { useI18n } from "@/lib/i18n-provider";
+import { useOrganizerOffer } from "@/lib/hooks/use-organizer-offer";
+import { useSubscriptionUsage } from "@/lib/hooks/use-subscription";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  FormError,
+  LoadingState,
+} from "@/components/ui";
 
-type OfferResponse = {
-  offerType: "EXTERNAL" | "ESCROW";
-  provider: "FEDAPAY" | "FEEXPAY" | "KKIAPAY" | null;
-  fedapaySubAccount: {
-    reference: string | null;
-    submittedAt: string | null;
-    verifiedAt: string | null;
-    ready: boolean;
-  };
-};
+function formatCommissionRate(bps: number | undefined): string {
+  if (bps == null) return "—";
+  return `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
+}
 
 export default function OrganizerOfferPage() {
   const router = useRouter();
-  const [offer, setOffer] = useState<OfferResponse | null>(null);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    if (!getStoredToken()) {
-      router.push(authLoginUrl());
-      return;
-    }
-    const response = await authedFetch<OfferResponse>("/organizer/offer");
-    setOffer(response);
-  }, [router]);
+  const { t } = useI18n();
+  const [hasToken] = useState(() => Boolean(getStoredToken()));
 
   useEffect(() => {
-    setIsLoading(true);
-    void load()
-      .catch((caught) =>
-        setError(caught instanceof Error ? caught.message : "Chargement impossible.")
-      )
-      .finally(() => setIsLoading(false));
-  }, [load]);
+    if (!hasToken) router.push(authLoginUrl());
+  }, [hasToken, router]);
 
-  if (isLoading) {
-    return <LoadingState label="Chargement de votre offre…" />;
+  const offerQuery = useOrganizerOffer(hasToken);
+  const usageQuery = useSubscriptionUsage(hasToken);
+  const offer = offerQuery.data;
+  const usage = usageQuery.data;
+
+  if (offerQuery.isPending) {
+    return <LoadingState label={t("offer.loading")} />;
   }
+
+  const offerError =
+    offerQuery.isError
+      ? offerQuery.error instanceof Error && offerQuery.error.message
+        ? offerQuery.error.message
+        : t("offer.loadError")
+      : "";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-primary">Paiements</p>
-        <h1 className="text-3xl font-extrabold tracking-tight">Mon offre</h1>
+        <p className="text-sm font-semibold uppercase tracking-wide text-primary">{t("offer.kicker")}</p>
+        <h1 className="text-3xl font-extrabold tracking-tight">{t("offer.title")}</h1>
         <p className="mt-2 text-muted-foreground">
-          Offre active : <strong>{offer?.offerType ?? "Indisponible"}</strong>
+          {t("offer.activeLabel", { type: offer?.offerType ?? t("offer.unavailable") })}
         </p>
       </div>
 
-      {error ? (
-        <Card className="border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert">
-          {error}
-        </Card>
-      ) : null}
+      <FormError>{offerError}</FormError>
 
       {offer?.offerType === "EXTERNAL" ? (
-        <Card className="space-y-4 border-[var(--color-warning)]/30 bg-amber-500/5 p-6">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-amber-700">En réflexion</p>
-            <h2 className="mt-1 text-xl font-bold">Offre External indisponible</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Pendant la phase de test, seule l&apos;offre Escrow est opérationnelle.
-              L&apos;offre External reste en réflexion. Contactez le support pour basculer
-              vers Escrow si besoin.
+        <Card className="border-[var(--color-warning)]/30 bg-amber-500/5">
+          <CardHeader>
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+              {t("offer.externalKicker")}
             </p>
-          </div>
+            <CardTitle className="text-xl font-bold">{t("offer.externalTitle")}</CardTitle>
+            <CardDescription>{t("offer.externalDesc")}</CardDescription>
+          </CardHeader>
           {offer.fedapaySubAccount.reference ? (
-            <p className="text-sm text-muted-foreground">
-              Référence FedaPay enregistrée : <code>{offer.fedapaySubAccount.reference}</code>
-            </p>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                {t("offer.fedapayRef")} <code>{offer.fedapaySubAccount.reference}</code>
+              </p>
+            </CardContent>
           ) : null}
         </Card>
       ) : (
-        <Card className="space-y-4 p-6">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">Offre active</p>
-            <h2 className="mt-1 text-xl font-bold">Encaissement plateforme (Escrow)</h2>
-            <p className="mt-2 text-muted-foreground">
-              Les paiements confirmés alimentent votre portefeuille. À la clôture, la
-              plateforme applique la retenue, puis vous demandez un retrait validé par
-              l&apos;administration. En phase de test, les paiements sont en mode démo
-              (aucun débit Mobile Money réel).
+        <Card>
+          <CardHeader>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">
+              {t("offer.escrowKicker")}
             </p>
-          </div>
-          <Button type="button" onClick={() => router.push("/dashboard/wallet")}>
-            Ouvrir mon portefeuille
-          </Button>
+            <CardTitle className="text-xl font-bold">{t("offer.escrowTitle")}</CardTitle>
+            <CardDescription>{t("offer.escrowDesc")}</CardDescription>
+          </CardHeader>
+          {offer?.offerType === "ESCROW" ? (
+            <CardContent>
+              <Button asChild>
+                <Link href="/dashboard/wallet">{t("offer.openWallet")}</Link>
+              </Button>
+            </CardContent>
+          ) : null}
         </Card>
       )}
+
+      {usage?.hasSubscription ? (
+        <Card>
+          <CardHeader>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("offer.planActiveTitle")}
+            </p>
+            <CardTitle className="text-2xl font-black tracking-tight">
+              {usage.planName ?? "—"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+            {usage.daysRemaining != null ? (
+              <span>{t("offer.expiresIn", { days: usage.daysRemaining })}</span>
+            ) : null}
+            {usage.commissionRate != null ? (
+              <span>{t("offer.commission", { rate: formatCommissionRate(usage.commissionRate) })}</span>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

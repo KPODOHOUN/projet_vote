@@ -14,7 +14,6 @@ import {
   Bell,
   Shield,
   CreditCard,
-  IdCard,
   Rocket,
   Ticket,
   Search,
@@ -56,7 +55,6 @@ export function DashboardSidebar() {
       { href: "/dashboard/search", label: t("nav.search"), icon: Search },
       { href: "/dashboard/wallet", label: t("nav.wallet"), icon: Wallet },
       { href: "/dashboard/offer", label: t("nav.offer"), icon: CreditCard },
-      { href: "/dashboard/subscription", label: t("nav.subscription"), icon: IdCard },
       { href: "/dashboard/team", label: t("nav.team"), icon: UserPlus },
       { href: "/dashboard/notifications", label: t("nav.notifications"), icon: Bell },
       { href: "/dashboard/account", label: t("nav.account"), icon: CircleUser }

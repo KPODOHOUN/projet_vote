@@ -4,71 +4,51 @@ import type { ReactNode } from "react";
 import { AuthProvider } from "../../lib/auth-context";
 import { DashboardSidebar } from "../../components/dashboard-sidebar";
 import { DashboardHeader } from "../../components/dashboard-header";
-import { useEffect, useState } from "react";
-import { apiFetch } from "../../lib/api";
-import { getStoredToken } from "../../lib/auth";
+import { useOrganizerOffer } from "../../lib/hooks/use-organizer-offer";
+import { useSubscriptionUsage } from "../../lib/hooks/use-subscription";
+import { useI18n } from "../../lib/i18n-provider";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 
-type SubscriptionMeResponse = {
-  current: {
-    planType: "STANDARD" | "PARTNER";
-    expiresAt: string;
-  } | null;
-  progress: {
-    daysRemaining: number;
-  } | null;
-};
+function ExpiryWarningBanner({ days }: { days: number }) {
+  const { t } = useI18n();
+  return (
+    <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2.5 text-center text-sm text-[var(--color-warning-text)] flex items-center justify-center gap-2 font-medium">
+      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <span>{t("dash.banner.subExpiring", { days })}</span>
+      <Link href="/dashboard/offer" className="underline font-bold hover:opacity-80 ml-1">
+        {t("dash.banner.manageOffer")}
+      </Link>
+    </div>
+  );
+}
 
 function SubscriptionBanner() {
-  const [data, setData] = useState<SubscriptionMeResponse | null>(null);
+  const offerQuery = useOrganizerOffer(true);
+  const usageQuery = useSubscriptionUsage(true);
+  if (offerQuery.isPending || usageQuery.isPending) return null;
 
-  useEffect(() => {
-    const token = getStoredToken();
-    if (!token) return;
-    apiFetch<SubscriptionMeResponse>("/subscriptions/me", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(setData)
-      .catch(err => console.error("Failed to load subscription info for banner:", err));
-  }, []);
+  const offerType = offerQuery.data?.offerType;
+  const days = usageQuery.data?.daysRemaining;
+  const expiryBanner =
+    usageQuery.data?.hasSubscription && days != null && days <= 7 ? (
+      <ExpiryWarningBanner days={days} />
+    ) : null;
 
-  if (!data) return null;
-
-  const { current, progress } = data;
-
-  if (!current) {
-    return (
-      <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2.5 text-center text-sm text-destructive flex items-center justify-center gap-2 font-medium">
-        <AlertTriangle className="w-4 h-4 shrink-0" />
-        <span>Aucun abonnement actif. Vous ne pouvez plus créer de concours ou recevoir des votes.</span>
-        <Link href="/dashboard/subscription" className="underline font-bold hover:opacity-80 ml-1">
-          Souscrire un plan
-        </Link>
-      </div>
-    );
+  if (offerType === "ESCROW") {
+    return expiryBanner;
   }
 
-  if (progress && progress.daysRemaining <= 7) {
-    return (
-      <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2.5 text-center text-sm text-[var(--color-warning-text)] flex items-center justify-center gap-2 font-medium">
-        <AlertTriangle className="w-4 h-4 shrink-0" />
-        <span>Votre abonnement expire dans {progress.daysRemaining} jour(s). Pensez à le renouveler.</span>
-        <Link href="/dashboard/subscription" className="underline font-bold hover:opacity-80 ml-1">
-          Gérer mon offre
-        </Link>
-      </div>
-    );
-  }
-
-  return null;
+  // EXTERNAL ou inconnu : pas de bandeau destructive (le gate API n'est plus l'abonnement).
+  return expiryBanner;
 }
 
 function DemoModeBanner() {
+  const { t } = useI18n();
   if (process.env.NODE_ENV !== "development") return null;
   return (
     <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-center text-sm text-[var(--color-warning-text)]">
-      Mode démo actif — les paiements sont confirmés automatiquement (sans Mobile Money réel).
+      {t("dash.banner.demoMode")}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Bot, LoaderCircle, MessageCircle, Send, X } from "lucide-react";
@@ -12,6 +13,22 @@ type ChatMessage = {
 
 const welcomeMessage =
   "Bonjour ! Je suis l’assistant SHADOMA Votes. Je peux vous aider à créer un événement, voter, comprendre un paiement ou utiliser la plateforme. Que souhaitez-vous savoir ?";
+
+const CHAT_EXACT_PATHS = new Set(["/", "/pricing", "/vote", "/legal", "/privacy", "/terms", "/cookies"]);
+
+/** Routes publiques où l’assistant IA est affiché (hors dashboard, admin, auth). */
+export function isChatWidgetRoute(pathname: string): boolean {
+  if (CHAT_EXACT_PATHS.has(pathname)) return true;
+  if (pathname.startsWith("/e/") || pathname.startsWith("/vote/")) return true;
+  return false;
+}
+
+/** Gate pathname : n’instancie le widget que sur les parcours publics. */
+export function ChatWidgetGate() {
+  const pathname = usePathname() ?? "";
+  if (!isChatWidgetRoute(pathname)) return null;
+  return <ChatWidget />;
+}
 
 /**
  * Assistant IA de la plateforme. Les réponses sont générées par l’API backend

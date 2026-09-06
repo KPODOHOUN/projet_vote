@@ -44,8 +44,6 @@ export function AppHeader() {
     { key: "faq", fr: "FAQ", en: "FAQ" }
   ];
 
-  const isAdmin = pathname?.startsWith("/admin");
-
   return (
     <header className="sticky top-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-6xl rounded-2xl border border-white/20 bg-black/40 backdrop-blur-xl shadow-lg shadow-black/20 transition-all duration-300 px-5 py-3 min-[721px]:px-6 min-[721px]:py-3" role="banner">
       <div className="flex items-center justify-between">
@@ -66,10 +64,6 @@ export function AppHeader() {
               <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-400 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-250" />
             </Link>
           ))}
-          <Link href="/admin" className="text-white/40 text-xs transition-colors hover:text-white/70 relative py-1 group whitespace-nowrap">
-            Admin
-            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-white/30 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-250" />
-          </Link>
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -121,11 +115,6 @@ export function AppHeader() {
                 }}
               >
                 {isEn ? "Start" : "Démarrer"}
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin" className="block rounded-lg px-3 py-2 text-xs font-medium text-white/40 hover:bg-white/10 mt-2" onClick={() => setMobileOpen(false)}>
-                Admin
               </Link>
             </li>
           </ul>

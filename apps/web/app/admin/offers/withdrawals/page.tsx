@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authLoginUrl } from "@/lib/auth-navigation";
-import { authedFetch, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
+import {
+  useAdminWithdrawalsQuery,
+  useAdminWithdrawalActionMutation,
+  type WithdrawalRow,
+  type WithdrawalStatus
+} from "@/lib/hooks/use-admin-withdrawals";
 import { Button, DataTable, EmptyState, LoadingState, StatusChip } from "@/components/ui";
 import type { DataTableColumn } from "@/components/ui";
 import {
@@ -15,23 +21,6 @@ import {
   AdminPageShell,
   AdminSelect
 } from "@/components/admin/admin-shell";
-
-type WithdrawalStatus = "PENDING" | "APPROVED" | "REJECTED" | "PAID";
-
-type WithdrawalRow = {
-  id: string;
-  amountCfa: number;
-  status: WithdrawalStatus;
-  createdAt: string;
-  processedAt: string | null;
-  rejectReason: string | null;
-  tenant: {
-    id: string;
-    slug: string;
-    displayName: string;
-    offerType: string;
-  };
-};
 
 function formatCfa(amount: number, isEn: boolean) {
   return new Intl.NumberFormat(isEn ? "en-GB" : "fr-FR", {
@@ -58,53 +47,46 @@ function statusTone(status: WithdrawalStatus): "pending" | "warning" | "success"
 
 export default function AdminWithdrawalsPage() {
   const router = useRouter();
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
-  const [rows, setRows] = useState<WithdrawalRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) {
-      router.push(authLoginUrl());
-      return;
-    }
-    const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
-    const data = await authedFetch<WithdrawalRow[]>(`/admin/offers/withdrawals${qs}`);
-    setRows(data);
-  }, [router, statusFilter]);
+  const [hasToken] = useState(() => Boolean(getStoredToken()));
 
   useEffect(() => {
-    setIsLoading(true);
-    setError("");
-    void load()
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Erreur"))
-      .finally(() => setIsLoading(false));
-  }, [load]);
+    if (!hasToken) {
+      router.push(authLoginUrl());
+    }
+  }, [hasToken, router]);
+
+  const [statusFilter, setStatusFilter] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const withdrawalsQuery = useAdminWithdrawalsQuery(statusFilter, hasToken);
+  const actionMutation = useAdminWithdrawalActionMutation();
+
+  const rows = withdrawalsQuery.data ?? [];
+  const isLoading = withdrawalsQuery.isPending;
+  const error = withdrawalsQuery.isError
+    ? withdrawalsQuery.error instanceof Error
+      ? withdrawalsQuery.error.message
+      : "Erreur"
+    : null;
 
   const runAction = async (id: string, action: "approve" | "reject" | "mark-paid") => {
-    let body: string | undefined;
+    let reason: string | undefined;
     if (action === "reject") {
-      const reason = window.prompt(
+      const promptReason = window.prompt(
         isEn ? "Rejection reason (required):" : "Motif du refus (obligatoire) :"
       );
-      if (!reason || reason.trim().length < 3) {
+      if (!promptReason || promptReason.trim().length < 3) {
         showToast.error(isEn ? "Reason required (min 3 chars)." : "Motif requis (min. 3 caractères).");
         return;
       }
-      body = JSON.stringify({ reason: reason.trim() });
+      reason = promptReason.trim();
     }
     setBusyId(id);
     try {
-      await authedFetch(`/admin/offers/withdrawals/${id}/${action}`, {
-        method: "POST",
-        ...(body ? { body } : {})
-      });
+      await actionMutation.mutateAsync({ id, action, ...(reason ? { reason } : {}) });
       showToast.success(isEn ? "Updated." : "Mis à jour.");
-      await load();
     } catch (caught) {
       showToast.error(
         caught instanceof ApiError
@@ -121,13 +103,13 @@ export default function AdminWithdrawalsPage() {
   };
 
   if (isLoading) {
-    return <LoadingState variant="rows" count={5} label={isEn ? "Loading withdrawals…" : "Chargement des retraits…"} />;
+    return <LoadingState variant="rows" count={5} label={t("admin.withdrawals.loading")} />;
   }
 
   const withdrawalColumns: Array<DataTableColumn<WithdrawalRow>> = [
     {
       key: "tenant",
-      header: isEn ? "Organizer" : "Organisation",
+      header: t("admin.withdrawals.colOrganizer"),
       render: (row) => (
         <div>
           <p className="font-semibold">{row.tenant.displayName}</p>
@@ -137,13 +119,13 @@ export default function AdminWithdrawalsPage() {
     },
     {
       key: "amount",
-      header: isEn ? "Amount" : "Montant",
+      header: t("admin.withdrawals.colAmount"),
       align: "right",
       render: (row) => <span className="font-semibold">{formatCfa(row.amountCfa, isEn)}</span>
     },
     {
       key: "status",
-      header: isEn ? "Status" : "Statut",
+      header: t("admin.withdrawals.colStatus"),
       render: (row) => (
         <div>
           <StatusChip label={row.status} tone={statusTone(row.status)} />
@@ -155,7 +137,7 @@ export default function AdminWithdrawalsPage() {
     },
     {
       key: "createdAt",
-      header: isEn ? "Requested" : "Demandé le",
+      header: t("admin.withdrawals.colRequested"),
       render: (row) => (
         <span className="text-sm text-muted-foreground">
           {new Date(row.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
@@ -164,22 +146,22 @@ export default function AdminWithdrawalsPage() {
     },
     {
       key: "actions",
-      header: isEn ? "Actions" : "Actions",
+      header: t("admin.withdrawals.colActions"),
       render: (row) => (
         <div className="flex flex-wrap gap-2">
           {row.status === "PENDING" ? (
             <>
-              <Button size="sm" loading={busyId === row.id} onClick={() => void runAction(row.id, "approve")}>
-                {isEn ? "Approve" : "Approuver"}
+              <Button size="sm" loading={busyId === row.id && actionMutation.isPending} onClick={() => void runAction(row.id, "approve")}>
+                {t("admin.withdrawals.approve")}
               </Button>
-              <Button size="sm" variant="secondary" loading={busyId === row.id} onClick={() => void runAction(row.id, "reject")}>
-                {isEn ? "Reject" : "Refuser"}
+              <Button size="sm" variant="secondary" loading={busyId === row.id && actionMutation.isPending} onClick={() => void runAction(row.id, "reject")}>
+                {t("admin.withdrawals.reject")}
               </Button>
             </>
           ) : null}
           {row.status === "APPROVED" ? (
-            <Button size="sm" loading={busyId === row.id} onClick={() => void runAction(row.id, "mark-paid")}>
-              {isEn ? "Mark paid (demo)" : "Marquer payé (démo)"}
+            <Button size="sm" loading={busyId === row.id && actionMutation.isPending} onClick={() => void runAction(row.id, "mark-paid")}>
+              {t("admin.withdrawals.markPaid")}
             </Button>
           ) : null}
         </div>
@@ -190,27 +172,23 @@ export default function AdminWithdrawalsPage() {
   return (
     <AdminPageShell>
       <AdminPageHeader
-        eyebrow={isEn ? "Offers" : "Offres"}
-        title={isEn ? "Withdrawals" : "Retraits"}
-        description={
-          isEn
-            ? "Approve, reject or mark escrow withdrawals as paid."
-            : "Approuver, refuser ou marquer les retraits escrow comme payés."
-        }
+        eyebrow={t("admin.withdrawals.eyebrow")}
+        title={t("admin.withdrawals.title")}
+        description={t("admin.withdrawals.desc")}
       />
 
       <div className="max-w-xs">
         <AdminSelect
           id="statusFilter"
-          label={isEn ? "Status" : "Statut"}
+          label={t("admin.withdrawals.filterStatus")}
           value={statusFilter}
           onChange={setStatusFilter}
           options={[
-            { value: "", label: isEn ? "All" : "Tous" },
-            { value: "PENDING", label: isEn ? "Pending" : "En attente" },
-            { value: "APPROVED", label: isEn ? "Approved" : "Approuvés" },
-            { value: "REJECTED", label: isEn ? "Rejected" : "Refusés" },
-            { value: "PAID", label: isEn ? "Paid" : "Payés" }
+            { value: "", label: t("admin.withdrawals.all") },
+            { value: "PENDING", label: t("admin.withdrawals.pending") },
+            { value: "APPROVED", label: t("admin.withdrawals.approved") },
+            { value: "REJECTED", label: t("admin.withdrawals.rejected") },
+            { value: "PAID", label: t("admin.withdrawals.paid") }
           ]}
         />
       </div>
@@ -219,8 +197,8 @@ export default function AdminWithdrawalsPage() {
 
       {!error && rows.length === 0 ? (
         <EmptyState
-          title={isEn ? "No withdrawals" : "Aucun retrait"}
-          description={isEn ? "Withdrawal requests will appear here." : "Les demandes de retrait apparaîtront ici."}
+          title={t("admin.withdrawals.empty")}
+          description={t("admin.withdrawals.emptyDesc")}
         />
       ) : null}
 
@@ -229,8 +207,8 @@ export default function AdminWithdrawalsPage() {
           columns={withdrawalColumns}
           rows={rows}
           rowKey={(row) => row.id}
-          emptyLabel={isEn ? "No withdrawals" : "Aucun retrait"}
-          ariaLabel={isEn ? "Withdrawals" : "Retraits"}
+          emptyLabel={t("admin.withdrawals.empty")}
+          ariaLabel={t("admin.withdrawals.title")}
         />
       ) : null}
     </AdminPageShell>

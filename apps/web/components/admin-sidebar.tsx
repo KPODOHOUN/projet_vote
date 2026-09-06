@@ -17,6 +17,7 @@ import {
   CreditCard,
   CalendarDays,
   Tags,
+  ChevronDown,
   Archive,
   IdCard
 } from "lucide-react";
@@ -24,7 +25,7 @@ import { cn } from "../lib/utils";
 import { useI18n } from "../lib/i18n-provider";
 
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
-type NavSection = { title: string; items: NavItem[] };
+type NavSection = { title: string; items: NavItem[]; legacy?: boolean };
 
 export function AdminSidebar() {
   const pathname = usePathname();
@@ -32,6 +33,7 @@ export function AdminSidebar() {
   const isEn = locale === "en";
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [legacyOpen, setLegacyOpen] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsCollapsed(window.innerWidth < 1024);
@@ -73,6 +75,7 @@ export function AdminSidebar() {
       },
       {
         title: isEn ? "Legacy" : "Hérité",
+        legacy: true,
         items: [
           { href: "/admin/partners", label: isEn ? "Partners" : "Partenaires", icon: CreditCard },
           { href: "/admin/account-partners", label: isEn ? "Partner requests" : "Demandes partenaire", icon: Users },
@@ -117,14 +120,40 @@ export function AdminSidebar() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
-          {sections.map((section) => (
+          {sections.map((section) => {
+            const isLegacy = section.legacy === true;
+            const sectionCollapsed = isLegacy && !legacyOpen;
+            const legacyActive = isLegacy && section.items.some((item) =>
+              item.href === "/admin"
+                ? pathname === "/admin"
+                : pathname === item.href || pathname.startsWith(`${item.href}/`)
+            );
+
+            return (
             <div key={section.title} className="space-y-1">
               {!isCollapsed && (
-                <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {section.title}
-                </p>
+                isLegacy ? (
+                  <button
+                    type="button"
+                    onClick={() => setLegacyOpen((open) => !open)}
+                    className="flex w-full items-center justify-between gap-2 px-4 pb-1 text-left"
+                    aria-expanded={legacyOpen}
+                  >
+                    <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      {section.title}
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-semibold normal-case tracking-normal text-muted-foreground">
+                        {isEn ? "Deprecated" : "Déprécié"}
+                      </span>
+                    </span>
+                    <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", legacyOpen && "rotate-180")} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {section.title}
+                  </p>
+                )
               )}
-              {section.items.map((item) => {
+              {(!isLegacy || legacyOpen) && section.items.map((item) => {
                 const Icon = item.icon;
                 const isActive =
                   item.href === "/admin"
@@ -152,8 +181,14 @@ export function AdminSidebar() {
                   </Link>
                 );
               })}
+              {isLegacy && sectionCollapsed && !isCollapsed && legacyActive ? (
+                <p className="px-4 py-1 text-xs text-muted-foreground">
+                  {isEn ? "Legacy section collapsed — expand to navigate." : "Section repliée — développez pour naviguer."}
+                </p>
+              ) : null}
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         {!isCollapsed && (

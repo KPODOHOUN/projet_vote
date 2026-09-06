@@ -50,7 +50,9 @@ test("changePassword: succès met à jour le hash et révoque les autres session
   await authService.login({ tenantSlug: creds.tenantSlug, email: creds.email, password: creds.password }, { userAgent: "Other", ipAddress: "1.2.3.4" });
   await accountService.changePassword(user, { currentPassword: creds.password, newPassword: "NewPass12345!" }, refreshToken);
   const dbUser = await prisma.user.findFirst({ where: { id: user.userId } });
-  assert.ok(dbUser && (await compare("NewPass12345!", dbUser.passwordHash)));
+  assert.ok(dbUser);
+  assert.ok(dbUser.passwordHash);
+  assert.ok(await compare("NewPass12345!", dbUser.passwordHash));
   const active = await prisma.authSession.findMany({ where: { userId: user.userId, revokedAt: null } });
   // seule la session courante survit
   assert.equal(active.length, 1);

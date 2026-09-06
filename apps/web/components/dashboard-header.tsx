@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Search, UserCircle, Calendar, Users, CreditCard, UserPlus, Bell } from "lucide-react";
-import { useI18n } from "../lib/i18n-provider";
+import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
 import { apiFetch } from "../lib/api";
 import { getStoredToken, clearAuthStorage } from "../lib/auth";
 import { search, searchResultHref, type SearchResults } from "../lib/search";
@@ -237,6 +237,7 @@ export function DashboardHeader() {
             </div>
           ) : null}
         </div>
+        <LanguageSwitcher />
         <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <UserCircle className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
           <span className="hidden md:inline">{t("common.account")}</span>

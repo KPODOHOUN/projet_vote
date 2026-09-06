@@ -140,7 +140,7 @@ export default function PartnerPage() {
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/dashboard/subscription");
+        router.push("/dashboard/offer");
       }, 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la demande");
@@ -157,7 +157,7 @@ export default function PartnerPage() {
   return (
     <div className="space-y-8 max-w-5xl">
       <div className="flex items-center gap-2">
-        <Link href="/dashboard/subscription" className="text-muted-foreground hover:text-foreground transition-colors">
+        <Link href="/dashboard/offer" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
@@ -210,7 +210,7 @@ export default function PartnerPage() {
             </p>
           </div>
           <div className="pt-4">
-            <Link href="/dashboard/subscription">
+            <Link href="/dashboard/offer">
               <Button variant="secondary" className="w-full">
                 {isEn ? "Back to my plan" : "Retour à mon plan"}
               </Button>

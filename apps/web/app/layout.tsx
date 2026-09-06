@@ -10,7 +10,7 @@ import { AuthModalProvider } from "../components/auth/auth-modal-provider";
 import { MaintenanceBanner } from "../components/maintenance-banner";
 import { LegalFooter } from "../components/legal-footer";
 import { CookieConsentCenter } from "../components/cookie-consent-center";
-import { ChatWidget } from "../components/chat-widget";
+import { ChatWidgetGate } from "../components/chat-widget";
 import { Toaster } from "../components/ui/sonner";
 import { SITE_NAME, SITE_URL } from "../lib/site";
 
@@ -106,7 +106,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             </AuthModalProvider>
             <CookieConsentCenter />
             <LegalFooter />
-            <ChatWidget />
+            <ChatWidgetGate />
             <Toaster position="top-center" />
           </I18nProvider>
         </QueryProvider>

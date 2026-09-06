@@ -12,6 +12,7 @@ import {
   useOrganizerEvents,
   usePaymentReadiness,
 } from "../../lib/hooks/use-organizer-events";
+import { useOrganizerOffer } from "../../lib/hooks/use-organizer-offer";
 import { useSubscriptionUsage } from "../../lib/hooks/use-subscription";
 import { KpiCard, StatusChip, EmptyState, LoadingState, Button, FormError } from "@/components/ui";
 import { OnboardingChecklist } from "../../components/onboarding-checklist";
@@ -34,6 +35,8 @@ export default function DashboardHomePage() {
   const { ready: paymentReady, skipPaymentStep } = usePaymentReadiness(latest?.id);
   const usageQuery = useSubscriptionUsage(hasToken);
   const usage = usageQuery.data;
+  const offerQuery = useOrganizerOffer(hasToken);
+  const isEscrow = offerQuery.data?.offerType === "ESCROW";
 
   useEffect(() => {
     if (!eventsQuery.isFetching && eventsQuery.isSuccess && events.length === 0) {
@@ -44,9 +47,13 @@ export default function DashboardHomePage() {
   const activeEvents = events.filter((item) => item.status === "ACTIVE").length;
   const recentEvents = events.slice(0, 5);
 
-  // Decision-first : le statut bloque-t-il l'organisateur ? (abonnement → encaissement)
+  // Escrow : jamais bloqué par l'absence d'abonnement. EXTERNAL/legacy : limite plan éventuelle.
   const subscriptionBlocked =
-    Boolean(usage) && (usage!.hasSubscription === false || (usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit));
+    offerQuery.isSuccess &&
+    !isEscrow &&
+    Boolean(usage) &&
+    (usage!.hasSubscription === false ||
+      (usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit));
   const subscriptionLimitReached =
     Boolean(usage?.hasSubscription) && usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit;
   const paymentBlocked = !subscriptionBlocked && !paymentReady && !skipPaymentStep;
@@ -86,8 +93,8 @@ export default function DashboardHomePage() {
             </div>
           </div>
           <Button asChild size="sm" className="shrink-0">
-            <Link href="/dashboard/subscription">
-              {t("dash.banner.manageSub")}
+            <Link href="/dashboard/offer">
+              {t("dash.banner.manageOffer")}
               <ArrowRight className="ml-1.5 size-4" />
             </Link>
           </Button>
@@ -117,28 +124,28 @@ export default function DashboardHomePage() {
 
       <header className="flex flex-col justify-between gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center">
         <div className="space-y-1">
-          <span className="block text-sm font-bold uppercase tracking-widest text-primary">{isEn ? "Overview" : "Aperçu"}</span>
+          <span className="block text-sm font-bold uppercase tracking-widest text-primary">{t("dash.overview.kicker")}</span>
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
-            {isEn ? "Your events at a glance" : "Vos évènements en un coup d'œil"}
+            {t("dash.overview.title")}
           </h2>
         </div>
       </header>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard label={isEn ? "Total events" : "Évènements au total"} value={String(events.length)} />
-        <KpiCard label={isEn ? "Active events" : "Évènements actifs"} value={String(activeEvents)} />
-        <KpiCard label={isEn ? "Latest event" : "Dernier évènement"} value={events[0]?.title ?? "…"} />
+        <KpiCard label={t("dash.overview.totalEvents")} value={String(events.length)} />
+        <KpiCard label={t("dash.overview.activeEvents")} value={String(activeEvents)} />
+        <KpiCard label={t("dash.overview.latestEvent")} value={events[0]?.title ?? "…"} />
       </section>
 
       <section>
-        <h3 className="mb-4 text-xl font-bold tracking-tight text-foreground">{isEn ? "Recent events" : "Évènements récents"}</h3>
+        <h3 className="mb-4 text-xl font-bold tracking-tight text-foreground">{t("dash.overview.recentEvents")}</h3>
         {recentEvents.length === 0 ? (
           <EmptyState
-            title={isEn ? "No events yet." : "Aucun évènement pour le moment."}
-            description={isEn ? "Launch your first event in one step." : "Lancez votre premier évènement en une étape."}
+            title={t("dash.overview.noEventsTitle")}
+            description={t("dash.overview.noEventsDesc")}
             action={
               <Button asChild className="mt-2">
-                <Link href="/dashboard/start">{isEn ? "Launch event" : "Lancer un évènement"}</Link>
+                <Link href="/dashboard/start">{t("dash.overview.launchEvent")}</Link>
               </Button>
             }
           />
@@ -162,7 +169,7 @@ export default function DashboardHomePage() {
                     href={`/dashboard/events/${eventItem.id}/candidates`}
                     className="text-sm font-semibold text-primary transition-all hover:text-primary/80 hover:underline"
                   >
-                    {isEn ? "Candidates" : "Candidats"}
+                    {t("dash.overview.candidates")}
                   </Link>
                 </div>
               </li>
