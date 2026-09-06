@@ -1,5 +1,5 @@
 ## ADR-020 : Settlement Escrow — commission par vote, held/withdrawable, palier de confiance
-**Statut** : Proposé (F1 — en attente revue produit)
+**Statut** : Accepté — F1 et F2 livrés et fusionnés dans `main` (commits `20c79da`..`c5a99e4`, 2026-09-06). F3-F7 restent à faire (voir business plan §12).
 **Date** : 2026-09-05
 **Décideurs** : Product Owner, Tech Lead
 **Remplace / complète** : [ADR-019](./ADR-019-settlement-offers.md) (offre ESCROW : wallet pending → clôture (retenue) → available) — la retenue de clôture à 5% est remplacée par une commission par vote + réserve `held` dynamique.

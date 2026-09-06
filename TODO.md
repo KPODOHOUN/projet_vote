@@ -1,5 +1,7 @@
 # TODO — Système d'abonnement + Commission
 
+> **⚠️ PARKÉ depuis le 29/07/2026 (ADR-019).** Tout ce qui suit a bien été livré tel que décrit, mais n'est **plus le modèle de monétisation actif**. L'offre Escrow (commission par vote, portefeuille held/withdrawable — voir [ADR-020](docs/adr/ADR-020-settlement-finance-model.md)) l'a remplacé pour la bêta. Le code reste en place (voir `docs/superpowers/specs/2026-08-28-settlement-module-map.md` pour le statut détaillé par module) mais n'est plus dans le parcours produit actif — gardé pour référence/migration, pas comme feuille de route en cours.
+
 ## ✅ Phase 1 — Schéma Prisma (base de données)
 
 - [x] Créer le modèle `Plan` dans schema.prisma → ✅ `Plan` model with name, slug, priceCfa, maxEvents, commissionRate, isActive, sortOrder, features

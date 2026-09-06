@@ -32,8 +32,8 @@ projet_vote/
 - Offre Escrow (parcours actif) : portefeuille, clôture, retraits validés admin
 - Offre External : en réflexion (désactivée pendant la phase de test)
 - Paiements démo pour la phase de test (`API_PAYMENT_DEMO_MODE`, interdit en prod)
-- Billetterie avec QR codes
-- Paiements automatisés aux organisateurs
+- Billetterie avec QR codes (paiement réel non branché : la confirmation d'achat n'existe qu'en `API_PAYMENT_DEMO_MODE`)
+- Retraits organisateur **100 % manuels** (validation admin) — l'automatisation via PSP est prévue (F6) mais pas encore livrée, et n'est jamais un prérequis de lancement (voir ADR-020)
 - Tableau de bord organisateur et administration plateforme
 - Conformité RGPD
 
@@ -68,7 +68,12 @@ Guide complet pour le mode local et les paiements simulés :
 | `npm run dev` | Lancer tous les workspaces en mode dev |
 | `npm run build` | Builder tous les workspaces |
 | `npm run lint` | Linter |
-| `npm run test` | Tests |
+| `npm run test` | Tests API — nécessite une base Postgres réelle (`TEST_DATABASE_URL` ou le défaut local) |
+| `npm --prefix apps/api run test:offers` | Tests du module `offers/` (wallet, commission, settlement) — plus rapide, mêmes prérequis DB |
 | `npm run db:generate` | Générer le client Prisma |
 | `npm run db:seed` | Seed la base de données |
 | `npm run db:migrate:deploy` | Appliquer les migrations |
+
+**Piège de typecheck :** `apps/api/tsconfig.json` **exclut** les fichiers `*.test.ts` (`tsc --noEmit` ne les vérifie donc jamais). Les fichiers de test sont couverts séparément par `apps/api/tsconfig.test.json` — lancez `cd apps/api && npx tsc -p tsconfig.test.json --noEmit` avant de committer un nouveau test, sinon des erreurs de type peuvent y rester invisibles indéfiniment.
+
+**Piège d'oubli :** les scripts `test`/`test:offers` ci-dessus sont des listes de fichiers codées en dur dans `apps/api/package.json` — un nouveau fichier `*.test.ts` doit y être ajouté manuellement, sinon il ne tourne jamais (aucune CI ne le détecte aujourd'hui, voir `docs/adr/ADR-007-deployment-cicd.md`).
