@@ -79,6 +79,10 @@ async function seed() {
 
 test("commission: réglage global, override par évènement et résolution", async () => {
   const { event } = await seed();
+  // Le taux de commission d'un event est gelé dès son activation (business
+  // plan §5.5, sans exception) — setEventCommission n'accepte donc un
+  // override que sur un event encore DRAFT.
+  await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.DRAFT } });
 
   await service.updateCommission(admin, { commissionBps: 1000 }); // 10%
   assert.equal((await service.getSettings()).commissionBps, 1000);
@@ -86,6 +90,40 @@ test("commission: réglage global, override par évènement et résolution", asy
   await service.setEventCommission(admin, event.id, { commissionBps: 500 }); // 5%
   assert.equal(await service.resolveCommissionBps(500), 500); // override évènement
   assert.equal(await service.resolveCommissionBps(null), 1000); // défaut plateforme
+});
+
+test("setEventCommission: refuse un taux hors 4-12% pour un admin non super-admin", async () => {
+  const { event } = await seed();
+  await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.DRAFT } });
+  await assert.rejects(
+    () => service.setEventCommission(admin, event.id, { commissionBps: 300 }),
+    /super-admin/i
+  );
+});
+
+test("setEventCommission: refuse toute modification une fois l'event activé", async () => {
+  const { event } = await seed(); // seed() crée l'event déjà ACTIVE
+  await assert.rejects(
+    () => service.setEventCommission(admin, event.id, { commissionBps: 500 }),
+    /gelé/i
+  );
+});
+
+test("setEventCommission / setTenantCommission: écrivent un AuditLog (plus de « silent by design »)", async () => {
+  const { event, tenant } = await seed();
+  await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.DRAFT } });
+
+  await service.setEventCommission(admin, event.id, { commissionBps: 800 });
+  await service.setTenantCommission(admin, tenant.id, { commissionBps: 900 });
+
+  const eventAudit = await prisma.auditLog.findFirst({
+    where: { action: "commission.override_event", targetId: event.id }
+  });
+  const tenantAudit = await prisma.auditLog.findFirst({
+    where: { action: "commission.override_tenant", targetId: tenant.id }
+  });
+  assert.ok(eventAudit, "attendu une entrée AuditLog pour l'override event via platform-control");
+  assert.ok(tenantAudit, "attendu une entrée AuditLog pour l'override tenant via platform-control");
 });
 
 test("cancelVote: PURGE le vote et le paiement du ledger, dépose dans le vault", async () => {

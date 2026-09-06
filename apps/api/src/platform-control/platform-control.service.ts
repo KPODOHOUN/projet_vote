@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { PaymentPurpose, PaymentStatus } from "@prisma/client";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { EventStatus, PaymentPurpose, PaymentStatus } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -9,6 +9,7 @@ import {
   DEFAULT_ACTIVATION_FEE_CFA,
   parseIntSetting
 } from "../common/platform-settings";
+import { assertCommissionBpsAllowed } from "../offers/commission-guardrails";
 import { VaultService } from "./vault.service";
 
 export const COMMISSION_SETTING_KEY = COMMISSION_BPS_KEY;
@@ -76,17 +77,33 @@ export class PlatformControlService {
     return Number.isFinite(bps) && bps > 0 ? bps : 0;
   }
 
-  async setTenantCommission(_user: AuthUser, tenantId: string, payload: unknown) {
+  async setTenantCommission(user: AuthUser, tenantId: string, payload: unknown) {
     const input = eventCommissionSchema.parse(payload);
+    if (input.commissionBps !== null) {
+      assertCommissionBpsAllowed(user, input.commissionBps);
+    }
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) {
       throw new NotFoundException("Organisateur introuvable.");
     }
-    await this.prisma.client.tenant.update({
-      where: { id: tenantId },
-      data: { commissionBps: input.commissionBps }
-    });
-    // Silent: no audit log (commission is ultra-discreet).
+    const oldBps = tenant.commissionBps;
+    await this.prisma.client.$transaction([
+      this.prisma.client.tenant.update({
+        where: { id: tenantId },
+        data: { commissionBps: input.commissionBps }
+      }),
+      this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: "commission.override_tenant",
+          targetType: "Tenant",
+          targetId: tenantId,
+          metadata: { oldBps, newBps: input.commissionBps, via: "platform-control" }
+        }
+      })
+    ]);
     return { tenantId, commissionBps: input.commissionBps };
   }
 
@@ -129,17 +146,38 @@ export class PlatformControlService {
     return this.getSettings();
   }
 
-  async setEventCommission(_user: AuthUser, eventId: string, payload: unknown) {
+  async setEventCommission(user: AuthUser, eventId: string, payload: unknown) {
     const input = eventCommissionSchema.parse(payload);
+    if (input.commissionBps !== null) {
+      assertCommissionBpsAllowed(user, input.commissionBps);
+    }
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
     if (!event) {
       throw new NotFoundException("Évènement introuvable.");
     }
-    await this.prisma.client.event.update({
-      where: { id: eventId },
-      data: { commissionBps: input.commissionBps }
-    });
-    // Silent: no audit log (commission is ultra-discreet).
+    if (event.status !== EventStatus.DRAFT) {
+      throw new ConflictException(
+        "Le taux de commission d'un event déjà activé est gelé — impossible de le modifier."
+      );
+    }
+    const oldBps = event.commissionBps;
+    await this.prisma.client.$transaction([
+      this.prisma.client.event.update({
+        where: { id: eventId },
+        data: { commissionBps: input.commissionBps }
+      }),
+      this.prisma.client.auditLog.create({
+        data: {
+          tenantId: event.tenantId,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: "commission.override_event",
+          targetType: "Event",
+          targetId: eventId,
+          metadata: { oldBps, newBps: input.commissionBps, via: "platform-control" }
+        }
+      })
+    ]);
     return { eventId, commissionBps: input.commissionBps };
   }
 

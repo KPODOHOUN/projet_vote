@@ -452,11 +452,29 @@ test("suppression de vote: définitive et SILENCIEUSE (aucun log d'audit)", asyn
   assert.equal(await prisma.auditLog.count(), 0); // AUCUNE trace côté audit normal
 });
 
-test("commission: configuration ultra-silencieuse (aucun log d'audit)", async () => {
-  const { tenant, event } = await seedEventWithCandidates();
+test("commission: réglages globaux toujours silencieux, override event/tenant désormais audité et gelé à l'activation", async () => {
+  const { tenant, event } = await seedEventWithCandidates(); // event créé ACTIVE
+
+  // Réglages plateforme globaux (pas un override ciblé sur un event/tenant
+  // précis) : restent silencieux, choix de scope assumé — voir ADR-020.
   await platform.updateCommission(admin(tenant.id), { commissionBps: 1000 });
+  await platform.updateSettings(admin(tenant.id), { commissionBps: 800, activationFeeCfa: 10000 });
+  assert.equal(await prisma.auditLog.count(), 0);
+
+  // Override event : gelé dès l'activation, sans exception (business plan
+  // §5.5) — l'event de seedEventWithCandidates() est déjà ACTIVE.
+  await assert.rejects(
+    () => platform.setEventCommission(admin(tenant.id), event.id, { commissionBps: 500 }),
+    /gelé/i
+  );
+  assert.equal(await prisma.auditLog.count(), 0);
+
+  // Sur un event encore DRAFT, l'override passe et écrit un AuditLog — la
+  // route "ultra-discrète" ne contourne plus le suivi (cf. audit sécurité
+  // 2026-09-06 : elle écrivait auparavant Event.commissionBps sans aucune
+  // trace, contournant les garanties de CommissionOverrideService).
+  await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.DRAFT } });
   await platform.setEventCommission(admin(tenant.id), event.id, { commissionBps: 500 });
   await platform.setTenantCommission(admin(tenant.id), tenant.id, { commissionBps: 700 });
-  await platform.updateSettings(admin(tenant.id), { commissionBps: 800, activationFeeCfa: 10000 });
-  assert.equal(await prisma.auditLog.count(), 0); // commission invisible dans l'audit
+  assert.equal(await prisma.auditLog.count(), 2);
 });
