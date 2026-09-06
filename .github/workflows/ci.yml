@@ -1,0 +1,97 @@
+name: CI
+
+# ADR-007 decides on GitHub Actions CI but none existed until this workflow —
+# see the technical-health audit (2026-09-06): 7 of 50 API test files,
+# including two security suites, were silently absent from `npm test`'s
+# hardcoded file list with nothing to catch it. This workflow is that catch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NODE_ENV: test
+  MAIL_RESEND_API_KEY: ""
+  DATABASE_URL: "postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test"
+  TEST_DATABASE_URL: "postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test"
+
+jobs:
+  typecheck-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema packages/db/prisma/schema.prisma
+
+      - name: Build shared/db packages (apps/api and apps/web depend on their dist output)
+        run: npm --prefix packages/shared run build && npm --prefix packages/db run build
+
+      - name: Typecheck — apps/api (source, excludes *.test.ts)
+        run: npm --prefix apps/api run typecheck
+
+      # apps/api/tsconfig.json deliberately excludes *.test.ts/*.spec.ts (see
+      # README "Piège de typecheck") — only this config catches a type error
+      # in a test file. Running both is the whole point of this job existing.
+      - name: Typecheck — apps/api tests (tsconfig.test.json)
+        run: npx tsc -p apps/api/tsconfig.test.json --noEmit
+
+      - name: Typecheck — apps/web
+        run: npm --prefix apps/web run typecheck
+
+      - name: Typecheck — packages/shared, packages/db
+        run: npm --prefix packages/shared run typecheck && npm --prefix packages/db run typecheck
+
+      - name: Lint — apps/api
+        run: npm --prefix apps/api run lint
+
+      - name: Lint — apps/web
+        run: npm --prefix apps/web run lint
+
+  api-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: votezpro
+          POSTGRES_PASSWORD: votezpro_dev
+          POSTGRES_DB: votezpro_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema packages/db/prisma/schema.prisma
+
+      # Mirrors apps/api/package.json's "test" script exactly (build:deps +
+      # tsc -p tsconfig.test.json + migrate + run) so CI never drifts from
+      # what a developer runs locally.
+      - name: Run API test suite (npm test)
+        working-directory: apps/api
+        run: npm test
+
+      - name: Run offers module tests (npm run test:offers)
+        working-directory: apps/api
+        run: npm run test:offers
