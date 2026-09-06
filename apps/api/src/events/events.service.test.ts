@@ -12,6 +12,7 @@ import { PartnersService } from "../partners/partners.service";
 import { noopPartnerNotifications } from "../partners/partner-notifications.stub";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
 import { OfferSettingsService } from "../offers/offer-settings.service";
+import { SETTLEMENT_HELD_BPS_KEY } from "../common/platform-settings";
 
 const prismaService = new PrismaService();
 const votes = new VotesService(prismaService);
@@ -130,4 +131,26 @@ test("importCandidates: crée plusieurs candidats et signale les numéros en con
 
   const list = await events.listCandidates(owner(t.id), ev.id);
   assert.equal(list.length, 3);
+});
+
+test("updateEvent: pose heldBps au moment de l'activation, jamais avant", async () => {
+  await prisma.platformSetting.upsert({
+    where: { key: SETTLEMENT_HELD_BPS_KEY },
+    create: { key: SETTLEMENT_HELD_BPS_KEY, value: "5000", updatedByUserId: "test" },
+    update: { value: "5000" }
+  });
+  const t = await tenant(`held-snap-${Date.now().toString(36)}`);
+  const draft = await prisma.event.create({
+    data: {
+      tenantId: t.id,
+      title: "Held snapshot event",
+      slug: `ev-held-${Date.now().toString(36)}`,
+      startsAt: new Date(future()),
+      endsAt: new Date(new Date(future()).getTime() + 86_400_000)
+    }
+  });
+  assert.equal(draft.heldBps, null);
+
+  const activated = await events.updateEvent(owner(t.id), draft.id, { status: "ACTIVE" });
+  assert.equal(activated.heldBps, 5_000);
 });

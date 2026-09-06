@@ -329,9 +329,10 @@ export class EventsService {
     let activated = false;
     try {
       await this.assertCanActivate(createdEvent);
+      const heldBps = await this.offerSettings.getDefaultHeldBps();
       const activeEvent = await this.prisma.client.event.update({
         where: { id: createdEvent.id },
-        data: { status: EventStatus.ACTIVE }
+        data: { status: EventStatus.ACTIVE, heldBps }
       });
       createdEvent = activeEvent;
       activated = true;
@@ -765,6 +766,7 @@ export class EventsService {
     if (isActivating) {
       await this.assertCanActivate(event);
       await this.assertExternalOfferReady(user.tenantId, event.provider);
+      data.heldBps = await this.offerSettings.getDefaultHeldBps();
     }
 
     const updatedEvent = await this.prisma.client.event.update({
