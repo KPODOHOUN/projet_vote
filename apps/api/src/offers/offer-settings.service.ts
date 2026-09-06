@@ -4,6 +4,7 @@ import type { AuthUser } from "../auth/auth.types";
 import {
   DEFAULT_OTP_RESEND_DELAY_SECONDS,
   DEFAULT_OTP_TTL_SECONDS,
+  DEFAULT_SETTLEMENT_HELD_BPS,
   OFFER1_COMMISSION_BPS_KEY,
   OFFER1_COMMISSION_FIXED_CFA_KEY,
   OFFER1_ENABLED_KEY,
@@ -16,6 +17,7 @@ import {
   PSP_FEDAPAY_SUPPORTS_SPLIT_KEY,
   PSP_FEEXPAY_SUPPORTS_SPLIT_KEY,
   PSP_KKIAPAY_SUPPORTS_SPLIT_KEY,
+  SETTLEMENT_HELD_BPS_KEY,
   parseBoolSetting,
   parseIntSetting
 } from "../common/platform-settings";
@@ -237,5 +239,36 @@ export class OfferSettingsService {
     if (!settings.offer2PerVoteCommissionEnabled) return 0;
     if (settings.offer2PerVoteCommissionBps <= 0) return 0;
     return Math.floor((amountCfa * settings.offer2PerVoteCommissionBps) / 10_000);
+  }
+
+  /**
+   * Résolution de la commission par vote pour l'offre Escrow : event override
+   * → tenant override → taux plateforme par défaut. Ne fait AUCUNE distinction
+   * Tier Standard/Pro (pas encore modélisé) — voir ADR-020 pour la portée F2.
+   */
+  async resolveEscrowCommissionBps(eventId: string): Promise<number> {
+    const settings = await this.getSettings();
+    if (!settings.offer2PerVoteCommissionEnabled) return 0;
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { commissionBps: true, tenant: { select: { commissionBps: true } } }
+    });
+    if (event?.commissionBps != null) return event.commissionBps;
+    if (event?.tenant.commissionBps != null) return event.tenant.commissionBps;
+    return settings.offer2PerVoteCommissionBps;
+  }
+
+  /** Commission calculée à partir d'un taux déjà résolu (pas du taux plat des settings). */
+  computeEscrowVoteCommissionCfaFromBps(amountCfa: number, bps: number): number {
+    if (bps <= 0) return 0;
+    return Math.floor((amountCfa * bps) / 10_000);
+  }
+
+  /** Taux held plateforme par défaut, en attendant F5 (palier de confiance). */
+  async getDefaultHeldBps(): Promise<number> {
+    const setting = await this.prisma.client.platformSetting.findUnique({
+      where: { key: SETTLEMENT_HELD_BPS_KEY }
+    });
+    return parseIntSetting(setting?.value, DEFAULT_SETTLEMENT_HELD_BPS);
   }
 }

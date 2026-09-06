@@ -45,9 +45,9 @@ export class WithdrawalsService {
 
     return this.prisma.client.$transaction(async (tx) => {
       const wallet = await this.wallet.getOrCreateWallet(user.tenantId, tx);
-      if (wallet.availableCfa < input.amountCfa) {
+      if (wallet.withdrawableCfa < input.amountCfa) {
         throw new ConflictException(
-          `Montant supérieur au solde disponible (${wallet.availableCfa} FCFA).`
+          `Montant supérieur au solde disponible (${wallet.withdrawableCfa} FCFA).`
         );
       }
 
@@ -64,7 +64,7 @@ export class WithdrawalsService {
           tenantId: user.tenantId,
           amountCfa: input.amountCfa,
           kind: WalletLedgerKind.WITHDRAWAL_DEBIT,
-          from: "available",
+          from: "withdrawable",
           withdrawalId: request.id,
           note: "Demande de retrait"
         },
@@ -143,7 +143,7 @@ export class WithdrawalsService {
           tenantId: existing.tenantId,
           amountCfa: existing.amountCfa,
           kind: WalletLedgerKind.ADJUSTMENT,
-          target: "available",
+          target: "withdrawable",
           withdrawalId: existing.id,
           note: `Rejet retrait: ${input.reason}`
         },

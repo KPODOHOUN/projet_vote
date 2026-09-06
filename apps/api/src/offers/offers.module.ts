@@ -1,12 +1,14 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { AdminOffersController } from "./admin-offers.controller";
+import { CommissionOverrideService } from "./commission-override.service";
 import { EventSettlementService } from "./event-settlement.service";
 import { EventStatsService } from "./event-stats.service";
 import { OfferSettingsService } from "./offer-settings.service";
 import { OrganizerOffersController } from "./organizer-offers.controller";
 import { OrganizerOffersService } from "./organizer-offers.service";
 import { OffersCronController } from "./offers-cron.controller";
+import { PayoutJobLockService } from "../payouts/payout-job-lock.service";
 import { WalletService } from "./wallet.service";
 import { WithdrawalsService } from "./withdrawals.service";
 
@@ -19,7 +21,11 @@ import { WithdrawalsService } from "./withdrawals.service";
     WithdrawalsService,
     EventStatsService,
     EventSettlementService,
-    OrganizerOffersService
+    OrganizerOffersService,
+    CommissionOverrideService,
+    // Mutex persistant réutilisé par EventSettlementService.releaseMaturedHeld
+    // (ne dépend que de PrismaService — pas besoin d'importer PayoutsModule).
+    PayoutJobLockService
   ],
   exports: [OfferSettingsService, WalletService, EventStatsService, EventSettlementService]
 })

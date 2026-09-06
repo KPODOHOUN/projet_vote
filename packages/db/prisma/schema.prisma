@@ -69,6 +69,8 @@ enum WalletLedgerKind {
   RETENTION_DEBIT
   WITHDRAWAL_DEBIT
   ADJUSTMENT
+  HELD_ALLOCATION
+  HELD_RELEASE
 }
 
 enum WithdrawalStatus {
@@ -229,8 +231,8 @@ model AuthOtpChallenge {
 model OrganizerWallet {
   id            String   @id @default(cuid())
   tenantId      String   @unique
-  availableCfa  Int      @default(0)
-  pendingCfa    Int      @default(0)
+  withdrawableCfa Int    @default(0)
+  heldCfa       Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -327,6 +329,9 @@ model Event {
   // Per-event platform commission override, in basis points (1% = 100 bps).
   // Null = inherit the platform-wide default from PlatformSetting.
   commissionBps    Int?
+  // Per-event held/reserve allocation, in basis points (1% = 100 bps).
+  // Null = inherit the platform-wide default from PlatformSetting.
+  heldBps          Int?
   // Per-event PSP routing override. Null = inherit the organizer's choice.
   provider         PaymentProvider?
   // Activation monetization (forfait). An event can only go ACTIVE once the

@@ -482,8 +482,8 @@ export class PaymentVerifyService {
         select: { offerType: true }
       });
       if (tenant?.offerType === TenantOfferType.ESCROW) {
-        const settings = await this.offerSettings.getSettings();
-        return this.offerSettings.computeEscrowVoteCommissionCfa(settings, tx.amountCfa);
+        const bps = await this.offerSettings.resolveEscrowCommissionBps(tx.eventId);
+        return this.offerSettings.computeEscrowVoteCommissionCfaFromBps(tx.amountCfa, bps);
       }
       if (tenant?.offerType === TenantOfferType.EXTERNAL) {
         const settings = await this.offerSettings.getSettings();
@@ -501,8 +501,8 @@ export class PaymentVerifyService {
         return tx.amountCfa;
       }
       if (tenant?.offerType === TenantOfferType.ESCROW) {
-        const settings = await this.offerSettings.getSettings();
-        return this.offerSettings.computeEscrowVoteCommissionCfa(settings, tx.amountCfa);
+        const bps = await this.offerSettings.resolveEscrowCommissionBps(tx.eventId);
+        return this.offerSettings.computeEscrowVoteCommissionCfaFromBps(tx.amountCfa, bps);
       }
       return 0;
     }
@@ -510,7 +510,20 @@ export class PaymentVerifyService {
   }
 
   /**
-   * ESCROW: credit pending wallet (net for votes, full for topup).
+   * ESCROW: for votes, the credit path MUST key off the exact same flag as the
+   * closure path in `EventSettlementService.closeEvent`
+   * (`offer2PerVoteCommissionEnabled`), otherwise the two halves of the
+   * settlement state machine disagree:
+   *   - flag ON  (new model)    : split the net amount between held (reserve)
+   *     and withdrawable per the event's `heldBps` snapshot; the held part is
+   *     released 48h after closure by `releaseMaturedHeld`.
+   *   - flag OFF (legacy model) : credit the whole net to `held` as a plain
+   *     VOTE_CREDIT; `closeEvent` then applies the legacy 5% retention and
+   *     releases the remainder at closure. Crediting straight to withdrawable
+   *     here would both destroy the reserve and make `closeEvent` throw
+   *     (insufficient held balance for the retention debit).
+   * For organizer top-ups, credit the full amount directly to withdrawable
+   * (it's the organizer's own money) — same in both models.
    * EXTERNAL: no wallet mutation. Regular votes were already split natively
    * by FedaPay; organizer top-ups contain only the platform commission.
    */
@@ -543,28 +556,52 @@ export class PaymentVerifyService {
       if (tx.purpose === PaymentPurpose.VOTE) {
         const net = Math.max(0, tx.amountCfa - commission);
         if (net > 0) {
-          await this.wallet.credit(
-            {
-              tenantId: tx.tenantId,
-              amountCfa: net,
-              kind: WalletLedgerKind.VOTE_CREDIT,
-              target: "pending",
-              eventId: tx.eventId,
-              paymentId: tx.id,
-              note: "Crédit vote (escrow)"
-            },
-            trx
-          );
+          const settings = await this.offerSettings.getSettings();
+          if (settings.offer2PerVoteCommissionEnabled) {
+            const event = await trx.event.findUnique({
+              where: { id: tx.eventId },
+              select: { heldBps: true }
+            });
+            await this.wallet.creditSplit(
+              {
+                tenantId: tx.tenantId,
+                netCfa: net,
+                heldBps: event?.heldBps ?? 0,
+                kind: WalletLedgerKind.VOTE_CREDIT,
+                eventId: tx.eventId,
+                paymentId: tx.id,
+                note: "Crédit vote (escrow)"
+              },
+              trx
+            );
+          } else {
+            // Legacy model: everything goes to the held reserve; closeEvent
+            // applies the 5% retention and releases the rest at closure.
+            await this.wallet.credit(
+              {
+                tenantId: tx.tenantId,
+                amountCfa: net,
+                kind: WalletLedgerKind.VOTE_CREDIT,
+                target: "held",
+                eventId: tx.eventId,
+                paymentId: tx.id,
+                note: "Crédit vote (escrow)"
+              },
+              trx
+            );
+          }
         }
       } else {
-        // ORGANIZER_VOTE_TOPUP: full amount credited to pending wallet.
+        // ORGANIZER_VOTE_TOPUP: full amount credited directly to withdrawable
+        // (a top-up is the organizer's own money, not at-risk vote revenue —
+        // it does not go through the held reserve).
         if (tx.amountCfa > 0) {
           await this.wallet.credit(
             {
               tenantId: tx.tenantId,
               amountCfa: tx.amountCfa,
               kind: WalletLedgerKind.TOPUP_CREDIT,
-              target: "pending",
+              target: "withdrawable",
               eventId: tx.eventId,
               paymentId: tx.id,
               note: "Crédit top-up orga (escrow)"

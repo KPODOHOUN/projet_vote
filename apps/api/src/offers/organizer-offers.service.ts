@@ -192,14 +192,14 @@ export class OrganizerOffersService {
         );
       }
       const wallet = await this.wallet.getOrCreateWallet(user.tenantId);
-      if (wallet.availableCfa > 0) {
+      if (wallet.withdrawableCfa > 0) {
         throw new ConflictException(
-          `Solde disponible non nul (${wallet.availableCfa} FCFA). Videz le portefeuille avant de changer d'offre.`
+          `Solde disponible non nul (${wallet.withdrawableCfa} FCFA). Videz le portefeuille avant de changer d'offre.`
         );
       }
-      if (wallet.pendingCfa > 0) {
+      if (wallet.heldCfa > 0) {
         throw new ConflictException(
-          `Solde en attente non nul (${wallet.pendingCfa} FCFA). Clôturez les évènements concernés avant de changer d'offre.`
+          `Solde en attente non nul (${wallet.heldCfa} FCFA). Clôturez les évènements concernés avant de changer d'offre.`
         );
       }
       const pendingWithdrawal = await this.prisma.client.withdrawalRequest.count({
@@ -278,7 +278,11 @@ export class OrganizerOffersService {
       };
     }
 
-    // ESCROW: full amount
+    // ESCROW: full amount. La commission affichée doit être celle qui sera
+    // réellement prélevée par payment-verify (event override → tenant override
+    // → taux plateforme), sinon le devis diverge du débit dès qu'un admin pose
+    // une surcharge.
+    const escrowCommissionBps = await this.offerSettings.resolveEscrowCommissionBps(event.id);
     return {
       votesCount,
       unitPriceCfa: unitPrice,
@@ -288,9 +292,9 @@ export class OrganizerOffersService {
       breakdown: {
         description:
           "Offre Escrow : le montant total (votes × prix) est encaissé puis crédité sur votre portefeuille.",
-        platformCommissionCfa: this.offerSettings.computeEscrowVoteCommissionCfa(
-          settings,
-          grossCfa
+        platformCommissionCfa: this.offerSettings.computeEscrowVoteCommissionCfaFromBps(
+          grossCfa,
+          escrowCommissionBps
         )
       }
     };

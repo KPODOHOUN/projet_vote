@@ -5,6 +5,7 @@ import type { AuthUser } from "../auth/auth.types";
 import { PLATFORM_OPERATOR_ROLES } from "../auth/platform-roles";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
+import { CommissionOverrideService } from "./commission-override.service";
 import { EventSettlementService } from "./event-settlement.service";
 import { EventStatsService } from "./event-stats.service";
 import { OfferSettingsService } from "./offer-settings.service";
@@ -20,7 +21,8 @@ export class AdminOffersController {
     private readonly withdrawals: WithdrawalsService,
     private readonly eventStats: EventStatsService,
     private readonly organizerOffers: OrganizerOffersService,
-    private readonly settlement: EventSettlementService
+    private readonly settlement: EventSettlementService,
+    private readonly commissionOverride: CommissionOverrideService
   ) {}
 
   @Get("settings")
@@ -84,5 +86,23 @@ export class AdminOffersController {
   @Get("events/:eventId")
   eventDetail(@Param("eventId") eventId: string) {
     return this.eventStats.getEventStats(eventId);
+  }
+
+  @Put("events/:eventId/commission")
+  setEventCommission(
+    @CurrentUser() user: AuthUser,
+    @Param("eventId") eventId: string,
+    @Body() body: { commissionBps: number }
+  ) {
+    return this.commissionOverride.setEventCommission(user, eventId, body.commissionBps);
+  }
+
+  @Put("tenants/:tenantId/commission")
+  setTenantCommission(
+    @CurrentUser() user: AuthUser,
+    @Param("tenantId") tenantId: string,
+    @Body() body: { commissionBps: number }
+  ) {
+    return this.commissionOverride.setTenantCommission(user, tenantId, body.commissionBps);
   }
 }
