@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { AdminOffersController } from "./admin-offers.controller";
+import { CommissionOverrideService } from "./commission-override.service";
 import { EventSettlementService } from "./event-settlement.service";
 import { EventStatsService } from "./event-stats.service";
 import { OfferSettingsService } from "./offer-settings.service";
@@ -19,7 +20,8 @@ import { WithdrawalsService } from "./withdrawals.service";
     WithdrawalsService,
     EventStatsService,
     EventSettlementService,
-    OrganizerOffersService
+    OrganizerOffersService,
+    CommissionOverrideService
   ],
   exports: [OfferSettingsService, WalletService, EventStatsService, EventSettlementService]
 })
