@@ -103,11 +103,11 @@ export default function DashboardWalletPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Card className="p-6">
             <p className="text-sm text-muted-foreground">{t("dash.wallet.available")}</p>
-            <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.availableCfa, isEn)}</p>
+            <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.withdrawableCfa, isEn)}</p>
           </Card>
           <Card className="p-6">
             <p className="text-sm text-muted-foreground">{t("dash.wallet.pending")}</p>
-            <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.pendingCfa, isEn)}</p>
+            <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.heldCfa, isEn)}</p>
           </Card>
         </div>
       ) : !isError ? (
@@ -127,13 +127,13 @@ export default function DashboardWalletPage() {
                 label={t("dash.wallet.amountLabel")}
                 type="number"
                 min={1}
-                max={wallet.availableCfa}
+                max={wallet.withdrawableCfa}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
               />
             </div>
-            <Button type="submit" loading={withdrawalMutation.isPending} disabled={wallet.availableCfa <= 0}>
+            <Button type="submit" loading={withdrawalMutation.isPending} disabled={wallet.withdrawableCfa <= 0}>
               {t("dash.wallet.withdrawButton")}
             </Button>
           </form>

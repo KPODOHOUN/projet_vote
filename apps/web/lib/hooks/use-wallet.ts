@@ -7,8 +7,8 @@ import { getStoredToken } from "../auth";
 export type WalletResponse = {
   id: string;
   tenantId: string;
-  availableCfa: number;
-  pendingCfa: number;
+  withdrawableCfa: number;
+  heldCfa: number;
   updatedAt: string;
   recentEntries: Array<{
     id: string;
