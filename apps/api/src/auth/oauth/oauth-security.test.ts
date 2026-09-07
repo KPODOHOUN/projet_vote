@@ -7,6 +7,17 @@ process.env.GOOGLE_CLIENT_ID = "google-client-id";
 process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
 process.env.GOOGLE_CALLBACK_URL = "http://localhost:3000/oauth/callback/google";
 
+// The test suite preloads config/env.js (--require, see apps/api/package.json)
+// so every OTHER test sees deterministic env.* values regardless of import
+// order — but that means config/env.js (and oauth.service.js's OAUTH_PROVIDERS,
+// which captures env.GOOGLE_CLIENT_ID/SECRET at its own module scope) is
+// already cached with the *real* .env values by the time this file runs,
+// before the fake credentials above ever get a chance to apply. Busting both
+// cache entries forces a fresh re-evaluation that picks up the fake values
+// set just above, for every dynamic `await import("./oauth.service")` below.
+delete require.cache[require.resolve("../../config/env")];
+delete require.cache[require.resolve("./oauth.service")];
+
 type FakeUser = {
   id: string;
   tenantId: string;
@@ -109,7 +120,11 @@ test("Google OAuth refuse un e-mail non vérifié", async () => {
 
     await assert.rejects(
       service.handleCallback("google", "code", "state", "state", {}),
-      /vérifi|verified/i
+      // Specific to the email-verification rejection, not just /vérifi/i —
+      // that alone also matches "Vérifiez les variables d'environnement"
+      // (the config-missing error), which let this assertion pass once for
+      // entirely the wrong reason. See the require.cache note above.
+      /adresse e-mail vérifiée/i
     );
   } finally {
     restore();
