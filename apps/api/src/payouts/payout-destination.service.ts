@@ -39,6 +39,16 @@ export class PayoutDestinationService {
     return { network: input.network, last4 };
   }
 
+  /** Display-safe summary for the organizer UI: network + last 4 digits only. */
+  async getSummaryForTenant(tenantId: string): Promise<{ network: string; last4: string } | null> {
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { payoutNetwork: true, payoutPhoneEnc: true, payoutPhoneLast4: true }
+    });
+    if (!tenant?.payoutNetwork || !tenant.payoutPhoneEnc || !tenant.payoutPhoneLast4) return null;
+    return { network: tenant.payoutNetwork, last4: tenant.payoutPhoneLast4 };
+  }
+
   /**
    * Resolve a tenant's decrypted payout destination. Returns null when the
    * organizer has not configured one — the orchestrator must then SKIP (never

@@ -13,6 +13,7 @@ import {
 } from "../../../lib/account";
 import { Button, Input, StatusChip, EmptyState, LoadingState, ConfirmDialog } from "@/components/ui";
 import { FeexPaySecretPanel } from "../../../components/feexpay-secret-panel";
+import { PayoutDestinationPanel } from "../../../components/payout-destination-panel";
 import { formatUserRole } from "../../../lib/i18n";
 import { canManagePaymentSecrets } from "../../../lib/roles";
 import { showToast } from "../../../lib/toast";
@@ -175,6 +176,8 @@ export default function DashboardAccountPage() {
               />
             </section>
           ) : null}
+
+          {account?.role === "ORGANIZER_OWNER" ? <PayoutDestinationPanel /> : null}
 
           {/* Mot de passe */}
           <section className="bg-card p-6 rounded-xl border border-border shadow-sm">

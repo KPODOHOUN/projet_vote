@@ -8,11 +8,14 @@ import { ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
+import Link from "next/link";
 import {
+  usePayoutDestinationQuery,
   useWalletQuery,
   useWithdrawalsQuery,
   useWithdrawalMutation
 } from "@/lib/hooks/use-wallet";
+import { mobileNetworkLabel } from "@/lib/mobile-networks";
 import {
   Button,
   Card,
@@ -45,6 +48,8 @@ export default function DashboardWalletPage() {
   const walletQuery = useWalletQuery(hasToken);
   const withdrawalsQuery = useWithdrawalsQuery(hasToken);
   const withdrawalMutation = useWithdrawalMutation();
+  const destinationQuery = usePayoutDestinationQuery(hasToken);
+  const destination = destinationQuery.data ?? null;
 
   const [amount, setAmount] = useState("");
 
@@ -134,10 +139,24 @@ export default function DashboardWalletPage() {
                 required
               />
             </div>
-            <Button type="submit" loading={withdrawalMutation.isPending} disabled={wallet.withdrawableCfa <= 0}>
+            <Button
+              type="submit"
+              loading={withdrawalMutation.isPending}
+              disabled={wallet.withdrawableCfa <= 0 || !destination}
+            >
               {t("dash.wallet.withdrawButton")}
             </Button>
           </form>
+          <p className="text-sm text-muted-foreground">
+            {destination
+              ? t("payoutDest.current", { network: mobileNetworkLabel(destination.network), last4: destination.last4 })
+              : destinationQuery.isPending
+                ? null
+                : t("payoutDest.missingForWithdrawal")}{" "}
+            <Link href="/dashboard/account#payout-destination" className="font-medium text-primary underline underline-offset-4">
+              {t("payoutDest.editLink")}
+            </Link>
+          </p>
         </Card>
       ) : null}
 

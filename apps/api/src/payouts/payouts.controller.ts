@@ -55,6 +55,11 @@ export class PayoutsController {
 export class PayoutDestinationController {
   constructor(private readonly destinations: PayoutDestinationService) {}
 
+  @Get()
+  getDestination(@CurrentUser() user: AuthUser) {
+    return this.destinations.getSummaryForTenant(user.tenantId);
+  }
+
   @Post()
   setDestination(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.destinations.setForTenant(user.tenantId, body);

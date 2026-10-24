@@ -45,6 +45,31 @@ export function useWithdrawalsQuery(enabled = true) {
   });
 }
 
+export type PayoutDestination = { network: string; last4: string } | null;
+
+export function usePayoutDestinationQuery(enabled = true) {
+  const hasToken = Boolean(getStoredToken());
+  return useQuery({
+    queryKey: ["organizer", "payout-destination"],
+    queryFn: () => authedFetch<PayoutDestination>("/organizer/payout-destination"),
+    enabled: enabled && hasToken,
+  });
+}
+
+export function usePayoutDestinationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { phone: string; network: string }) =>
+      authedFetch<{ network: string; last4: string }>("/organizer/payout-destination", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["organizer", "payout-destination"], saved);
+    },
+  });
+}
+
 export function useWithdrawalMutation() {
   const queryClient = useQueryClient();
   return useMutation({
