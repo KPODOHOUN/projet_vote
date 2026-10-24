@@ -1,0 +1,79 @@
+# Reprise — finalisation SHADOMA
+
+Document mis à jour après chaque lot. Branche : `chore/finalisation-shadoma` (locale, jamais poussée).
+
+## Lot 0 — Pré-vol (2026-10-25) : terminé
+
+### Git
+- Branche créée depuis `main` @ `6d2bda5`.
+- Commit `8d0e43b` « wip: état préexistant avant finalisation » : 11 fichiers déjà modifiés (OAuth, brand, i18n, header public, globals.css, 2 docs). Sans `.env`, sans fichiers parasites.
+- Fichiers parasites encore présents (traités au Lot B8) : `t p = new PrismaClient();` (versionné, sortie de `less`), `test-push2` (versionné, vide).
+
+### Environnement
+- Node v22.22.3, npm 10.9.8.
+- Disque plein à l'ouverture de session (0 Mo) : `node_modules` corrompu (4 344 fichiers `.js` vides). Libéré ~20 Go (cache de build Docker, images inutilisées, cache npm), puis `npm ci` + `prisma generate`.
+- Postgres : conteneur `votezpro-postgres` (port 5433), bases `votezpro` et `votezpro_test`. Redis non requis par les tests.
+- **Piège** : le mot de passe de `DATABASE_URL` dans `.env` ne correspond plus au conteneur. Le défaut `votezpro_dev` des scripts non plus. Il faut exporter `TEST_DATABASE_URL` avec le mot de passe du conteneur (`docker inspect votezpro-postgres`), et lancer `test:offers` avec `DATABASE_URL="$TEST_DATABASE_URL"` (sinon il écrit dans la base de dev via `.env`).
+
+### Baseline (avant toute modification)
+| Commande | Résultat |
+|---|---|
+| build `packages/shared`, `packages/db` | OK |
+| `apps/api` typecheck (source) | 0 erreur |
+| `tsc -p apps/api/tsconfig.test.json` | 0 erreur |
+| `apps/web` typecheck | 0 erreur |
+| lint API | 0 erreur, 0 warning |
+| lint web | 0 erreur, 43 warnings |
+| `apps/api npm test` | 229/230 — échec : `app.integration.test.ts:404` (commission attendue 100, reçue 0) |
+| `apps/api test:offers` | 31/32 — échec : `event-settlement.service.test.ts:59` (retenue 25 au lieu de 0) |
+| build web | OK — `/` 249 kB, First Load 573 kB |
+| e2e Playwright | non exécuté (à faire au Lot H) |
+
+### Échecs préexistants (dette, pas régression)
+1. `app.integration.test.ts` règle la clé legacy `commission_bps` pour un tenant ESCROW ; depuis `c5a99e4`, ESCROW lit `offer2_per_vote_commission_enabled/bps` (désactivé par défaut → 0). Test en retard sur le code.
+2. `test:offers` tourne sans `--test-concurrency=1` : les fichiers partagent `PlatformSetting` dans la même base et s'interfèrent. Le fichier seul passe 2/2.
+
+## Lot A — Audit en lecture seule (2026-10-25) : terminé
+
+Aucune modification de code. Statut de chaque constat de la section 3.2 du prompt, avec preuve.
+
+### Nouveaux constats (absents du prompt)
+| Prio | Constat | Preuve | Correction prévue |
+|---|---|---|---|
+| **P0** | Aucun organisateur ne peut retirer : l'API exige une destination Mobile Money, mais aucune UI ne la configure | `offers/withdrawals.service.ts:42` ; `payouts/payouts.controller.ts:52` (`organizer/payout-destination`) ; aucun appel dans `apps/web` | Lot B3 : section « Numéro de retrait » dans Compte + lien depuis le wallet |
+| **P1** | `package-lock.json` non versionné et listé dans `.gitignore` ; la CI fait `npm ci` (échoue sans lockfile) | `.gitignore` ; `git ls-files package-lock.json` vide ; `.github/workflows/*.yml:30,83` | Lot B8 : retirer du `.gitignore`, versionner le lockfile |
+| P1 | Échec silencieux de l'OTP en production : `mail.send` renvoie `false`, l'API répond succès | `auth/auth.service.ts:973-988` | Lot B5 |
+| P2 | `test:offers` sans `--test-concurrency=1` (tests qui se marchent dessus) ; test d'intégration commission en retard sur ESCROW | voir baseline | Lot B3 |
+| P2 | Lien vers une page legacy depuis l'accueil admin | `app/admin/page.tsx:85` (`/admin/payouts`) | Lot B10 |
+
+### Constats du prompt : revérification
+| Constat | Statut | Preuve |
+|---|---|---|
+| Billetterie : `PENDING` + `FEEXPAY` codé en dur, sans PSP, confirmation seulement en démo | confirmé | `tickets/tickets.service.ts:263,277-289` |
+| Scan d'un billet non payé | **déjà corrigé** (refusé) | `tickets.service.ts` ~l.368 (`n'a pas encore été payé`) |
+| `payment-verify.service.ts` seul écrivain de `SUCCEEDED` | à vérifier en B3 (hors : démo billets `tickets.service.ts:287`) | |
+| `MAIL_RESEND_API_KEY` non exigé en production | confirmé | `config/env.ts:119` (optionnel), aucun refine prod |
+| Chat sans DTO ni plafond | confirmé (`max_tokens: 300` déjà borné) | `chat/chat.controller.ts:11`, `chat.service.ts:51` |
+| Aucune en-tête de sécurité Next | confirmé | `apps/web/next.config.ts` (aucun `headers()`) |
+| Jeton hors `localStorage` | confirmé OK (seuls code d'organisation et brouillons de formulaire y sont) | `lib/auth.ts:5-19`, `lib/organizer-storage.ts` |
+| `.gitignore` exclut `vercel.json`, Dockerfile, `.env.*` ; pas de `.env.example` | confirmé | `.gitignore` |
+| Drift de schéma | **résolu** : `migrate diff` base de test vs schéma = 0 | e2e encore en `db push` : `apps/web/playwright.config.ts:57-60` |
+| Fichiers parasites | confirmé | `t p = new PrismaClient();`, `test-push2` versionnés |
+| `i.pravatar.cc` autorisé | confirmé | `next.config.ts:21` |
+| 1 180 `isEn ?` / 90 fichiers ; 8 fichiers `<img>` / 2 `next/image` | confirmé (identique) | `rg` |
+| `HeroThreeScene` monté sur la Home ; `/e/miss-campus-2026` en dur | confirmé (3 occurrences) | `app/page.tsx:14,150` |
+| Pas de manifest ni d'image OG | confirmé | `apps/web/app` |
+| Thème : seuil 0,38, défaut `#6366F1`, `accentAlt`, `--event-gradient-*`, `--event-glow` | confirmé | `lib/brand.ts:44,97-118` |
+| En-tête public : dégradé au scroll, `animate-pulse`, `hover:scale-105`, `rounded-full`, `text-[10px] opacity-75`, « Live results », `onMouseEnter` | confirmé | `components/public-event-header.tsx:66,81,98,103,106,107` |
+| Phase de vote calculée sur le seul statut ; serveur borne `[startsAt, endsAt]` | confirmé | `app/e/[slug]/page.tsx:73`, `c/[ref]/page.tsx:92` ; `votes/votes.service.ts:345` |
+| Éditeur : impossible d'effacer slogan/logo/couleur | confirmé | `events/events.service.ts:45-47,742-744` ; `design/page.tsx:147` |
+| Éditeur : « Aperçu en direct », « Ardoise premium » | confirmé | `design/page.tsx:388` ; `lib/brand.ts:181` |
+| `extractColorFromImage` sans `try/catch` ni filtre blanc/gris | confirmé | `lib/brand.ts:141-159` |
+| Pages legacy accessibles par URL | confirmé ; sidebar admin les range sous Legacy ; `plan-upgrade-modal.tsx:206` non monté | `components/admin-sidebar.tsx:80,84` |
+
+### Plan ajusté
+- **B** commence par le P0 retrait (B3), le lockfile (B8) et les deux tests rouges, puis le reste dans l'ordre du prompt.
+- C à H inchangés.
+
+### Prochaine action
+Lot B.
