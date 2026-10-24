@@ -194,3 +194,20 @@ test("Google OAuth utilise sub et email_verified pour créer un compte", async (
     restore();
   }
 });
+
+test("listEnabledProviders n'annonce Google que si l'id ET le secret sont configurés", async () => {
+  const { listEnabledProviders } = await import("./oauth.service");
+
+  assert.deepEqual(listEnabledProviders({ google: { clientId: "id", clientSecret: "secret" } }), { google: true });
+  assert.deepEqual(listEnabledProviders({ google: { clientId: "", clientSecret: "secret" } }), { google: false });
+  assert.deepEqual(listEnabledProviders({ google: { clientId: "id", clientSecret: "" } }), { google: false });
+});
+
+test("getEnabledProviders reflète les clés Google de l'environnement", async () => {
+  const { OAuthService } = await import("./oauth.service");
+  const { prisma } = fakePrisma();
+  const service = new OAuthService(prisma as never);
+
+  // Les clés factices posées en tête de fichier sont présentes.
+  assert.deepEqual(service.getEnabledProviders(), { google: true });
+});

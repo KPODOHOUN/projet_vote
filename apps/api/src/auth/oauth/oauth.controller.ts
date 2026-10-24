@@ -31,6 +31,11 @@ function extractSessionMeta(request: Request) {
 export class OAuthController {
   constructor(private readonly oauthService: OAuthService) {}
 
+  @Get("providers")
+  providers() {
+    return this.oauthService.getEnabledProviders();
+  }
+
   @Get(":provider/authorize")
   authorize(@Param("provider") provider: string, @Res({ passthrough: true }) response: Response) {
     const { url, state } = this.oauthService.getAuthorizationUrl(provider);

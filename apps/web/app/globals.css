@@ -412,6 +412,18 @@ img {
   background: radial-gradient(circle, color-mix(in srgb, var(--color-gold-500) 20%, transparent) 0%, transparent 70%);
 }
 
+.vp-orb-blue {
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-brand-500) 30%, transparent) 0%, transparent 70%);
+}
+
+.vp-orb-cyan {
+  background: radial-gradient(circle, color-mix(in srgb, #06B6D4 25%, transparent) 0%, transparent 70%);
+}
+
+.vp-orb-theme {
+  background: radial-gradient(circle, color-mix(in srgb, var(--event-accent, var(--color-brand-500)) 30%, transparent) 0%, transparent 70%);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .vp-orb {
     animation: vp-orb-drift 20s ease-in-out infinite alternate;
@@ -624,6 +636,7 @@ img {
 /* ── Event branding scope ──────────────────────────────────────────────── */
 [data-event-theme] {
   --color-primary: var(--event-accent);
+  --color-primary-foreground: var(--event-header-fg, #ffffff);
   --color-ring: var(--event-accent);
   --event-primary-soft: var(--event-accent-soft);
   --event-primary-muted: var(--event-accent-muted);

@@ -41,7 +41,7 @@ function relativeLuminance(hex: string): number {
 }
 
 export function readableTextOnBackground(hex: string): string {
-  return relativeLuminance(hex) > 0.55 ? "#0f172a" : "#ffffff";
+  return relativeLuminance(hex) > 0.38 ? "#0f172a" : "#ffffff";
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -111,6 +111,7 @@ export function buildEventTheme(brandColor: string | null | undefined): EventThe
       "--event-header-bg": accent,
       "--event-header-fg": headerFg,
       "--color-primary": accent,
+      "--color-primary-foreground": headerFg,
       "--color-ring": accent,
       "--event-gradient-start": accent,
       "--event-gradient-end": accentAlt,
@@ -193,6 +194,9 @@ export const BRAND_COLOR_PRESETS: BrandPreset[] = [
   { color: "#0EA5E9", label: "Ciel serein", vibe: "pro" },
   { color: "#7C2D12", label: "Terre d'Afrique", vibe: "culture" },
   { color: "#B45309", label: "Cuir noble", vibe: "culture" },
+  // Sport
+  { color: "#E11D48", label: "Rouge écarlate", vibe: "sport" },
+  { color: "#0284C7", label: "Bleu dynamique", vibe: "sport" },
 ];
 
 export function getBrandPresetsByVibe(): Record<string, BrandPreset[]> {

@@ -66,35 +66,56 @@ export function LanguageSwitcher({ variant = "default" }: { variant?: "default" 
     <div
       className={
         variant === "brand-header"
-          ? "inline-flex gap-1 p-1 rounded-full bg-white/10 border border-white/20"
+          ? "inline-flex gap-0.5 sm:gap-1 p-0.5 sm:p-1 rounded-full border"
           : "inline-flex gap-1 p-1 rounded-full bg-muted/50 border border-border"
+      }
+      style={
+        variant === "brand-header"
+          ? {
+              background: "color-mix(in srgb, var(--event-header-fg, #ffffff) 15%, transparent)",
+              borderColor: "color-mix(in srgb, var(--event-header-fg, #ffffff) 25%, transparent)"
+            }
+          : undefined
       }
       role="group"
       aria-label={t("lang.switch")}
     >
-      {(Object.keys(localeLabels) as Locale[]).map((item) => (
-        <button
-          key={item}
-          type="button"
-          className={
-            variant === "brand-header"
-              ? `min-h-[32px] px-3 rounded-full text-xs font-bold tracking-wider uppercase transition-colors ${
-                  locale === item
-                    ? "bg-white text-primary shadow-md"
-                    : "text-white/80 hover:text-white hover:bg-white/10"
-                }`
-              : `min-h-[32px] px-3 rounded-full text-xs font-semibold tracking-wider uppercase transition-colors ${
-                  locale === item
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`
-          }
-          aria-pressed={locale === item}
-          onClick={() => setLocale(item)}
-        >
-          {localeLabels[item]}
-        </button>
-      ))}
+      {(Object.keys(localeLabels) as Locale[]).map((item) => {
+        const isSelected = locale === item;
+        return (
+          <button
+            key={item}
+            type="button"
+            className={
+              variant === "brand-header"
+                ? "min-h-[28px] sm:min-h-[32px] px-2 sm:px-3 rounded-full text-[11px] sm:text-xs font-bold tracking-wider uppercase transition-all"
+                : `min-h-[32px] px-3 rounded-full text-xs font-semibold tracking-wider uppercase transition-colors ${
+                    isSelected
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`
+            }
+            style={
+              variant === "brand-header"
+                ? isSelected
+                  ? {
+                      background: "var(--event-header-fg, #ffffff)",
+                      color: "var(--event-header-bg, var(--color-brand-500))",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+                    }
+                  : {
+                      color: "var(--event-header-fg, #ffffff)",
+                      opacity: 0.85
+                    }
+                : undefined
+            }
+            aria-pressed={isSelected}
+            onClick={() => setLocale(item)}
+          >
+            {localeLabels[item]}
+          </button>
+        );
+      })}
     </div>
   );
 }
