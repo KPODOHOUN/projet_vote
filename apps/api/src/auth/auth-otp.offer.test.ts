@@ -6,6 +6,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { MailService } from "../mail/mail.service";
 import { OFFER1_ENABLED_KEY } from "../common/platform-settings";
+import { env } from "../config/env";
 
 const prisma = new PrismaService();
 const mail = {
@@ -68,4 +69,27 @@ test("register EXTERNAL est refusé tant que l'offre 1 est en réflexion", async
 
   const tenant = await prisma.client.tenant.findUnique({ where: { slug } });
   assert.equal(tenant, null);
+});
+
+test("register en production: un OTP non envoyé renvoie une erreur 503, pas un succès silencieux", async () => {
+  const previous = env.NODE_ENV;
+  env.NODE_ENV = "production";
+  try {
+    const slug = uniqueSlug();
+    await assert.rejects(
+      authService.register({
+        tenantSlug: slug,
+        tenantDisplayName: "OTP Mail Down",
+        email: `${slug}@example.com`,
+        password: "SecurePass1!",
+        offerType: TenantOfferType.ESCROW,
+        acceptPrivacyPolicy: true,
+        firstName: "Ada",
+        lastName: "Lovelace"
+      }),
+      (err: unknown) => (err as { getStatus?: () => number }).getStatus?.() === 503
+    );
+  } finally {
+    env.NODE_ENV = previous;
+  }
 });

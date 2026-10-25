@@ -1,4 +1,4 @@
-import { ConflictException, BadRequestException, ForbiddenException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, BadRequestException, ForbiddenException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import { AuthOtpPurpose, InvitationStatus, TenantOfferType, UserRole } from "@prisma/client";
 import { compare, hash } from "bcryptjs";
@@ -309,6 +309,13 @@ export class AuthService {
     }
 
     const otpResult = await this.createAndSendOtp(user.id, user.email, AuthOtpPurpose.EMAIL_VERIFICATION);
+    // The caller just created this account, so reporting the failure leaks
+    // nothing. resendOtp/forgotPassword keep their anti-enumeration message.
+    if (!otpResult.sent && env.NODE_ENV === "production") {
+      throw new ServiceUnavailableException(
+        "Le compte est créé, mais l'e-mail de confirmation n'a pas pu partir. Demandez un nouveau code dans quelques minutes."
+      );
+    }
     return {
       requiresEmailVerification: true as const,
       email: normalizedEmail,
@@ -946,7 +953,7 @@ export class AuthService {
     userId: string,
     email: string,
     purpose: AuthOtpPurpose
-  ): Promise<{ code: string; exposeInResponse: boolean }> {
+  ): Promise<{ code: string; sent: boolean; exposeInResponse: boolean }> {
     const ttlSeconds = await this.getOtpTtlSeconds();
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
     const codeHash = this.hashOtpCode(userId, purpose, code);
@@ -984,9 +991,11 @@ export class AuthService {
     const exposeInResponse = !sent && env.NODE_ENV === "development";
     if (exposeInResponse) {
       this.logger.warn(`[mail:dev] OTP ${purpose} → ${email}: ${code}`);
+    } else if (!sent && env.NODE_ENV === "production") {
+      this.logger.error(`OTP ${purpose} non envoyé (utilisateur ${userId}) : échec du fournisseur e-mail.`);
     }
 
-    return { code, exposeInResponse };
+    return { code, sent, exposeInResponse };
   }
 
   private async consumeOtpChallenge(challengeId: string) {
