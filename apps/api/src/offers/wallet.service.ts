@@ -4,8 +4,9 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma, WalletLedgerEntry, WalletLedgerKind } from "@prisma/client";
+import { LedgerBucket, LedgerDirection, Prisma, WalletLedgerEntry, WalletLedgerKind } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { appendLedgerEntry, bucketOf } from "./ledger-entry";
 
 type DbClient = Prisma.TransactionClient | PrismaService["client"];
 
@@ -98,16 +99,16 @@ export class WalletService {
         where: { id: wallet.id },
         data
       });
-      const entry = await db.walletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: input.kind,
-          amountCfa: input.amountCfa,
-          eventId: input.eventId ?? null,
-          paymentId: input.paymentId ?? null,
-          withdrawalId: input.withdrawalId ?? null,
-          note: input.note ?? null
-        }
+      const entry = await appendLedgerEntry(db, {
+        walletId: wallet.id,
+        kind: input.kind,
+        direction: LedgerDirection.CREDIT,
+        bucket: bucketOf(input.target),
+        amountCfa: input.amountCfa,
+        eventId: input.eventId,
+        paymentId: input.paymentId,
+        withdrawalId: input.withdrawalId,
+        note: input.note
       });
       return { wallet: updated, entry };
     };
@@ -144,29 +145,29 @@ export class WalletService {
 
       let heldEntry: WalletLedgerEntry | null = null;
       if (heldCfa > 0) {
-        heldEntry = await db.walletLedgerEntry.create({
-          data: {
-            walletId: wallet.id,
-            kind: WalletLedgerKind.HELD_ALLOCATION,
-            amountCfa: heldCfa,
-            eventId: input.eventId ?? null,
-            paymentId: input.paymentId ?? null,
-            note: input.note ? `${input.note} (réserve)` : "Réserve de sécurité"
-          }
+        heldEntry = await appendLedgerEntry(db, {
+          walletId: wallet.id,
+          kind: WalletLedgerKind.HELD_ALLOCATION,
+          direction: LedgerDirection.CREDIT,
+          bucket: LedgerBucket.HELD,
+          amountCfa: heldCfa,
+          eventId: input.eventId,
+          paymentId: input.paymentId,
+          note: input.note ? `${input.note} (réserve)` : "Réserve de sécurité"
         });
       }
 
       let withdrawableEntry: WalletLedgerEntry | null = null;
       if (withdrawableCfa > 0) {
-        withdrawableEntry = await db.walletLedgerEntry.create({
-          data: {
-            walletId: wallet.id,
-            kind: input.kind,
-            amountCfa: withdrawableCfa,
-            eventId: input.eventId ?? null,
-            paymentId: input.paymentId ?? null,
-            note: input.note ?? null
-          }
+        withdrawableEntry = await appendLedgerEntry(db, {
+          walletId: wallet.id,
+          kind: input.kind,
+          direction: LedgerDirection.CREDIT,
+          bucket: LedgerBucket.WITHDRAWABLE,
+          amountCfa: withdrawableCfa,
+          eventId: input.eventId,
+          paymentId: input.paymentId,
+          note: input.note
         });
       }
 
@@ -211,16 +212,16 @@ export class WalletService {
         );
       }
       const updated = await db.organizerWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const entry = await db.walletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: input.kind,
-          amountCfa: input.amountCfa,
-          eventId: input.eventId ?? null,
-          paymentId: input.paymentId ?? null,
-          withdrawalId: input.withdrawalId ?? null,
-          note: input.note ?? null
-        }
+      const entry = await appendLedgerEntry(db, {
+        walletId: wallet.id,
+        kind: input.kind,
+        direction: LedgerDirection.DEBIT,
+        bucket: bucketOf(input.from),
+        amountCfa: input.amountCfa,
+        eventId: input.eventId,
+        paymentId: input.paymentId,
+        withdrawalId: input.withdrawalId,
+        note: input.note
       });
       return { wallet: updated, entry };
     };
@@ -261,14 +262,15 @@ export class WalletService {
         );
       }
       const updated = await db.organizerWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const entry = await db.walletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: WalletLedgerKind.HELD_RELEASE,
-          amountCfa: args.amountCfa,
-          eventId: args.eventId ?? null,
-          note: args.note ?? "Libération held → withdrawable"
-        }
+      // Transfert : une seule ligne CREDIT WITHDRAWABLE, débit implicite de HELD (ADR-021).
+      const entry = await appendLedgerEntry(db, {
+        walletId: wallet.id,
+        kind: WalletLedgerKind.HELD_RELEASE,
+        direction: LedgerDirection.CREDIT,
+        bucket: LedgerBucket.WITHDRAWABLE,
+        amountCfa: args.amountCfa,
+        eventId: args.eventId,
+        note: args.note ?? "Libération held → withdrawable"
       });
       return { wallet: updated, entry };
     };
