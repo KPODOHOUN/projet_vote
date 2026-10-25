@@ -126,7 +126,7 @@ bash scripts/smoke-deploy.sh --web https://votes.example.com
 ### API
 
 - `GET /api/v1/health` renvoie `200`
-- `GET /api/v1/health/ready` renvoie `200`
+- `GET /api/v1/health/ready` renvoie `200` (base joignable ; `503` avec `checks.database: "unreachable"` si Postgres est coupé ou ne répond pas en 2 s). `GET /api/v1/health` (vivacité) ne dépend pas de la base.
 - endpoints sécurisés critiques :
   - `POST /api/v1/payments/init` exige auth + role
   - `POST /api/v1/payments/webhooks/feexpay` valide strictement `FEEXPAY_WEBHOOK_SECRET`
