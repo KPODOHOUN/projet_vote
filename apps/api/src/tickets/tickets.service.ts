@@ -4,7 +4,8 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  ServiceUnavailableException
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import {
@@ -210,6 +211,11 @@ export class TicketsService {
   }
 
   async purchaseTickets(eventSlug: string, payload: unknown) {
+    // No PSP is wired for tickets yet: outside demo mode a purchase would only
+    // create RESERVED tickets and a PENDING transaction nobody ever confirms.
+    if (!env.API_PAYMENT_DEMO_MODE) {
+      throw new ServiceUnavailableException("La vente en ligne n'est pas encore ouverte.");
+    }
     const input = purchaseTicketSchema.parse(payload);
 
     const event = await this.prisma.client.event.findUnique({

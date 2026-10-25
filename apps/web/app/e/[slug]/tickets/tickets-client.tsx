@@ -17,6 +17,13 @@ import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { EmptyState, StatusChip } from "@/components/ui/primitives";
 
+/**
+ * La vente en ligne reste fermée tant qu'aucun PSP n'est branché pour les
+ * billets (l'API refuse l'achat hors mode démo). Le mode démo l'ouvre via
+ * NEXT_PUBLIC_TICKET_SALES_OPEN=true.
+ */
+const TICKET_SALES_OPEN = process.env.NEXT_PUBLIC_TICKET_SALES_OPEN === "true";
+
 type PurchaseResult = {
   tickets: { id: string; qrSecret: string; amountCfa: number }[];
   transaction: { id: string; amountCfa: number; status: string };
@@ -86,8 +93,14 @@ export function TicketsClient({ slug }: { slug: string }) {
         <>
           <div className="space-y-2 text-center">
             <Ticket className="mx-auto h-10 w-10 text-primary" />
-            <h1 className="text-2xl font-black">{t("pub.buyTickets")}</h1>
+            <h1 className="text-2xl font-black">{TICKET_SALES_OPEN ? t("pub.buyTickets") : t("pub.ticketsTitle")}</h1>
           </div>
+
+          {!TICKET_SALES_OPEN && ticketTypes.length > 0 ? (
+            <p role="status" className="rounded-md border border-border bg-muted px-4 py-3 text-sm font-medium text-foreground">
+              {t("pub.ticketSalesClosed")}
+            </p>
+          ) : null}
 
           {!purchasedTicket && (
             <>
@@ -97,11 +110,22 @@ export function TicketsClient({ slug }: { slug: string }) {
                     const sold = tt._count.tickets;
                     const remaining = tt.quantity - sold;
                     return (
-                      <motion.div
+                      <div
                         key={tt.id}
-                        whileHover={{ scale: 1.01 }}
-                        className="cursor-pointer space-y-3 rounded-2xl border border-border/60 bg-card p-5"
-                        onClick={() => setSelectedType(tt)}
+                        className={`space-y-3 rounded-md border border-border/60 bg-card p-5${TICKET_SALES_OPEN ? " cursor-pointer hover:bg-accent/40" : ""}`}
+                        {...(TICKET_SALES_OPEN
+                          ? {
+                              role: "button",
+                              tabIndex: 0,
+                              onClick: () => setSelectedType(tt),
+                              onKeyDown: (e: React.KeyboardEvent) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedType(tt);
+                                }
+                              },
+                            }
+                          : {})}
                       >
                         <div className="flex items-center justify-between">
                           <div>
@@ -119,14 +143,14 @@ export function TicketsClient({ slug }: { slug: string }) {
                           </Badge>
                           {tt.maxPerPerson < 100 && <span>· {t("pub.maxPerPerson", { count: tt.maxPerPerson })}</span>}
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
                   {ticketTypes.length === 0 && (
                     <EmptyState title={t("pub.noTickets")} description={t("pub.noTicketsDesc")} />
                   )}
                 </div>
-              ) : (
+              ) : TICKET_SALES_OPEN ? (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -213,7 +237,7 @@ export function TicketsClient({ slug }: { slug: string }) {
                       : `${t("pub.pay")} ${(quantity * selectedType.priceCfa).toLocaleString(dateLocale)} XOF`}
                   </Button>
                 </motion.div>
-              )}
+              ) : null}
             </>
           )}
 
