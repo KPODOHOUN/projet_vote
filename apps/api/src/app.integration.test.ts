@@ -16,6 +16,10 @@ import { AuthService } from "./auth/auth.service";
 import { UserRole } from "@prisma/client";
 import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter";
+import {
+  OFFER2_PER_VOTE_COMMISSION_BPS_KEY,
+  OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY
+} from "./common/platform-settings";
 
 
 /**
@@ -117,19 +121,26 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
     .set("Authorization", authHeader);
   assert.equal(meResponse.status, 200);
   const tenantId = meResponse.body.tenantId as string;
-  const ownerUserId = meResponse.body.userId as string;
   assert.ok(tenantId.length > 5);
 
-  // The admin surface (/admin/*) is now restricted to platform operators
-  // (RBAC hardening). Mint a PLATFORM_ADMIN access token for the existing user
-  // to exercise those routes — the role is carried by the JWT, and the user
-  // row already exists and is not suspended.
+  // The admin surface (/admin/*) is restricted to platform operators (RBAC
+  // hardening). verifyAccessToken re-reads the role from the database, so the
+  // admin must be a real PLATFORM_ADMIN row — a JWT claiming the role is not
+  // enough.
+  const platformAdmin = await prisma.user.create({
+    data: {
+      tenantId,
+      email: "platform-admin@demovote.africa",
+      role: UserRole.PLATFORM_ADMIN,
+      emailVerifiedAt: new Date()
+    }
+  });
   const authService = app.get(AuthService);
   const platformAdminToken = await authService.issueAccessToken({
-    userId: ownerUserId,
+    userId: platformAdmin.id,
     tenantId,
     role: UserRole.PLATFORM_ADMIN,
-    email: "owner@demovote.africa"
+    email: platformAdmin.email
   });
   const platformAdminHeader = `Bearer ${platformAdminToken}`;
 
@@ -389,8 +400,13 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.equal(stillPending?.status, "PENDING");
 
   // Platform commission (10% = 1000 bps) is captured at payment confirmation.
-  await prisma.platformSetting.create({
-    data: { key: "commission_bps", value: "1000", updatedByUserId: "system" }
+  // The tenant is ESCROW: its rate comes from the per-vote offer settings,
+  // not from the legacy `commission_bps` key.
+  await prisma.platformSetting.createMany({
+    data: [
+      { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY, value: "true", updatedByUserId: "system" },
+      { key: OFFER2_PER_VOTE_COMMISSION_BPS_KEY, value: "1000", updatedByUserId: "system" }
+    ]
   });
 
   // ADR-017 happy path: bind a Feexpay reference to the transaction, script

@@ -54,7 +54,7 @@ export default function DashboardTicketingPage() {
         <div className="space-y-8">
             <header className="flex flex-col gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-2">
-                    <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary"><Ticket className="h-4 w-4" />{isEn ? "Ticketing" : "Billetterie"}</span>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-600"><Ticket className="h-4 w-4" />{isEn ? "Ticketing" : "Billetterie"}</span>
                     <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{isEn ? "Manage your tickets" : "Gérez votre billetterie"}</h2>
                     <p className="max-w-2xl text-muted-foreground">{isEn ? "Choose an event to create ticket types, follow sales and validate your attendees." : "Choisissez un évènement pour créer vos types de billets, suivre les ventes et valider vos participants."}</p>
                 </div>

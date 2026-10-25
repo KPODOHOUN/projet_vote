@@ -40,7 +40,7 @@ function loadEnv() {
 }
 loadEnv();
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_JWT_SECRET: z.string().min(32).default("dev-only-insecure-secret-change-me-32chars"),
   API_JWT_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(900),
@@ -154,7 +154,10 @@ const envSchema = z.object({
   // concernés.
   PSP_STATUS_PULL_MIN_INTERVAL_MS: z.coerce.number().int().min(1000).max(120_000).default(8_000),
   // OpenAI API key for the AI assistant chatbot
-  OPENAI_API_KEY: z.string().min(1).optional()
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  // Plafonds journaliers de l'assistant (coût OpenAI), en plus du throttle par minute.
+  CHAT_DAILY_LIMIT: z.coerce.number().int().min(0).default(500),
+  CHAT_DAILY_LIMIT_PER_IP: z.coerce.number().int().min(0).default(30)
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== "production") {
     return;
@@ -168,6 +171,16 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["API_PAYMENT_DEMO_MODE"],
       message: "API_PAYMENT_DEMO_MODE ne doit jamais etre active en production."
+    });
+  }
+
+  // Registration, email verification, invitations and tickets all depend on
+  // email. Without a key, nobody can sign up — fail at boot, not at first OTP.
+  if (!value.MAIL_RESEND_API_KEY) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["MAIL_RESEND_API_KEY"],
+      message: "MAIL_RESEND_API_KEY doit etre defini en production."
     });
   }
 

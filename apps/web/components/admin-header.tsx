@@ -29,32 +29,33 @@ export function AdminHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between gap-4 border-b border-gold-500/15 bg-card/80 px-6 shadow-sm backdrop-blur-md sm:px-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between gap-2 border-b border-gold-500/20 bg-background pl-[4.5rem] pr-3 sm:gap-4 sm:pr-8 lg:px-8">
+      <div className="hidden items-center gap-2 text-sm text-slate-600 sm:flex">
         <Shield className="h-4 w-4 text-gold-600" aria-hidden="true" />
         <span className="hidden sm:inline">
           {isEn ? "Restricted area — platform operators only" : "Espace restreint — opérateurs plateforme uniquement"}
         </span>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         <LanguageSwitcher />
         {user ? (
           <span className="hidden max-w-[240px] truncate text-sm font-medium text-foreground md:inline">{user.email}</span>
         ) : null}
         <Link
           href="/admin/settings"
-          className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.97]"
+          className="hidden min-h-11 items-center rounded-md px-3 text-sm font-medium text-slate-600 hover:bg-accent hover:text-slate-900 sm:inline-flex"
         >
           {isEn ? "Settings" : "Réglages"}
         </Link>
         <button
           type="button"
           onClick={logout}
-          className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-muted-foreground transition-all hover:text-destructive active:scale-[0.97] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          aria-label={t("nav.logout")}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md px-2 text-sm font-semibold text-slate-600 hover:text-destructive focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:px-3"
         >
           <LogOut className="h-4 w-4" aria-hidden="true" />
-          {t("nav.logout")}
+          <span className="hidden sm:inline">{t("nav.logout")}</span>
         </button>
       </div>
     </header>

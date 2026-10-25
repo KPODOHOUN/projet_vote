@@ -17,7 +17,6 @@ import { sanitizePhoneInput } from "../../lib/phone";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { Button, Input, FormError, Checkbox } from "@/components/ui";
 import { OAuthButtons } from "./oauth-buttons";
-import { cn } from "@/lib/utils";
 
 type OfferType = "EXTERNAL" | "ESCROW";
 
@@ -64,7 +63,8 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
   const [showPhone, setShowPhone] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [offerType, setOfferType] = useState<OfferType>("ESCROW");
+  // Escrow seul (D10) ; la valeur part toujours dans le payload d'inscription.
+  const offerType: OfferType = "ESCROW";
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -174,33 +174,12 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
     }
   };
 
-  const offerCards: Array<{
-    value: OfferType;
-    title: string;
-    description: string;
-    disabled?: boolean;
-    badge?: string;
-  }> = [
-    {
-      value: "ESCROW",
-      title: t("auth.register.offerEscrowTitle"),
-      description: t("auth.register.offerEscrowDesc"),
-      badge: t("auth.register.offerEscrowBadge")
-    },
-    {
-      value: "EXTERNAL",
-      title: t("auth.register.offerExternalTitle"),
-      description: t("auth.register.offerExternalDesc"),
-      disabled: true,
-      badge: t("auth.register.offerExternalBadge")
-    }
-  ];
 
   return (
     <>
       {!hideHeading ? (
         <>
-          <span className="mb-6 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+          <span className="mb-6 inline-block text-xs font-semibold text-slate-600">
             {t("auth.register.badge")}
           </span>
           <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
@@ -346,66 +325,11 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
             required
           />
 
-          <fieldset className="space-y-2.5">
-            <legend className="text-sm font-medium text-foreground">
-              {t("auth.register.offerLegend")} <span className="text-destructive">*</span>
-            </legend>
-            {/* Cartes en colonne compacte style radio : lisibles dans les
-                ~370 px utiles de la modale (la grille 2 colonnes compressait). */}
-            <div className="space-y-2">
-              {offerCards.map((card) => {
-                const selected = offerType === card.value;
-                const disabled = Boolean(card.disabled);
-                return (
-                  <button
-                    key={card.value}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => {
-                      if (disabled) return;
-                      setOfferType(card.value);
-                      setFieldErrors((p) => ({ ...p, offerType: undefined }));
-                    }}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
-                      disabled && "cursor-not-allowed opacity-60",
-                      selected
-                        ? "border-primary bg-primary/8 ring-2 ring-primary/30"
-                        : "border-border bg-background/60 hover:border-primary/40"
-                    )}
-                    aria-pressed={selected}
-                    aria-disabled={disabled}
-                  >
-                    <span
-                      className={cn(
-                        "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
-                        selected ? "border-primary" : "border-muted-foreground/40"
-                      )}
-                      aria-hidden="true"
-                    >
-                      {selected ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-foreground">{card.title}</span>
-                        {card.badge ? (
-                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                            {card.badge}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{card.description}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {fieldErrors.offerType ? (
-              <p className="text-sm text-destructive" role="alert">
-                {fieldErrors.offerType}
-              </p>
-            ) : null}
-          </fieldset>
+          {/* Offre Escrow seule (D10) : affichée, pas choisie. */}
+          <div className="rounded-md border border-border bg-muted/40 p-3.5">
+            <p className="text-sm font-semibold text-slate-900">{t("auth.register.offerEscrowTitle")}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{t("auth.register.offerEscrowDesc")}</p>
+          </div>
         </div>
 
         <div className="flex flex-row items-start gap-3">

@@ -1,125 +1,462 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
 
 import { CandidatePhoto } from "./candidate-photo";
-import { Badge } from "./ui/badge";
 import { publicCandidatePath } from "../lib/site";
+import { useI18n } from "../lib/i18n-provider";
+import { formatCount } from "../lib/format";
+import type { PageStyleKey } from "../lib/minisite-style";
 import type { PublicCandidate, PublicEvent } from "../app/e/[slug]/page";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08
-    }
-  }
-};
+// Nom conservé pour les imports existants ; plus aucune animation (7.2).
+// `hover:` de Tailwind v4 ne s'applique que sous (hover: hover) : rien ne dépend
+// du survol pour être lu sur mobile. Couleurs : jetons --mini-* (style de page).
+const cardLink =
+  "block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mini-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mini-bg)]";
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 25 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: "spring" as const, stiffness: 100, damping: 15 }
-  }
-};
+const pad2 = (value: number) => String(value).padStart(2, "0");
 
-function CandidateGridCard({ slug, c, isEn }: { slug: string; c: PublicCandidate; isEn: boolean }) {
+function NumberKicker({ value }: { value: number | null }) {
+  const { t } = useI18n();
+  if (value == null) return null;
   return (
-    <motion.div variants={cardVariants} whileHover={{ y: -6, transition: { duration: 0.2 } }}>
-      <Link
-        href={publicCandidatePath(slug, c.publicRef)}
-        className="group flex flex-col rounded-2xl border border-border/40 bg-card/60 overflow-hidden hover:shadow-2xl hover:border-primary/25 transition-all duration-300 relative aspect-[3/4]"
-      >
-        <div className="relative w-full h-full bg-muted overflow-hidden">
-          <CandidatePhoto
-            photoUrl={c.photoUrl}
-            fullName={c.fullName}
-            size="sm"
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/85 via-neutral-950/30 to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
-          
-          {c.number != null ? (
-            <Badge className="absolute top-3.5 left-3.5 font-black text-sm px-3 py-1 shadow-md bg-background/90 text-foreground backdrop-blur-md border-none rounded-xl">
-              N° {String(c.number).padStart(2, "0")}
-            </Badge>
-          ) : null}
-          
-          <div className="absolute bottom-0 left-0 w-full p-4 transform translate-y-1 group-hover:translate-y-0 transition-transform">
-            <span className="block font-bold text-white text-base sm:text-lg leading-tight mb-1 truncate">{c.fullName}</span>
-            <div className="flex items-center justify-between text-xs text-white/80 font-medium">
-              <span>{c.voteCount.toLocaleString("fr-FR")} votes</span>
-              <span className="inline-flex items-center text-primary relative after:absolute after:bottom-0 after:left-0 after:h-[1px] after:w-0 after:bg-primary after:transition-all group-hover:after:w-full font-bold">
-                {isEn ? "Vote" : "Voter"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </Link>
-    </motion.div>
+    <span className="text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--mini-muted)]">
+      {t("pub.candidateNumber", { number: pad2(value) })}
+    </span>
   );
 }
 
-function CandidateListRow({ slug, c }: { slug: string; c: PublicCandidate }) {
+function VotesLine({ count }: { count: number }) {
+  const { t, locale } = useI18n();
+  return <>{t("pub.votesCount", { count: formatCount(count, locale) })}</>;
+}
+
+const photoFrame = "aspect-[4/5] overflow-hidden rounded-md bg-[var(--mini-wash)] group-hover:ring-2 group-hover:ring-[var(--mini-accent)]";
+
+// Affiche : photo 4:5, puis grand numéro typographique à côté du nom.
+function PosterCard({ slug, c }: { slug: string; c: PublicCandidate }) {
   return (
-    <motion.div variants={cardVariants} whileHover={{ x: 4, transition: { duration: 0.2 } }}>
-      <Link
-        href={publicCandidatePath(slug, c.publicRef)}
-        className="group flex items-center gap-4 rounded-2xl border border-border/40 bg-card/60 p-3.5 sm:p-4 hover:shadow-lg hover:border-primary/25 transition-all duration-300"
-      >
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col gap-4`}>
+      <div className={photoFrame}>
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+      </div>
+      <div className="flex items-start gap-3">
         {c.number != null ? (
-          <Badge className="font-black text-sm px-2.5 py-1 shrink-0 bg-primary/10 text-primary border-none rounded-xl">
-            N° {String(c.number).padStart(2, "0")}
-          </Badge>
+          <span className="mini-title shrink-0 whitespace-nowrap text-[26px] leading-[0.85] text-[var(--mini-accent)] tabular-nums sm:text-[34px]" aria-hidden="true">
+            {pad2(c.number)}
+          </span>
         ) : null}
-        <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl overflow-hidden bg-muted shrink-0 relative border border-border/30">
-          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="w-full h-full object-cover" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <span className="block font-bold text-foreground text-base sm:text-lg leading-tight truncate">{c.fullName}</span>
-          <span className="block text-xs sm:text-sm text-muted-foreground mt-0.5">{c.voteCount.toLocaleString("fr-FR")} votes</span>
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
-
-function CandidateSpotlight({ slug, c, isEn }: { slug: string; c: PublicCandidate; isEn: boolean }) {
-  return (
-    <motion.div variants={cardVariants} whileHover={{ y: -4, transition: { duration: 0.2 } }}>
-      <Link
-        href={publicCandidatePath(slug, c.publicRef)}
-        className="group grid grid-cols-1 sm:grid-cols-2 rounded-3xl border border-border/40 bg-card/60 overflow-hidden hover:shadow-2xl hover:border-primary/30 transition-all duration-300 relative shadow-md"
-      >
-        <div className="relative aspect-[4/3] sm:aspect-auto sm:min-h-[300px] bg-muted overflow-hidden">
-          <CandidatePhoto
-            photoUrl={c.photoUrl}
-            fullName={c.fullName}
-            size="sm"
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-          {c.number != null ? (
-            <Badge className="absolute top-4 left-4 font-black text-sm px-3.5 py-1.5 shadow-md bg-background/90 text-foreground backdrop-blur-md border-none rounded-xl">
-              N° {String(c.number).padStart(2, "0")}
-            </Badge>
-          ) : null}
-        </div>
-        <div className="flex flex-col justify-center p-6 sm:p-8 md:p-10">
-          <Badge variant="outline" className="w-fit text-[10px] font-bold tracking-widest uppercase text-primary border-primary/30 bg-primary/5 mb-4 animate-pulse">
-            {isEn ? "Featured Candidate" : "Candidat en Vedette"}
-          </Badge>
-          <span className="block font-extrabold text-foreground text-2xl sm:text-3xl tracking-tight leading-tight mb-2 truncate">{c.fullName}</span>
-          <span className="block text-muted-foreground font-semibold mb-6">{c.voteCount.toLocaleString("fr-FR")} votes</span>
-          <span className="inline-flex items-center text-primary font-bold relative after:absolute after:-bottom-0.5 after:left-0 after:h-[2px] after:w-0 after:bg-primary after:transition-all group-hover:after:w-full w-fit">
-            {isEn ? "View Profile & Vote" : "Voir le profil & voter"}
+        <div className="min-w-0">
+          <span className="block text-base font-semibold uppercase leading-tight tracking-[0.06em] sm:text-lg">{c.fullName}</span>
+          <span className="mt-1 block text-[13px] text-[var(--mini-muted)] tabular-nums">
+            <VotesLine count={c.voteCount} />
           </span>
         </div>
-      </Link>
-    </motion.div>
+      </div>
+    </Link>
+  );
+}
+
+// Soirée : nom et numéro posés sur le bas de la photo, plein cadre.
+function NightCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group`}>
+      <div className={`relative ${photoFrame}`}>
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgb(14_18_32/0.94)_45%)] p-4 pt-12 text-[#f1f5f9]">
+          {c.number != null ? (
+            <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+          ) : null}
+          <span className="mt-1 block text-base font-semibold uppercase leading-tight tracking-[0.06em] sm:text-lg">{c.fullName}</span>
+          <span className="mt-1 block text-[13px] text-[#a8b3c7] tabular-nums">
+            <VotesLine count={c.voteCount} />
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// Billet : dossard numéroté sur la photo, barre de voix sous le nom.
+function TicketCard({ slug, c, maxVotes }: { slug: string; c: PublicCandidate; maxVotes: number }) {
+  const share = maxVotes > 0 ? Math.round((c.voteCount / maxVotes) * 100) : 0;
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col gap-3`}>
+      <div className={`relative ${photoFrame}`}>
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        {c.number != null ? (
+          <span className="mini-title absolute left-0 top-0 rounded-br-md bg-slate-900 px-3.5 py-2 text-xl text-white tabular-nums">
+            {pad2(c.number)}
+          </span>
+        ) : null}
+      </div>
+      <span className="text-base font-semibold uppercase leading-tight tracking-[0.06em] sm:text-lg">{c.fullName}</span>
+      <span className="-mt-1.5 text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+      <span aria-hidden="true" className="block h-[3px] bg-[var(--mini-rule)]">
+        <span className="block h-[3px] bg-[var(--event-accent)]" style={{ width: `${share}%` }} />
+      </span>
+    </Link>
+  );
+}
+
+// Couronne : portrait encadré, texte centré.
+function FramedCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col items-center gap-3 text-center`}>
+      <div className="w-full bg-white p-2 shadow-[0_0_0_1px_var(--mini-line)] transition-transform group-hover:-translate-y-1">
+        <div className="aspect-[4/5] overflow-hidden bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+      </div>
+      {c.number != null ? (
+        <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+      ) : null}
+      <span className="mini-title text-lg leading-tight sm:text-xl">{c.fullName}</span>
+      <span className="-mt-1 text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Magazine : mosaïque, nom posé sur la photo ; la première carte est en grand.
+function MosaicCard({ slug, c, feature }: { slug: string; c: PublicCandidate; feature: boolean }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative block overflow-hidden rounded-md bg-[var(--mini-wash)] ${feature ? "col-span-2 lg:row-span-2" : ""}`}
+    >
+      <div className={`aspect-[4/5] ${feature ? "lg:aspect-auto lg:h-full" : ""}`}>
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size={feature ? "lg" : "sm"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+      </div>
+      {c.number != null ? (
+        // Voile sombre en haut, comme celui du nom en bas : le numéro blanc reste lisible sans photo.
+        <span className="absolute inset-x-0 top-0 flex justify-end bg-[linear-gradient(0deg,transparent,rgb(15_23_42/0.7))] px-3 pb-8 pt-2">
+          <span className="mini-title text-[clamp(28px,3vw,44px)] text-white tabular-nums">{pad2(c.number)}</span>
+        </span>
+      ) : null}
+      <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgb(15_23_42/0.86)_55%)] p-4 pt-14 text-white">
+        <span className={`mini-title block leading-tight ${feature ? "text-[clamp(24px,3vw,40px)]" : "text-base sm:text-lg"}`}>{c.fullName}</span>
+        <span className="mt-1 block text-[13px] text-white/80 tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+// Pop : carte à contour encre et ombre franche.
+function PopCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group flex flex-col overflow-hidden rounded-md border-[3px] border-slate-900 bg-white text-slate-900 shadow-[5px_5px_0_0_#0f172a] transition-[transform,box-shadow] duration-150 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[7px_7px_0_0_#0f172a]`}
+    >
+      <div className="relative aspect-[4/5] border-b-[3px] border-slate-900 bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        {c.number != null ? (
+          <span className="mini-title absolute left-0 top-0 border-b-[3px] border-r-[3px] border-slate-900 bg-[var(--event-header-bg)] px-3 py-1.5 text-xl text-[var(--event-header-fg)] tabular-nums">
+            {pad2(c.number)}
+          </span>
+        ) : null}
+      </div>
+      <div className="p-3.5">
+        <span className="block text-base font-extrabold uppercase leading-tight sm:text-lg">{c.fullName}</span>
+        <span className="mt-1 block text-[13px] font-semibold text-slate-600 tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+// Terroir : étiquette suspendue, photo en arche.
+function TagCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative flex flex-col gap-3 rounded-md border border-[var(--mini-line)] bg-white p-3 pt-7 text-slate-900 transition-transform hover:-translate-y-1`}
+    >
+      <span aria-hidden="true" className="absolute left-1/2 top-2.5 h-3 w-3 -translate-x-1/2 rounded-full border border-[var(--mini-line)] bg-[var(--mini-bg)]" />
+      <div className="aspect-[4/5] overflow-hidden rounded-b-sm rounded-t-[999px] bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+      </div>
+      <div className="flex items-baseline justify-between gap-2 border-t border-dashed border-[var(--mini-line)] pt-3">
+        <span className="min-w-0 text-[15px] font-semibold leading-tight">{c.fullName}</span>
+        {c.number != null ? <span className="shrink-0 text-xs font-semibold text-[var(--mini-accent)] tabular-nums">N° {pad2(c.number)}</span> : null}
+      </div>
+      <span className="-mt-1.5 text-[13px] text-slate-600 tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Stade : maillot, grand numéro, bandeau du nom à la couleur de l'événement.
+function JerseyCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative block overflow-hidden rounded-sm bg-slate-950 text-white transition-transform hover:-translate-y-1`}
+    >
+      <div className="relative aspect-[4/5]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover opacity-95" />
+        {c.number != null ? (
+          <span className="mini-title absolute left-3 top-1 text-[clamp(44px,5vw,72px)] leading-none text-[var(--event-accent-bright)] [text-shadow:0_2px_16px_rgb(0_0_0/0.45)] tabular-nums">
+            {pad2(c.number)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-0.5 bg-[var(--event-header-bg)] px-3 py-2.5 text-[var(--event-header-fg)] sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
+        <span className="min-w-0 break-words text-sm font-extrabold uppercase leading-tight tracking-[0.04em] sm:text-base">{c.fullName}</span>
+        <span className="shrink-0 text-xs font-bold tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+// Diplôme : portrait rond cerclé, nom centré.
+function MedalCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col items-center gap-3 text-center`}>
+      <div className="w-full max-w-[220px] rounded-full p-1.5 shadow-[0_0_0_2px_var(--event-accent-strong)] transition-transform group-hover:-translate-y-1">
+        <div className="aspect-square overflow-hidden rounded-full bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+      </div>
+      {c.number != null ? (
+        <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+      ) : null}
+      <span className="mini-title text-lg leading-tight sm:text-xl">{c.fullName}</span>
+      <span className="-mt-1 text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Marché : cagette photo, étiquette de prix à la couleur de l'événement.
+function CrateCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group flex flex-col rounded-md bg-[#fffdf8] p-2.5 text-slate-900 shadow-[0_1px_0_rgb(60_40_20/0.06),0_10px_22px_-16px_rgb(60_40_20/0.55)] ring-1 ring-[var(--mini-rule)] transition-transform hover:-translate-y-1`}
+    >
+      <div className="aspect-square overflow-hidden rounded-sm bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+      </div>
+      {/* Nom et numéro empilés : côte à côte, sur deux colonnes à 390 px, le nom se coupait en plein mot. */}
+      <div className="relative mt-3 flex flex-col gap-0.5 bg-[var(--event-header-bg)] py-2 pl-6 pr-3 text-[var(--event-header-fg)] [clip-path:polygon(12px_0,100%_0,100%_100%,12px_100%,0_50%)]">
+        <span aria-hidden="true" className="absolute left-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[#fffdf8]" />
+        <span className="min-w-0 text-sm font-bold leading-tight [overflow-wrap:break-word]">{c.fullName}</span>
+        {c.number != null ? <span className="text-xs font-semibold tabular-nums">N° {pad2(c.number)}</span> : null}
+      </div>
+      <span className="mt-2 px-1 text-[13px] text-slate-600 tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Wax : photo dans un cadre en motif de pagne, bande kente sous le nom.
+function WaxCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col gap-3`}>
+      <div className="mini-wax rounded-md p-2 transition-transform group-hover:-translate-y-1">
+        <div className="aspect-[4/5] overflow-hidden rounded-sm bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+      </div>
+      {c.number != null ? (
+        <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+      ) : null}
+      <span className="mini-title -mt-1 text-lg leading-tight sm:text-xl">{c.fullName}</span>
+      <span aria-hidden="true" className="mini-wax-band block h-1.5 w-12" />
+      <span className="text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Campus : polaroïd légèrement incliné, pastille de numéro.
+function PolaroidCard({ slug, c, tilt }: { slug: string; c: PublicCandidate; tilt: "left" | "right" }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative block bg-white p-2.5 pb-4 text-slate-900 shadow-[0_10px_24px_-14px_rgb(15_23_42/0.45)] transition-transform hover:rotate-0 ${tilt === "left" ? "-rotate-[1.5deg]" : "rotate-[1.5deg]"}`}
+    >
+      <div className="aspect-square overflow-hidden bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+      </div>
+      {c.number != null ? (
+        <span className="absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--event-accent-strong)] text-sm font-bold text-white shadow tabular-nums">
+          {pad2(c.number)}
+        </span>
+      ) : null}
+      <span className="mt-3 block text-center text-[15px] font-semibold leading-tight">{c.fullName}</span>
+      <span className="mt-1 block text-center text-[13px] text-slate-600 tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Badge : badge nominatif, fente de cordon, voix dans le bandeau du bas.
+function NameBadgeCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group flex flex-col overflow-hidden rounded-xl bg-white text-center text-slate-900 shadow-[0_1px_2px_rgb(15_23_42/0.1),0_14px_28px_-18px_rgb(15_23_42/0.45)] transition-transform hover:-translate-y-1`}
+    >
+      <span aria-hidden="true" className="mx-auto mt-3 block h-1.5 w-10 rounded-full bg-slate-200" />
+      <div className="flex flex-1 flex-col items-center px-3 pb-4 pt-4">
+        <div className="aspect-square w-[72%] overflow-hidden rounded-full bg-[var(--mini-wash)] shadow-[0_0_0_3px_white,0_0_0_5px_var(--event-accent-strong)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+        <span className="mt-4 text-[15px] font-bold leading-tight">{c.fullName}</span>
+        {c.number != null ? <span className="mt-1 text-xs font-semibold text-slate-500 tabular-nums">N° {pad2(c.number)}</span> : null}
+      </div>
+      <span className="bg-[var(--event-header-bg)] px-3 py-2 text-xs font-bold text-[var(--event-header-fg)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Story : carte verticale 9:16 dans un anneau dégradé.
+function StoryCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group mini-story-ring block rounded-[18px] p-[2px]`}>
+      <div className="relative aspect-[9/16] overflow-hidden rounded-[16px] bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+        {c.number != null ? (
+          <span className="absolute left-2.5 top-2.5 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white tabular-nums">{pad2(c.number)}</span>
+        ) : null}
+        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgb(2_6_23/0.9)_55%)] p-3 pt-12 text-white">
+          <span className="block text-[15px] font-semibold leading-tight">{c.fullName}</span>
+          <span className="mt-1 block text-xs text-white/80 tabular-nums">
+            <VotesLine count={c.voteCount} />
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// Sanctuaire : portrait en arche, double filet, nom centré.
+function ArchCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col items-center gap-3 text-center`}>
+      <div className="w-full rounded-t-full p-1.5 shadow-[0_0_0_1px_var(--mini-line)] transition-transform group-hover:-translate-y-1">
+        <div className="aspect-[3/4] overflow-hidden rounded-t-full bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+      </div>
+      {c.number != null ? (
+        <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+      ) : null}
+      <span className="mini-title text-lg leading-tight sm:text-xl">{c.fullName}</span>
+      <span className="-mt-1 text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Menu : les candidats en carte de restaurant, nom et voix reliés par des points.
+function MenuList({ slug, candidates }: { slug: string; candidates: PublicCandidate[] }) {
+  return (
+    <ul className="mx-auto grid max-w-5xl gap-x-12 gap-y-2 lg:grid-cols-2" role="list">
+      {candidates.map((c) => (
+        <li key={c.id}>
+          <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex items-center gap-4 py-3`}>
+            <span className="h-16 w-16 shrink-0 overflow-hidden rounded-full bg-[var(--mini-wash)] shadow-[0_0_0_3px_var(--mini-bg),0_0_0_4px_var(--mini-line)]">
+              <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-2">
+                <span className="mini-title min-w-0 text-lg leading-tight transition-colors group-hover:text-[var(--mini-accent)] sm:text-xl">{c.fullName}</span>
+                <span aria-hidden="true" className="min-w-6 flex-1 -translate-y-1 border-b-2 border-dotted border-[var(--mini-line)]" />
+                <span className="shrink-0 text-sm font-semibold tabular-nums">
+                  <VotesLine count={c.voteCount} />
+                </span>
+              </span>
+              {c.number != null ? (
+                <span className="mt-1 block text-xs text-[var(--mini-muted)] tabular-nums">N° {pad2(c.number)}</span>
+              ) : null}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Line-up : les candidats forment la programmation de l'affiche, en grand.
+function LineupList({ slug, candidates }: { slug: string; candidates: PublicCandidate[] }) {
+  return (
+    <ul className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-4 text-center" role="list">
+      {candidates.map((c, index) => (
+        <li key={c.id} className="flex items-baseline gap-3">
+          {index > 0 ? <span aria-hidden="true" className="text-[clamp(20px,3vw,36px)] text-[var(--mini-accent)]">•</span> : null}
+          <Link
+            href={publicCandidatePath(slug, c.publicRef)}
+            className="group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mini-accent)]"
+          >
+            <span className="mini-title text-[calc(clamp(28px,4.4vw,64px)*var(--mini-title-scale))] leading-[1.05] transition-colors group-hover:text-[var(--mini-accent)]">
+              {c.fullName}
+            </span>
+            <span className="ml-2 align-super text-xs font-semibold text-[var(--mini-muted)] tabular-nums">
+              <VotesLine count={c.voteCount} />
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Ligne de la maquette (« Vote du public ») : rang si clos, nom, voix.
+function CandidateListRow({ slug, c, rank }: { slug: string; c: PublicCandidate; rank: number | null }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group`}>
+      <div className="flex min-h-16 items-center gap-4 border-b border-[var(--mini-rule)] py-3 group-hover:bg-[var(--mini-wash)]">
+        <span className="w-10 shrink-0 text-[13px] text-[var(--mini-muted)] tabular-nums">
+          {rank !== null ? pad2(rank) : c.number != null ? pad2(c.number) : ""}
+        </span>
+        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold uppercase tracking-[0.06em]">{c.fullName}</span>
+        <span className="shrink-0 text-sm text-[var(--mini-muted)] tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+// Bloc large de la maquette : photo à gauche, nom en très grand à droite.
+function CandidateSpotlight({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-wrap gap-[clamp(32px,5vw,80px)]`}>
+      <div className={`min-w-0 flex-[1_1_300px] sm:max-h-[640px] ${photoFrame}`}>
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="lg" className="h-full w-full object-cover" />
+      </div>
+      <div className="flex min-w-0 flex-[1_1_300px] flex-col justify-end gap-5">
+        <NumberKicker value={c.number} />
+        <span className="mini-title mini-h1">{c.fullName}</span>
+        <span className="text-[15px] text-[var(--mini-muted)] tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
   );
 }
 
@@ -127,60 +464,88 @@ export function AnimatedCandidatesSection({
   slug,
   candidates,
   layout,
-  isEn
+  closed = false,
+  cardStyle = "affiche"
 }: {
   slug: string;
   candidates: PublicCandidate[];
   layout: PublicEvent["layout"];
-  isEn: boolean;
+  /** Rang affiché seulement quand l'événement est clos (LIST). */
+  closed?: boolean;
+  /** Style de page de l'événement : forme des cartes de la grille. */
+  cardStyle?: PageStyleKey;
 }) {
-  if (layout === "LIST") {
-    return (
-      <motion.div 
-        variants={containerVariants} 
-        initial="hidden" 
-        animate="visible" 
-        className="flex flex-col gap-3"
-      >
-        {candidates.map((c) => (
-          <CandidateListRow key={c.id} slug={slug} c={c} />
-        ))}
-      </motion.div>
-    );
+  if (cardStyle === "lineup" && layout !== "LIST") {
+    return <LineupList slug={slug} candidates={candidates} />;
+  }
+  if (cardStyle === "menu" && layout !== "LIST") {
+    return <MenuList slug={slug} candidates={candidates} />;
   }
 
-  if (layout === "SPOTLIGHT" && candidates[0]) {
-    const [featured, ...rest] = candidates;
+  if (layout === "LIST") {
+    // Rang = position par voix décroissantes, calculé uniquement après clôture.
+    const ranks = new Map(
+      [...candidates].sort((a, b) => b.voteCount - a.voteCount).map((c, index) => [c.id, index + 1])
+    );
     return (
-      <div className="space-y-8">
-        <CandidateSpotlight slug={slug} c={featured} isEn={isEn} />
-        {rest.length > 0 ? (
-          <motion.div 
-            variants={containerVariants} 
-            initial="hidden" 
-            animate="visible" 
-            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"
-          >
-            {rest.map((c) => (
-              <CandidateGridCard key={c.id} slug={slug} c={c} isEn={isEn} />
-            ))}
-          </motion.div>
-        ) : null}
+      <div>
+        {candidates.map((c) => (
+          <CandidateListRow key={c.id} slug={slug} c={c} rank={closed ? (ranks.get(c.id) ?? null) : null} />
+        ))}
       </div>
     );
   }
 
-  // GRID (default)
-  return (
-    <motion.div 
-      variants={containerVariants} 
-      initial="hidden" 
-      animate="visible" 
-      className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"
-    >
-      {candidates.map((c) => (
-        <CandidateGridCard key={c.id} slug={slug} c={c} isEn={isEn} />
-      ))}
-    </motion.div>
-  );
+  const maxVotes = Math.max(0, ...candidates.map((c) => c.voteCount));
+  const grid =
+    cardStyle === "soiree" || cardStyle === "magazine" || cardStyle === "stade" || cardStyle === "story"
+      ? "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4"
+      : cardStyle === "pop"
+        ? "grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4"
+        : "grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-7 lg:grid-cols-4";
+  const card = (c: PublicCandidate, index: number) =>
+    cardStyle === "soiree" ? (
+      <NightCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "billet" ? (
+      <TicketCard key={c.id} slug={slug} c={c} maxVotes={maxVotes} />
+    ) : cardStyle === "couronne" ? (
+      <FramedCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "magazine" ? (
+      <MosaicCard key={c.id} slug={slug} c={c} feature={index === 0 && layout === "GRID" && candidates.length > 2} />
+    ) : cardStyle === "pop" ? (
+      <PopCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "terroir" ? (
+      <TagCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "stade" ? (
+      <JerseyCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "diplome" ? (
+      <MedalCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "marche" ? (
+      <CrateCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "wax" ? (
+      <WaxCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "campus" ? (
+      <PolaroidCard key={c.id} slug={slug} c={c} tilt={index % 2 === 0 ? "left" : "right"} />
+    ) : cardStyle === "badge" ? (
+      <NameBadgeCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "story" ? (
+      <StoryCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "sanctuaire" ? (
+      <ArchCard key={c.id} slug={slug} c={c} />
+    ) : (
+      <PosterCard key={c.id} slug={slug} c={c} />
+    );
+
+  if (layout === "SPOTLIGHT" && candidates[0]) {
+    // Le premier candidat dans l'ordre de l'API (numéro croissant), pas « le plus voté ».
+    const [featured, ...rest] = candidates;
+    return (
+      <div className="space-y-14">
+        <CandidateSpotlight slug={slug} c={featured} />
+        {rest.length > 0 ? <div className={grid}>{rest.map((c, i) => card(c, i + 1))}</div> : null}
+      </div>
+    );
+  }
+
+  return <div className={grid}>{candidates.map(card)}</div>;
 }

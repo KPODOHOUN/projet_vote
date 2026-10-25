@@ -125,7 +125,11 @@ export class VotesService {
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
           brandColor: event.brandColor ?? event.tenant.brandColor,
-          tagline: event.tagline
+          tagline: event.tagline,
+          coverUrl: event.coverUrl,
+          pageStyle: event.pageStyle,
+          fontStyle: event.fontStyle,
+          heroBackground: event.heroBackground
         }
       },
       candidates: candidates.map((c) => ({
@@ -140,13 +144,14 @@ export class VotesService {
   }
 
   /** candidateId → nombre de votes PAID (même règle d'intégrité que computeResults). */
+  /** Voix payées par candidat : somme de votesCount (même règle que computeResults). */
   private async paidVoteCountByCandidate(eventId: string): Promise<Map<string, number>> {
     const grouped = await this.prisma.client.vote.groupBy({
       by: ["candidateId"],
       where: { eventId, cancelledAt: null, paidAt: { not: null } },
-      _count: { _all: true }
+      _sum: { votesCount: true }
     });
-    return new Map(grouped.map((g) => [g.candidateId, g._count._all]));
+    return new Map(grouped.map((g) => [g.candidateId, g._sum.votesCount ?? 0]));
   }
 
   /**
@@ -170,12 +175,17 @@ export class VotesService {
         slug: event.slug,
         title: event.title,
         status: event.status,
+        startsAt: event.startsAt,
         endsAt: event.endsAt,
         voteUnitPriceCfa: event.voteUnitPriceCfa,
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
           brandColor: event.brandColor ?? event.tenant.brandColor,
-          tagline: event.tagline
+          tagline: event.tagline,
+          coverUrl: event.coverUrl,
+          pageStyle: event.pageStyle,
+          fontStyle: event.fontStyle,
+          heroBackground: event.heroBackground
         }
       },
       candidate: {
@@ -227,16 +237,22 @@ export class VotesService {
         slug: true,
         title: true,
         status: true,
+        startsAt: true,
+        endsAt: true,
         logoUrl: true,
         brandColor: true,
         tagline: true,
+        coverUrl: true,
+        pageStyle: true,
+        fontStyle: true,
+        heroBackground: true,
         tenant: { select: { logoUrl: true, brandColor: true } }
       }
     });
     if (!event) {
       throw new NotFoundException("Évènement introuvable.");
     }
-    const { id, slug, title, status } = event;
+    const { id, slug, title, status, startsAt, endsAt } = event;
     // Public ranking: expose vote COUNTS and ordering only — never the money
     // collected. Revealing per-candidate/total XOF publicly discourages voters
     // (fear of "being fleeced" / being first) and fuels disputes. The organizer
@@ -248,11 +264,17 @@ export class VotesService {
         slug,
         title,
         status,
+        startsAt,
+        endsAt,
         // Branding: event value wins, otherwise inherit the organizer's default.
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
           brandColor: event.brandColor ?? event.tenant.brandColor,
-          tagline: event.tagline
+          tagline: event.tagline,
+          coverUrl: event.coverUrl,
+          pageStyle: event.pageStyle,
+          fontStyle: event.fontStyle,
+          heroBackground: event.heroBackground
         }
       },
       results: results.map(({ totalAmountCfa: _omitted, ...rest }) => rest),

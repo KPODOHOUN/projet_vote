@@ -4,8 +4,9 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma, WalletLedgerEntry, WalletLedgerKind } from "@prisma/client";
+import { LedgerBucket, LedgerDirection, Prisma, WalletLedgerEntry, WalletLedgerKind } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { appendLedgerEntry, bucketOf } from "./ledger-entry";
 
 type DbClient = Prisma.TransactionClient | PrismaService["client"];
 
@@ -71,14 +72,82 @@ export class WalletService {
       orderBy: { createdAt: "desc" },
       take: 50
     });
+    const breakdown = await this.ledgerBreakdown(wallet.id, wallet.tenantId);
     return {
       id: wallet.id,
       tenantId: wallet.tenantId,
       withdrawableCfa: wallet.withdrawableCfa,
       heldCfa: wallet.heldCfa,
       updatedAt: wallet.updatedAt,
-      recentEntries
+      recentEntries,
+      // Ajouts additifs (Lot E5), calculés ici et jamais dans le navigateur.
+      ...breakdown
     };
+  }
+
+  /**
+   * Commission prélevée et détail par événement, depuis le journal signé
+   * (ADR-021). Seuls les paiements réellement crédités à ce wallet comptent ;
+   * les lignes sans sens (antérieures à ADR-021) sont comptées à part.
+   */
+  private async ledgerBreakdown(walletId: string, tenantId: string) {
+    const entries = await this.prisma.client.walletLedgerEntry.findMany({
+      where: { walletId },
+      select: { eventId: true, paymentId: true, kind: true, direction: true, bucket: true, amountCfa: true }
+    });
+
+    type EventLine = { heldCfa: number; creditedAvailableCfa: number };
+    const perEvent = new Map<string, EventLine>();
+    const paymentIds = new Set<string>();
+    let ledgerUnknownEntries = 0;
+    for (const e of entries) {
+      if (e.paymentId) paymentIds.add(e.paymentId);
+      if (e.direction === null || e.bucket === null) {
+        ledgerUnknownEntries += 1;
+        continue;
+      }
+      if (!e.eventId) continue;
+      const line = perEvent.get(e.eventId) ?? { heldCfa: 0, creditedAvailableCfa: 0 };
+      const signed = e.direction === LedgerDirection.CREDIT ? e.amountCfa : -e.amountCfa;
+      if (e.bucket === LedgerBucket.HELD) line.heldCfa += signed;
+      else line.creditedAvailableCfa += signed;
+      if (e.kind === WalletLedgerKind.HELD_RELEASE) line.heldCfa -= e.amountCfa;
+      perEvent.set(e.eventId, line);
+    }
+
+    const payments = paymentIds.size
+      ? await this.prisma.client.paymentTransaction.findMany({
+          where: { id: { in: [...paymentIds] }, tenantId },
+          select: { eventId: true, amountCfa: true, commissionCfa: true }
+        })
+      : [];
+    const gross = new Map<string, { grossCfa: number; commissionCfa: number }>();
+    let commissionCfa = 0;
+    for (const p of payments) {
+      const g = gross.get(p.eventId) ?? { grossCfa: 0, commissionCfa: 0 };
+      g.grossCfa += p.amountCfa;
+      g.commissionCfa += p.commissionCfa ?? 0;
+      gross.set(p.eventId, g);
+      commissionCfa += p.commissionCfa ?? 0;
+    }
+
+    const eventIds = [...new Set([...perEvent.keys(), ...gross.keys()])];
+    const events = eventIds.length
+      ? await this.prisma.client.event.findMany({
+          where: { id: { in: eventIds }, tenantId },
+          select: { id: true, title: true }
+        })
+      : [];
+    const byEvent = events.map((ev) => ({
+      eventId: ev.id,
+      title: ev.title,
+      grossCfa: gross.get(ev.id)?.grossCfa ?? 0,
+      commissionCfa: gross.get(ev.id)?.commissionCfa ?? 0,
+      heldCfa: perEvent.get(ev.id)?.heldCfa ?? 0,
+      creditedAvailableCfa: perEvent.get(ev.id)?.creditedAvailableCfa ?? 0
+    }));
+
+    return { commissionCfa, byEvent, ledgerUnknownEntries };
   }
 
   /**
@@ -98,16 +167,16 @@ export class WalletService {
         where: { id: wallet.id },
         data
       });
-      const entry = await db.walletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: input.kind,
-          amountCfa: input.amountCfa,
-          eventId: input.eventId ?? null,
-          paymentId: input.paymentId ?? null,
-          withdrawalId: input.withdrawalId ?? null,
-          note: input.note ?? null
-        }
+      const entry = await appendLedgerEntry(db, {
+        walletId: wallet.id,
+        kind: input.kind,
+        direction: LedgerDirection.CREDIT,
+        bucket: bucketOf(input.target),
+        amountCfa: input.amountCfa,
+        eventId: input.eventId,
+        paymentId: input.paymentId,
+        withdrawalId: input.withdrawalId,
+        note: input.note
       });
       return { wallet: updated, entry };
     };
@@ -144,29 +213,29 @@ export class WalletService {
 
       let heldEntry: WalletLedgerEntry | null = null;
       if (heldCfa > 0) {
-        heldEntry = await db.walletLedgerEntry.create({
-          data: {
-            walletId: wallet.id,
-            kind: WalletLedgerKind.HELD_ALLOCATION,
-            amountCfa: heldCfa,
-            eventId: input.eventId ?? null,
-            paymentId: input.paymentId ?? null,
-            note: input.note ? `${input.note} (réserve)` : "Réserve de sécurité"
-          }
+        heldEntry = await appendLedgerEntry(db, {
+          walletId: wallet.id,
+          kind: WalletLedgerKind.HELD_ALLOCATION,
+          direction: LedgerDirection.CREDIT,
+          bucket: LedgerBucket.HELD,
+          amountCfa: heldCfa,
+          eventId: input.eventId,
+          paymentId: input.paymentId,
+          note: input.note ? `${input.note} (réserve)` : "Réserve de sécurité"
         });
       }
 
       let withdrawableEntry: WalletLedgerEntry | null = null;
       if (withdrawableCfa > 0) {
-        withdrawableEntry = await db.walletLedgerEntry.create({
-          data: {
-            walletId: wallet.id,
-            kind: input.kind,
-            amountCfa: withdrawableCfa,
-            eventId: input.eventId ?? null,
-            paymentId: input.paymentId ?? null,
-            note: input.note ?? null
-          }
+        withdrawableEntry = await appendLedgerEntry(db, {
+          walletId: wallet.id,
+          kind: input.kind,
+          direction: LedgerDirection.CREDIT,
+          bucket: LedgerBucket.WITHDRAWABLE,
+          amountCfa: withdrawableCfa,
+          eventId: input.eventId,
+          paymentId: input.paymentId,
+          note: input.note
         });
       }
 
@@ -211,16 +280,16 @@ export class WalletService {
         );
       }
       const updated = await db.organizerWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const entry = await db.walletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: input.kind,
-          amountCfa: input.amountCfa,
-          eventId: input.eventId ?? null,
-          paymentId: input.paymentId ?? null,
-          withdrawalId: input.withdrawalId ?? null,
-          note: input.note ?? null
-        }
+      const entry = await appendLedgerEntry(db, {
+        walletId: wallet.id,
+        kind: input.kind,
+        direction: LedgerDirection.DEBIT,
+        bucket: bucketOf(input.from),
+        amountCfa: input.amountCfa,
+        eventId: input.eventId,
+        paymentId: input.paymentId,
+        withdrawalId: input.withdrawalId,
+        note: input.note
       });
       return { wallet: updated, entry };
     };
@@ -261,14 +330,15 @@ export class WalletService {
         );
       }
       const updated = await db.organizerWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const entry = await db.walletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: WalletLedgerKind.HELD_RELEASE,
-          amountCfa: args.amountCfa,
-          eventId: args.eventId ?? null,
-          note: args.note ?? "Libération held → withdrawable"
-        }
+      // Transfert : une seule ligne CREDIT WITHDRAWABLE, débit implicite de HELD (ADR-021).
+      const entry = await appendLedgerEntry(db, {
+        walletId: wallet.id,
+        kind: WalletLedgerKind.HELD_RELEASE,
+        direction: LedgerDirection.CREDIT,
+        bucket: LedgerBucket.WITHDRAWABLE,
+        amountCfa: args.amountCfa,
+        eventId: args.eventId,
+        note: args.note ?? "Libération held → withdrawable"
       });
       return { wallet: updated, entry };
     };

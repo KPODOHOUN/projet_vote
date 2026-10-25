@@ -1,0 +1,7 @@
+{
+  "$comment": "Modèle non testé. Copier en vercel.json à la racine (le .gitignore exclut vercel.json). Build uniquement le front @votezpro/web ; voir docs/DEPLOY_VERCEL.md.",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build --workspace=@votezpro/web",
+  "outputDirectory": "apps/web/.next",
+  "framework": "nextjs"
+}

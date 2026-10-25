@@ -4,11 +4,14 @@ import { notFound } from "next/navigation";
 import { CandidatePhoto } from "../../../../../components/candidate-photo";
 import { CandidateShareBar } from "../../../../../components/candidate-share-bar";
 import { CandidateVoteClient } from "./CandidateVoteClient";
-import { Card } from "../../../../../components/ui/card";
-import { Badge } from "../../../../../components/ui/badge";
 import { publicCandidatePath, SITE_NAME } from "../../../../../lib/site";
 import { getServerLocale } from "../../../../../lib/locale-server";
-import { formatEventStatus, translate, translateVars, type MessageKey } from "../../../../../lib/i18n";
+import { translate, translateVars, type MessageKey } from "../../../../../lib/i18n";
+import { getVotePhase } from "../../../../../lib/vote-phase";
+import { formatEventDate } from "../../../../../lib/format";
+import { PhaseNotice } from "../../../../../components/phase-notice";
+import { openGraphLocale, publicVoteDescription } from "../../../../../lib/public-meta";
+import { ogImageUrl } from "../../../../../lib/og-image-url";
 import { PublicEventShell } from "../../../../../components/public-event-shell";
 import { ArrowLeft } from "lucide-react";
 
@@ -20,6 +23,7 @@ type CandidateProfile = {
     slug: string;
     title: string;
     status: string;
+    startsAt: string;
     endsAt: string;
     voteUnitPriceCfa: number | null;
     branding: { logoUrl: string | null; brandColor: string | null; tagline: string | null };
@@ -57,12 +61,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: `${translate(locale, "pub.candidateNotFound")} · ${SITE_NAME}`, robots: { index: false, follow: false } };
   }
   const { candidate, event } = data;
-  const title = `${candidate.fullName} · ${event.title}`;
-  const numberHint =
-    candidate.number != null ? ` (n°${candidate.number})` : "";
-  const description = `Votez pour ${candidate.fullName}${numberHint} · ${event.title}.`;
+  const title = translateVars(locale, "meta.candidate.title", { name: candidate.fullName, event: event.title });
+  const description = publicVoteDescription(event, locale);
   const url = publicCandidatePath(event.slug, candidate.publicRef);
-  const ogImage = candidate.photoUrl ?? event.branding.logoUrl;
+  // Photo du candidat recadrée (g_auto), sinon logo, sinon carte typographique.
+  const ogImage = ogImageUrl(candidate.photoUrl) ?? ogImageUrl(event.branding.logoUrl) ?? `/e/${event.slug}/og`;
   return {
     title,
     description,
@@ -73,113 +76,90 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url,
       siteName: SITE_NAME,
       type: "website",
-      ...(ogImage ? { images: [{ url: ogImage }] } : {})
+      locale: openGraphLocale(locale),
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }]
     },
-    twitter: { card: "summary_large_image", title, description, ...(candidate.photoUrl ? { images: [candidate.photoUrl] } : {}) }
+    twitter: { card: "summary_large_image", title, description, images: [ogImage] }
   };
 }
 
 export default async function CandidateProfilePage({ params }: PageProps) {
   const { slug, ref } = await params;
   const locale = await getServerLocale();
-  const isEn = locale === "en";
   const data = await fetchCandidate(slug, ref);
   if (!data) {
     notFound();
   }
 
   const { organizer, event, candidate } = data;
-  const isOpen = event.status === "ACTIVE";
-  const statusLabel = formatEventStatus(event.status, isEn);
+  // Rendu no-store : la phase est recalculée à chaque requête (7.11-c).
+  const phase = getVotePhase(event);
   const t9n = (key: MessageKey) => translate(locale, key);
 
   return (
-    <PublicEventShell isEn={isEn} eventTitle={event.title} slug={event.slug} branding={event.branding}>
-      <main className="flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <Card surface="glass" className="w-full max-w-5xl overflow-hidden p-0">
-        <div className="flex flex-col md:flex-row">
-          <div className="relative w-full md:w-5/12 lg:w-1/2 min-h-[400px] md:min-h-full bg-muted overflow-hidden">
-            <CandidatePhoto 
-              photoUrl={candidate.photoUrl} 
-              fullName={candidate.fullName} 
-              size="lg" 
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-102"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-transparent" />
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates">
+      {/* Disposition du bloc « vainqueur » de la maquette : photo à gauche, nom en très grand à droite. */}
+      <main className="flex flex-wrap gap-[clamp(32px,5vw,80px)] px-[clamp(20px,4vw,56px)] py-10 sm:py-16">
+        <div className="relative aspect-[4/5] max-h-[42dvh] min-w-0 flex-[1_1_300px] overflow-hidden rounded-md bg-[var(--mini-wash)] md:sticky md:top-6 md:max-h-[720px] md:self-start">
+          <CandidatePhoto
+            photoUrl={candidate.photoUrl}
+            fullName={candidate.fullName}
+            size="lg"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        </div>
+
+        <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-6">
+          <div className="flex flex-col gap-4 border-b border-[var(--mini-line)] pb-8">
+            <Link
+              href={`/e/${event.slug}`}
+              className="inline-flex min-h-11 w-fit items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.22em] hover:opacity-65"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              {t9n("profile.back")}
+            </Link>
             {candidate.number != null ? (
-              <Badge 
-                className="absolute bottom-6 left-6 text-4xl sm:text-5xl font-black px-6 py-3.5 rounded-2xl bg-background/95 text-foreground backdrop-blur-md shadow-2xl border border-border/40 select-none"
-              >
-                {String(candidate.number).padStart(2, "0")}
-              </Badge>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">
+                {translateVars(locale, "pub.candidateNumber", { number: candidate.number })}
+              </span>
             ) : null}
+            <h1 className="mini-title mini-h1 m-0">
+              {candidate.fullName}
+            </h1>
+            <p className="text-[15px] font-light text-[var(--mini-muted)]">
+              {t9n("pub.organizedBy")} <span className="font-medium text-[var(--mini-ink)]">{organizer.displayName}</span>
+            </p>
           </div>
 
-          <div className="flex flex-col justify-between w-full md:w-7/12 lg:w-1/2 p-6 sm:p-10 lg:p-12">
-            <div>
-              <nav className="flex items-center justify-between mb-8 text-sm font-semibold text-muted-foreground">
-                <Link 
-                  href={`/e/${event.slug}`} 
-                  className="flex items-center gap-2 hover:text-primary transition-colors py-2 px-3 -ml-3 rounded-lg hover:bg-muted/50"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  {event.title}
-                </Link>
-                <Link 
-                  href={`/e/${event.slug}/results`} 
-                  className="flex items-center gap-2 hover:text-primary transition-colors py-2 px-3 -mr-3 rounded-lg hover:bg-muted/50 hover:underline"
-                >
-                  {t9n("pub.liveResults")}
-                </Link>
-              </nav>
+          <div className="max-w-md">
+            {phase === "open" ? (
+              <CandidateVoteClient
+                organizerSlug={organizer.slug}
+                eventSlug={event.slug}
+                candidatePublicRef={candidate.publicRef}
+                candidateName={candidate.fullName}
+                voteUnitPriceCfa={event.voteUnitPriceCfa}
+                initialVoteCount={candidate.voteCount}
+              />
+            ) : (
+              <PhaseNotice
+                phase={phase}
+                locale={locale}
+                startLabel={formatEventDate(event.startsAt, locale)}
+                resultsHref={`/e/${event.slug}/results`}
+              />
+            )}
+          </div>
 
-              <div className="space-y-4 mb-8">
-                <p className="text-xs font-bold uppercase tracking-wider text-primary">
-                  {t9n("pub.organizedBy")}{" "}
-                  <span className="text-foreground">{organizer.displayName}</span>
-                </p>
-
-                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
-                  {candidate.fullName}
-                </h1>
-                
-                {candidate.number != null ? (
-                  <p className="text-base text-muted-foreground font-semibold">
-                    {translateVars(locale, "pub.candidateNumber", { number: candidate.number })}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="mb-8">
-                <CandidateShareBar
-                  eventSlug={event.slug}
-                  publicRef={candidate.publicRef}
-                  candidateName={candidate.fullName}
-                  isEn={isEn}
-                />
-              </div>
-
-              {isOpen ? (
-                <CandidateVoteClient
-                  organizerSlug={organizer.slug}
-                  eventSlug={event.slug}
-                  candidatePublicRef={candidate.publicRef}
-                  candidateName={candidate.fullName}
-                  voteUnitPriceCfa={event.voteUnitPriceCfa}
-                  initialVoteCount={candidate.voteCount}
-                />
-              ) : (
-                <div className="rounded-2xl border border-[var(--color-info)]/30 bg-[var(--color-info)]/10 p-8 text-center">
-                  <h2 className="mb-3 text-xl font-bold text-[var(--color-info-text)]">{t9n("pub.voteClosed")}</h2>
-                  <p className="text-[var(--color-info-text)]/80">
-                    {translateVars(locale, "pub.eventCurrently", { status: statusLabel.toLowerCase() })}
-                  </p>
-                </div>
-              )}
-            </div>
+          <div className="max-w-md">
+            <CandidateShareBar
+              eventSlug={event.slug}
+              publicRef={candidate.publicRef}
+              candidateName={candidate.fullName}
+              eventTitle={event.title}
+            />
           </div>
         </div>
-        </Card>
       </main>
     </PublicEventShell>
   );

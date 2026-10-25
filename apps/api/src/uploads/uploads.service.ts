@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import {
@@ -10,6 +10,7 @@ import {
 import { createHash } from "crypto";
 import type { Response } from "express";
 import { env } from "../config/env";
+import { PrismaService } from "../prisma/prisma.service";
 
 export type UploadSignature = {
   cloudName: string;
@@ -27,9 +28,7 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/png": ".png",
   "image/webp": ".webp",
   "image/gif": ".gif",
-  "image/bmp": ".bmp",
-  "image/heic": ".heic",
-  "image/heif": ".heif"
+  "image/bmp": ".bmp"
 };
 
 const MAGIC_BYTES: Record<string, [number, readonly number[]][]> = {
@@ -46,9 +45,7 @@ const EXT_TO_MIME: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
   ".gif": "image/gif",
-  ".bmp": "image/bmp",
-  ".heic": "image/heic",
-  ".heif": "image/heif"
+  ".bmp": "image/bmp"
 };
 
 export type UploadedImageFile = {
@@ -61,7 +58,10 @@ export type UploadedImageFile = {
 @Injectable()
 export class UploadsService {
   private readonly folder = "candidates";
+  // Anciens fichiers posés sur disque en développement : encore servis s'ils existent.
   private readonly localDir = join(process.cwd(), ".data", "uploads");
+
+  constructor(private readonly prisma: PrismaService) {}
 
   /** Signature Cloudinary : sha1(params triés "k=v"&… + api_secret). Pure/testable. */
   static computeSignature(params: Record<string, string | number>, apiSecret: string): string {
@@ -70,10 +70,6 @@ export class UploadsService {
       .map((k) => `${k}=${params[k]}`)
       .join("&");
     return createHash("sha1").update(toSign + apiSecret).digest("hex");
-  }
-
-  isDirectUploadEnabled(): boolean {
-    return env.NODE_ENV === "development";
   }
 
   isCloudinaryConfigured(): boolean {
@@ -98,60 +94,62 @@ export class UploadsService {
   }
 
   /**
-   * Upload direct (dev local uniquement) : le fichier transite par l'API et est
-   * stocké sur disque. Renvoie une URL relative `/api/v1/uploads/files/...`
-   * compatible avec le proxy Next.js.
+   * Import sans Cloudinary, dans tous les environnements : le fichier transite
+   * par l'API et est stocké en base (table StoredImage), sans service de
+   * fichiers externe. Type vérifié par signature binaire (JPEG, PNG, WebP, GIF,
+   * BMP ; SVG refusé). Renvoie une URL relative `/api/v1/uploads/files/{id}.{ext}`,
+   * servie par l'API et par le proxy Next.js.
    */
-  async storeDirectUpload(file: UploadedImageFile | undefined): Promise<{ url: string }> {
-    if (!this.isDirectUploadEnabled()) {
-      throw new ServiceUnavailableException("Upload direct indisponible.");
-    }
+  async storeDirectUpload(file: UploadedImageFile | undefined, tenantId: string | null): Promise<{ url: string }> {
     if (!file?.buffer?.length) {
       throw new BadRequestException("Fichier image requis.");
     }
-    if (file.size > MAX_BYTES) {
+    if (file.size > MAX_BYTES || file.buffer.length > MAX_BYTES) {
       throw new BadRequestException("L'image doit faire 5 Mo maximum.");
     }
 
     const ext = MIME_TO_EXT[file.mimetype];
-    if (!ext) {
+    const magic = MAGIC_BYTES[file.mimetype];
+    if (!ext || !magic) {
       throw new BadRequestException("Format d'image non pris en charge.");
     }
-
-    const magic = MAGIC_BYTES[file.mimetype];
-    if (magic) {
-      const match = magic.some(([offset, sig]) =>
-        sig.every((b, i) => file.buffer[offset + i] === b)
-      );
-      if (!match) {
-        throw new BadRequestException("Le fichier ne correspond pas au format d'image déclaré.");
-      }
+    const match = magic.some(([offset, sig]) => sig.every((b, i) => file.buffer[offset + i] === b));
+    if (!match) {
+      throw new BadRequestException("Le fichier ne correspond pas au format d'image déclaré.");
     }
 
-    const filename = `${randomBytes(16).toString("hex")}${ext}`;
-    await mkdir(this.localDir, { recursive: true });
-    await writeFile(join(this.localDir, filename), file.buffer);
-
-    return { url: `/api/v1/uploads/files/${filename}` };
+    const id = randomBytes(16).toString("hex");
+    await this.prisma.client.storedImage.create({
+      data: { id, tenantId, mime: file.mimetype, size: file.buffer.length, bytes: new Uint8Array(file.buffer) }
+    });
+    return { url: `/api/v1/uploads/files/${id}${ext}` };
   }
 
   async serveLocalFile(filename: string, response: Response): Promise<void> {
     if (!SAFE_FILENAME.test(filename)) {
       throw new NotFoundException();
     }
-    const ext = filename.slice(filename.lastIndexOf(".")).toLowerCase();
-    const mime = EXT_TO_MIME[ext];
-    if (!mime) {
-      throw new NotFoundException();
+    const id = filename.slice(0, 32).toLowerCase();
+    const stored = await this.prisma.client.storedImage.findUnique({ where: { id } });
+    let mime: string | undefined = stored?.mime;
+    let bytes: Buffer | undefined = stored ? Buffer.from(stored.bytes) : undefined;
+
+    if (!bytes) {
+      // Repli : fichier posé sur disque par l'ancien import de développement.
+      const ext = filename.slice(filename.lastIndexOf(".")).toLowerCase();
+      mime = EXT_TO_MIME[ext];
+      if (!mime) throw new NotFoundException();
+      try {
+        bytes = await readFile(join(this.localDir, filename));
+      } catch {
+        throw new NotFoundException();
+      }
     }
 
-    try {
-      const bytes = await readFile(join(this.localDir, filename));
-      response.setHeader("Content-Type", mime);
-      response.setHeader("Cache-Control", "public, max-age=86400");
-      response.send(bytes);
-    } catch {
-      throw new NotFoundException();
-    }
+    response.setHeader("Content-Type", mime!);
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    // Contenu immuable : l'identifiant change à chaque import.
+    response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    response.send(bytes);
   }
 }

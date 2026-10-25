@@ -1,3 +1,7 @@
+> **Remplacé.** Ce document n'est plus la référence de design. Il est remplacé par la LOI ANTI-IA
+> (prompt de finalisation, section 9) et par la stratégie du 2026-08-03
+> (`docs/superpowers/specs/2026-08-03-ux-redesign-strategy-design.md`). Conservé pour l'historique.
+
 # SHADOMA Votes — Design Vision 2026
 
 ## Executive Summary

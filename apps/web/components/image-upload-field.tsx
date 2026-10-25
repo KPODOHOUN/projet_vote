@@ -6,7 +6,8 @@ import { useI18n } from "../lib/i18n-provider";
 import { isFileUploadAvailable, uploadCandidatePhoto } from "../lib/upload";
 import { cn } from "../lib/utils";
 
-const MAX_BYTES = 5 * 1024 * 1024;
+// Avant réduction dans le navigateur (lib/image-resize) ; l'API reçoit au plus 5 Mo.
+const MAX_BYTES = 25 * 1024 * 1024;
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/bmp,image/*";
 
 function isImageFile(file: File): boolean {
@@ -20,9 +21,8 @@ type ImageUploadFieldProps = {
   token: string;
   label: string;
   preview?: ReactNode;
-  /** Affiche le champ URL en repli (défaut : true) */
-  showUrlFallback?: boolean;
-  urlPlaceholder?: string;
+  /** Phrase d'aide sous le libellé (ex. recadrage appliqué sur la page publique). */
+  hint?: string;
 };
 
 export function ImageUploadField({
@@ -31,10 +31,10 @@ export function ImageUploadField({
   token,
   label,
   preview,
-  showUrlFallback = true,
-  urlPlaceholder
+  hint
 }: ImageUploadFieldProps) {
-  const { locale } = useI18n();
+  // Photos importées uniquement (Cloudinary, ou stockées en base par l'API), jamais un lien saisi.
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -51,7 +51,7 @@ export function ImageUploadField({
       return;
     }
     if (file.size > MAX_BYTES) {
-      setError(isEn ? "Image must be 5 MB or smaller." : "L'image doit faire 5 Mo maximum.");
+      setError(isEn ? "Image must be 25 MB or smaller." : "L'image doit faire 25 Mo maximum.");
       return;
     }
     setBusy(true);
@@ -87,13 +87,10 @@ export function ImageUploadField({
   const pickHint = isEn
     ? "Click to choose a photo or drag and drop"
     : "Cliquez pour choisir une photo ou glissez-déposez";
-  const defaultUrlPlaceholder = canUpload
-    ? (isEn ? "…or paste an image URL" : "…ou collez une URL d'image")
-    : (isEn ? "Paste an image URL (e.g. https://…)" : "Collez l'URL d'une image (ex: https://…)");
-
   return (
     <div className="flex flex-col gap-3">
       <span className="text-sm font-semibold text-foreground">{label}</span>
+      {hint ? <span className="-mt-2 text-xs text-slate-600">{hint}</span> : null}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         {preview ? <div className="shrink-0">{preview}</div> : null}
@@ -142,14 +139,20 @@ export function ImageUploadField({
             </>
           ) : null}
 
-          {showUrlFallback ? (
-            <input
-              type="url"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder={urlPlaceholder ?? defaultUrlPlaceholder}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-            />
+          {!canUpload ? (
+            <p className="text-sm text-slate-600" role="status">
+              {t("upload.unavailable")}
+            </p>
+          ) : null}
+
+          {value && !busy ? (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              {t("upload.remove")}
+            </button>
           ) : null}
 
           {error ? (

@@ -1,73 +1,38 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, Share2 } from "lucide-react";
-import { Button } from "@/components/ui";
+import { ShareSheet } from "./share-sheet";
 import { publicCandidateUrl } from "../lib/site";
-import { showToast } from "../lib/toast";
-import { trackEvent } from "../lib/analytics";
+import { useI18n } from "../lib/i18n-provider";
 
 type CopyCandidateLinkButtonProps = {
   eventSlug: string;
   publicRef: string;
   candidateName?: string;
+  /** Titre du concours, pour le message partagé. */
+  eventTitle?: string;
+  /** Conservé pour les appels existants ; la langue vient du contexte i18n. */
   isEn?: boolean;
   variant?: "primary" | "secondary" | "ghost";
   size?: "default" | "sm" | "lg";
 };
 
-export function CopyCandidateLinkButton({
-  eventSlug,
-  publicRef,
-  candidateName,
-  isEn = false,
-  variant = "secondary",
-  size = "sm"
-}: CopyCandidateLinkButtonProps) {
-  const [copied, setCopied] = useState(false);
+/**
+ * Partage d'un profil candidat : ouvre le panneau de partage (copie du lien,
+ * réseaux avec leurs logos officiels, partage natif). Aucun SDK tiers.
+ */
+export function CopyCandidateLinkButton({ eventSlug, publicRef, candidateName, eventTitle, variant = "secondary" }: CopyCandidateLinkButtonProps) {
+  const { t } = useI18n();
   const url = publicCandidateUrl(eventSlug, publicRef);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      showToast.success(isEn ? "Profile link copied." : "Lien du profil copié.");
-      void trackEvent("candidate_link_copied", { eventSlug, publicRef });
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast.error(isEn ? "Could not copy the link." : "Impossible de copier le lien.");
-    }
-  };
-
-  const onShare = async () => {
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share({
-          title: candidateName ?? (isEn ? "Vote for me" : "Votez pour moi"),
-          url
-        });
-        return;
-      } catch {
-        /* fallback copy */
-      }
-    }
-    await onCopy();
-  };
-
+  const title = [candidateName, eventTitle].filter(Boolean).join(" · ") || url;
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" variant={variant} size={size} onClick={() => void onCopy()}>
-        {copied ? (
-          <Check className="mr-2 h-4 w-4" aria-hidden="true" />
-        ) : (
-          <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
-        )}
-        {copied ? (isEn ? "Copied" : "Copié") : isEn ? "Copy profile link" : "Copier le lien profil"}
-      </Button>
-      <Button type="button" variant="ghost" size={size} onClick={() => void onShare()}>
-        <Share2 className="mr-2 h-4 w-4" aria-hidden="true" />
-        {isEn ? "Share" : "Partager"}
-      </Button>
-    </div>
+    <ShareSheet
+      url={url}
+      title={title}
+      text={t("share.voterText", { name: candidateName ?? "", event: eventTitle ?? "", url })}
+      label={t("share.profileButton")}
+      appearance={variant === "primary" ? "solid" : "outline"}
+      analyticsEvent="candidate_link_copied"
+      analyticsMeta={{ eventSlug, publicRef }}
+    />
   );
 }

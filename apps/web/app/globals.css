@@ -59,13 +59,14 @@
   --color-error: #EF4444;
   --color-info: #3B82F6;
 
-  --color-success-text: #059669;
+  --color-success-text: #047857; /* emerald-700 : 5,5:1 sur blanc (#059669 : 3,8:1) */
   --color-error-text: #DC2626;
   --color-warning-text: #B45309;
   --color-info-text: #1D4ED8;
 
   /* ── shadcn/ui bridge ──────────────────────────────────────────────── */
-  --color-primary: var(--color-brand-500);
+  /* brand-600 : 6,3:1 avec le blanc (brand-500 : 4,47:1, sous AA). */
+  --color-primary: var(--color-brand-600);
   --color-primary-foreground: #FFFFFF;
   --color-secondary: var(--color-violet-50);
   --color-secondary-foreground: var(--color-violet-900);
@@ -76,14 +77,14 @@
   --color-popover: #FFFFFF;
   --color-popover-foreground: var(--color-slate-900);
   --color-muted: var(--color-slate-100);
-  --color-muted-foreground: var(--color-slate-500);
+  --color-muted-foreground: var(--color-slate-600); /* ≥ 4,5:1 sur muted (slate-100), cf. DESIGN.md */
   --color-accent: var(--color-slate-100);
   --color-accent-foreground: var(--color-slate-900);
-  --color-destructive: var(--color-error);
+  --color-destructive: var(--color-error-text); /* #DC2626 : 4,8:1 avec le blanc */
   --color-destructive-foreground: #FFFFFF;
   --color-border: var(--color-slate-200);
   --color-input: var(--color-slate-200);
-  --color-ring: var(--color-brand-500);
+  --color-ring: var(--color-brand-600);
   --radius: 12px;
 
   /* ── Typographie ────────────────────────────────────────────────────── */
@@ -412,6 +413,18 @@ img {
   background: radial-gradient(circle, color-mix(in srgb, var(--color-gold-500) 20%, transparent) 0%, transparent 70%);
 }
 
+.vp-orb-blue {
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-brand-500) 30%, transparent) 0%, transparent 70%);
+}
+
+.vp-orb-cyan {
+  background: radial-gradient(circle, color-mix(in srgb, #06B6D4 25%, transparent) 0%, transparent 70%);
+}
+
+.vp-orb-theme {
+  background: radial-gradient(circle, color-mix(in srgb, var(--event-accent, var(--color-brand-500)) 30%, transparent) 0%, transparent 70%);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .vp-orb {
     animation: vp-orb-drift 20s ease-in-out infinite alternate;
@@ -566,6 +579,21 @@ img {
   }
 }
 
+/* Mouvement réduit : les cartes candidats ne se soulèvent ni ne zooment au survol
+   (Tailwind 4 pose translate/scale en propriétés CSS dédiées). */
+@media (prefers-reduced-motion: reduce) {
+  [data-event-theme] a,
+  [data-event-theme] a * {
+    transition: none !important;
+  }
+  [data-event-theme] a[class*="hover:-translate"]:hover,
+  [data-event-theme] a:hover [class*="group-hover:-translate"],
+  [data-event-theme] a:hover [class*="group-hover:scale"] {
+    translate: none !important;
+    scale: none !important;
+  }
+}
+
 .vp-ease-spring {
   transition-timing-function: cubic-bezier(0.22, 0.7, 0.2, 1);
 }
@@ -622,20 +650,235 @@ img {
 }
 
 /* ── Event branding scope ──────────────────────────────────────────────── */
+/* La couleur brute (--event-accent) ne sert qu'au décor sans texte ; le texte,
+   les liens et les boutons utilisent --event-accent-strong (≥ 4,5:1 sur blanc). */
 [data-event-theme] {
-  --color-primary: var(--event-accent);
-  --color-ring: var(--event-accent);
+  --color-primary: var(--event-accent-strong, var(--color-brand-600));
+  --color-primary-foreground: #ffffff;
+  --color-ring: var(--event-accent-strong, var(--color-brand-600));
   --event-primary-soft: var(--event-accent-soft);
   --event-primary-muted: var(--event-accent-muted);
-  --event-gradient-start: var(--event-accent);
-  --event-gradient-end: var(--event-accent-alt);
 }
 
 /* ── Security zone ─────────────────────────────────────────────────────── */
 [data-zone="secure-flow"] {
-  --color-primary: var(--color-brand-500);
-  --color-ring: var(--color-brand-500);
+  --color-primary: var(--color-brand-600);
+  --color-ring: var(--color-brand-600);
 }
+
+/* Dans une mini-plateforme, le paiement garde l'accent lisible de l'événement :
+   une seule couleur d'action sur la page (bouton, quantité, focus). */
+[data-event-theme] [data-zone="secure-flow"] {
+  --color-primary: var(--event-accent-strong, var(--color-brand-600));
+  --color-ring: var(--event-accent-strong, var(--color-brand-600));
+}
+
+/* ── Habillage des mini-plateformes (choisi par l'organisateur) ─────────── */
+/* Jetons --mini-* : la page lit l'encre, le texte d'appui, les filets et
+   l'accent ici, jamais en dur. Trois styles (data-page-style) et trois polices
+   de titres (data-title-font). Le paiement (secure-flow) reste une carte
+   claire et opaque quel que soit le style. */
+[data-event-theme] {
+  /* Fond légèrement teinté par la couleur de l'événement. */
+  --mini-bg: color-mix(in srgb, var(--event-accent, #4f46e5) 4%, #f8fafc);
+  --mini-ink: var(--color-slate-900);
+  --mini-muted: var(--color-slate-600);
+  --mini-line: var(--color-slate-900);
+  --mini-rule: rgb(15 23 42 / 0.15);
+  --mini-wash: var(--event-accent-light, rgb(15 23 42 / 0.05));
+  /* Texte d'accent : lisible sur tous les fonds clairs teintés (lib/brand.ts, deriveAccentInk). */
+  --mini-accent: var(--event-accent-ink, var(--event-accent-strong, var(--color-brand-600)));
+  --mini-photo-bg: color-mix(in srgb, var(--event-accent-strong, var(--color-brand-600)) 10%, white);
+  --mini-title-font: var(--font-festival), var(--font-display);
+  --mini-title-weight: 300;
+  --mini-title-tracking: 0.01em;
+  --mini-title-scale: 0.8;
+}
+[data-event-theme][data-title-font="gala"] {
+  --mini-title-font: var(--font-gala), Georgia, serif;
+  --mini-title-weight: 400;
+  --mini-title-tracking: 0.02em;
+  --mini-title-scale: 1;
+}
+[data-event-theme][data-title-font="classique"] {
+  --mini-title-font: var(--font-display);
+  --mini-title-weight: 300;
+  --mini-title-tracking: 0.04em;
+  --mini-title-scale: 1;
+}
+[data-event-theme][data-page-style="soiree"],
+[data-event-theme][data-page-style="lineup"],
+[data-event-theme][data-page-style="story"],
+[data-event-theme][data-page-style="sanctuaire"] {
+  --mini-bg: var(--event-night);
+  --mini-ink: #f1f5f9;
+  --mini-muted: #a8b3c7;
+  --mini-line: color-mix(in srgb, var(--event-accent-bright) 45%, transparent);
+  --mini-rule: rgb(255 255 255 / 0.12);
+  --mini-wash: color-mix(in srgb, var(--event-accent-bright) 12%, #1a1f33);
+  --mini-accent: var(--event-accent-bright);
+  --mini-photo-bg: color-mix(in srgb, var(--event-accent-bright) 16%, #1a1f33);
+  --color-primary: var(--event-accent-bright);
+  --color-primary-foreground: var(--event-on-bright);
+  --color-ring: var(--event-accent-bright);
+  --color-foreground: #f1f5f9;
+  --color-muted-foreground: #a8b3c7;
+  --color-border: rgb(255 255 255 / 0.14);
+  --color-muted: rgb(255 255 255 / 0.06);
+  color-scheme: dark;
+}
+[data-event-theme][data-page-style="couronne"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #4f46e5) 7%, #fdfdfd);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #4f46e5) 45%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #4f46e5) 20%, transparent);
+}
+[data-event-theme][data-page-style="magazine"] {
+  --mini-bg: #ffffff;
+}
+[data-event-theme][data-page-style="pop"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #4f46e5) 16%, #ffffff);
+  --mini-line: var(--color-slate-900);
+  --mini-rule: rgb(15 23 42 / 0.2);
+  --mini-wash: color-mix(in srgb, var(--event-accent, #4f46e5) 22%, #ffffff);
+  /* Pop : titres gras quelle que soit la police choisie. */
+  --mini-title-weight: 800;
+  --mini-title-tracking: 0;
+}
+
+[data-event-theme][data-page-style="terroir"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #15803d) 7%, #fafaf8);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #15803d) 40%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #15803d) 18%, transparent);
+}
+[data-event-theme][data-page-style="stade"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #dc2626) 5%, #f3f4f6);
+  --mini-line: var(--color-slate-900);
+  --mini-title-weight: 800;
+  --mini-title-tracking: 0;
+}
+[data-event-theme][data-page-style="diplome"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #1e3a8a) 6%, #f5f6f8);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 40%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 18%, transparent);
+}
+[data-event-theme][data-page-style="sanctuaire"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #6d28d9) 12%, #0b0f1c);
+}
+[data-event-theme][data-page-style="marche"] {
+  /* Papier kraft légèrement teinté. */
+  --mini-bg: color-mix(in srgb, var(--event-accent, #15803d) 5%, #f4ecdc);
+  --mini-line: color-mix(in srgb, #5b4630 45%, transparent);
+  --mini-rule: color-mix(in srgb, #5b4630 18%, transparent);
+  --mini-wash: color-mix(in srgb, var(--event-accent, #15803d) 10%, #fffaf0);
+}
+[data-event-theme][data-page-style="menu"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #c2410c) 4%, #faf6ee);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #c2410c) 40%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #c2410c) 18%, transparent);
+}
+[data-event-theme][data-page-style="wax"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #b45309) 6%, #fffaf2);
+  --mini-line: var(--color-slate-900);
+}
+[data-event-theme][data-page-style="campus"] {
+  --mini-bg: #fbfbf8;
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 35%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 16%, transparent);
+  /* Papier quadrillé sur toute la page. */
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--event-accent, #1e3a8a) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--event-accent, #1e3a8a) 9%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+[data-event-theme][data-page-style="badge"] {
+  --mini-bg: #f5f6f8;
+  --mini-line: var(--color-slate-900);
+  /* Grille à points, façon salon professionnel. */
+  background-image: radial-gradient(rgb(15 23 42 / 0.13) 1px, transparent 1.4px);
+  background-size: 18px 18px;
+}
+
+/* Motifs des styles (décoratifs, dérivés de la couleur de l'événement). */
+.mini-awning {
+  background: repeating-linear-gradient(90deg, var(--event-accent-strong) 0 40px, #fffaf0 40px 80px);
+}
+.mini-awning-edge {
+  background:
+    radial-gradient(circle at 20px 0, var(--event-accent-strong) 19.5px, transparent 20px) 0 0 / 80px 20px repeat-x,
+    radial-gradient(circle at 60px 0, #fffaf0 19.5px, transparent 20px) 0 0 / 80px 20px repeat-x;
+}
+.mini-chalk {
+  background: #1f2a24;
+  color: #f8fafc;
+  border: 6px solid #8b6a43;
+}
+.mini-wax {
+  background-color: var(--event-accent-strong);
+  background-image:
+    radial-gradient(circle, #fff7e6 0 17%, transparent 18%),
+    radial-gradient(circle, transparent 0 31%, #0f172a 32% 38%, transparent 39%),
+    linear-gradient(45deg, transparent 0 47%, rgb(255 255 255 / 0.35) 47% 53%, transparent 53%),
+    linear-gradient(-45deg, transparent 0 47%, rgb(255 255 255 / 0.35) 47% 53%, transparent 53%);
+  background-size: 44px 44px;
+}
+.mini-wax-band {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--event-accent-strong) 0 16px,
+    #0f172a 16px 20px,
+    #f5b301 20px 28px,
+    #0f172a 28px 32px
+  );
+}
+.mini-highlight {
+  background: linear-gradient(transparent 52%, color-mix(in srgb, var(--event-accent-bright, #facc15) 55%, transparent) 52% 94%, transparent 94%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.mini-ruled {
+  background-image: linear-gradient(transparent 27px, color-mix(in srgb, var(--event-accent, #1e3a8a) 14%, transparent) 27px 28px);
+  background-size: 100% 28px;
+}
+.mini-halo {
+  background: radial-gradient(ellipse 70% 60% at 50% -5%, color-mix(in srgb, var(--event-accent-bright, #a78bfa) 42%, transparent), transparent 70%);
+}
+.mini-story-ring {
+  background: conic-gradient(from 200deg, var(--event-accent-bright, #a78bfa), #fde68a, var(--event-accent-strong, #6d28d9), var(--event-accent-bright, #a78bfa));
+}
+
+/* Retour au clair dans les zones de paiement et les cartes. */
+[data-event-theme][data-page-style="soiree"] [data-zone="secure-flow"],
+[data-event-theme][data-page-style="lineup"] [data-zone="secure-flow"],
+[data-event-theme][data-page-style="story"] [data-zone="secure-flow"],
+[data-event-theme][data-page-style="sanctuaire"] [data-zone="secure-flow"] {
+  --color-primary: var(--event-accent-strong);
+  --color-primary-foreground: #ffffff;
+  --color-ring: var(--event-accent-strong);
+  --color-foreground: var(--color-slate-900);
+  --color-muted-foreground: var(--color-slate-600);
+  --color-border: var(--color-slate-200);
+  --color-muted: var(--color-slate-100);
+  color-scheme: light;
+  background: #ffffff;
+  color: var(--color-slate-900);
+}
+.mini-title {
+  font-family: var(--mini-title-font);
+  font-weight: var(--mini-title-weight);
+  letter-spacing: var(--mini-title-tracking);
+  font-style: normal;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+/* Titre dans une colonne étroite : coupure aux espaces et tirets seulement. */
+.mini-title-nobreak { overflow-wrap: normal; }
+/* Taille des grands titres, corrigée selon la largeur de la police. */
+.mini-display { font-size: calc(clamp(44px, 8vw, 128px) * var(--mini-title-scale)); line-height: 0.92; }
+.mini-display-xl { font-size: calc(clamp(52px, 10vw, 152px) * var(--mini-title-scale)); line-height: 0.9; }
+.mini-h1 { font-size: calc(clamp(40px, 6vw, 96px) * var(--mini-title-scale)); line-height: 0.94; }
+.mini-h2 { font-size: calc(clamp(28px, 3.4vw, 48px) * var(--mini-title-scale)); line-height: 1; }
+.mini-footer-title { font-size: calc(clamp(32px, 6vw, 88px) * var(--mini-title-scale)); line-height: 0.92; }
 
 /* ── Number counter animation ──────────────────────────────────────────── */
 .vp-number {

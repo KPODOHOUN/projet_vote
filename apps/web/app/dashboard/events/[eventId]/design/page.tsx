@@ -1,29 +1,41 @@
 "use client";
 import { authLoginUrl } from "@/lib/auth-navigation";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ExternalLink, RefreshCw, Wand2 } from "lucide-react";
-import { motion } from "framer-motion";
 import { apiFetch } from "../../../../../lib/api";
 import { getStoredToken } from "../../../../../lib/auth";
 import { useI18n } from "../../../../../lib/i18n-provider";
+import type { MessageKey } from "../../../../../lib/i18n";
 import {
+  DEFAULT_BRAND_COLOR,
   buildEventTheme,
+  contrastRatio,
   normalizeBrandColor,
   extractColorFromImage,
-  getBrandPresetsByVibe
+  getBrandPresetsByVibe,
+  type EventFontStyleValue,
+  type EventHeroBackgroundValue,
+  type EventPageStyleValue
 } from "../../../../../lib/brand";
+import {
+  EVENT_PRESETS,
+  EVENT_PRESET_CATEGORIES,
+  filterPresets,
+  type EventPresetCategoryId
+} from "../../../../../lib/event-presets";
 import { EVENT_LAYOUTS, type EventLayoutId } from "../../../../../lib/event-layouts";
 import { publicEventPath } from "../../../../../lib/site";
 import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcrumb";
 import { LogoUploadField } from "../../../../../components/logo-upload-field";
+import { ImageUploadField } from "../../../../../components/image-upload-field";
 import { CopyPublicLinkButton } from "../../../../../components/copy-public-link-button";
 import { ActivationPaymentPanel } from "../../../../../components/activation-payment-panel";
 import { showToast } from "../../../../../lib/toast";
-import { Button, Input, Card, LoadingState } from "@/components/ui";
+import { Button, Input, Card, FormError, LoadingState } from "@/components/ui";
 
 type EventDetail = {
   id: string;
@@ -34,23 +46,259 @@ type EventDetail = {
   logoUrl: string | null;
   brandColor: string | null;
   layout: EventLayoutId;
+  coverUrl?: string | null;
+  pageStyle?: EventPageStyleValue;
+  fontStyle?: EventFontStyleValue;
+  heroBackground?: EventHeroBackgroundValue;
 };
 
-const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-const VIBE_LABELS: Record<string, { fr: string; en: string }> = {
-  luxe: { fr: "Luxe & Prestige", en: "Luxury & Prestige" },
-  nature: { fr: "Nature & Écologie", en: "Nature & Ecology" },
-  festif: { fr: "Festif & Dynamique", en: "Festive & Dynamic" },
-  pro: { fr: "Professionnel", en: "Professional" },
-  culture: { fr: "Culture & Tradition", en: "Culture & Tradition" },
-  sport: { fr: "Sport & Performance", en: "Sport & Performance" },
+type Saved = {
+  tagline: string;
+  logoUrl: string;
+  brandColor: string;
+  layout: EventLayoutId;
+  coverUrl: string;
+  pageStyle: EventPageStyleValue;
+  fontStyle: EventFontStyleValue;
+  heroBackground: EventHeroBackgroundValue;
 };
+
+const PAGE_STYLES: EventPageStyleValue[] = [
+  "AFFICHE",
+  "SOIREE",
+  "BILLET",
+  "COURONNE",
+  "MAGAZINE",
+  "POP",
+  "TERROIR",
+  "STADE",
+  "LINEUP",
+  "DIPLOME",
+  "MARCHE",
+  "MENU",
+  "WAX",
+  "CAMPUS",
+  "BADGE",
+  "STORY",
+  "SANCTUAIRE"
+];
+const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: number }> = [
+  { id: "FESTIVAL", family: "var(--font-festival)", weight: 300 },
+  { id: "GALA", family: "var(--font-gala)", weight: 400 },
+  { id: "CLASSIQUE", family: "var(--font-display)", weight: 300 }
+];
+
+/** Vignette schématique d'un style de page (formes seulement, aucun contenu inventé). */
+function StyleThumb({ style, accent }: { style: EventPageStyleValue; accent: string }) {
+  if (style === "MARCHE") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col overflow-hidden rounded-md" style={{ background: `color-mix(in srgb, ${accent} 6%, #f4ecdc)` }}>
+        <span className="h-4 shrink-0" style={{ background: `repeating-linear-gradient(90deg, ${accent} 0 10px, #fffaf0 10px 20px)` }} />
+        <span className="flex flex-1 items-end justify-between gap-2 p-2">
+          <span className="h-2 w-12 rounded-sm bg-slate-800" />
+          <span className="h-8 w-10 rounded-sm border-2 border-[#8b6a43] bg-[#1f2a24]" />
+        </span>
+      </span>
+    );
+  }
+  if (style === "MENU") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-center justify-center rounded-md bg-[#f1ebe0] p-2">
+        <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#fffdf7] px-3" style={{ boxShadow: `inset 0 0 0 1px ${accent}` }}>
+          <span className="h-1.5 w-10 rounded-sm bg-slate-800" />
+          <span className="flex w-full items-end gap-1"><span className="h-1 w-5 bg-slate-400" /><span className="flex-1 border-b border-dotted border-slate-400" /><span className="h-1 w-3 bg-slate-400" /></span>
+          <span className="flex w-full items-end gap-1"><span className="h-1 w-7 bg-slate-400" /><span className="flex-1 border-b border-dotted border-slate-400" /><span className="h-1 w-3 bg-slate-400" /></span>
+        </span>
+      </span>
+    );
+  }
+  if (style === "WAX") {
+    return (
+      <span aria-hidden="true" className="grid h-20 grid-cols-2 overflow-hidden rounded-md border border-slate-200 bg-[#fffaf2]">
+        <span
+          style={{
+            backgroundColor: accent,
+            backgroundImage: "radial-gradient(circle, #fff7e6 0 17%, transparent 18%), radial-gradient(circle, transparent 0 31%, #0f172a 32% 38%, transparent 39%)",
+            backgroundSize: "16px 16px"
+          }}
+        />
+        <span className="flex flex-col justify-center gap-1.5 p-2">
+          <span className="h-2 w-full rounded-sm bg-slate-800" />
+          <span className="h-1.5 w-3/4" style={{ background: `repeating-linear-gradient(90deg, ${accent} 0 6px, #0f172a 6px 8px, #f5b301 8px 11px, #0f172a 11px 13px)` }} />
+        </span>
+      </span>
+    );
+  }
+  if (style === "CAMPUS") {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-20 items-center justify-between gap-2 rounded-md p-2.5"
+        style={{
+          backgroundColor: "#fbfbf8",
+          backgroundImage: `linear-gradient(color-mix(in srgb, ${accent} 14%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, ${accent} 14%, transparent) 1px, transparent 1px)`,
+          backgroundSize: "8px 8px"
+        }}
+      >
+        <span className="h-2.5 w-14 rounded-sm" style={{ background: `linear-gradient(transparent 40%, color-mix(in srgb, ${accent} 50%, transparent) 40%)` }} />
+        <span className="h-14 w-11 rotate-3 bg-white p-1 pb-3 shadow"><span className="block h-full w-full" style={{ background: accent }} /></span>
+      </span>
+    );
+  }
+  if (style === "BADGE") {
+    return (
+      <span
+        aria-hidden="true"
+        className="relative flex h-20 items-end justify-center rounded-md bg-[#f5f6f8]"
+        style={{ backgroundImage: "radial-gradient(rgb(15 23 42 / 0.18) 1px, transparent 1.4px)", backgroundSize: "8px 8px" }}
+      >
+        <span className="absolute left-[42%] top-0 h-6 w-1.5 -rotate-12" style={{ background: accent }} />
+        <span className="absolute right-[42%] top-0 h-6 w-1.5 rotate-12" style={{ background: accent }} />
+        <span className="relative mb-1.5 flex h-14 w-12 flex-col items-center overflow-hidden rounded-md bg-white shadow">
+          <span className="mt-1 h-0.5 w-4 rounded-full bg-slate-200" />
+          <span className="mt-1.5 h-5 w-5 rounded-full" style={{ background: `color-mix(in srgb, ${accent} 30%, white)` }} />
+          <span className="mt-auto h-2.5 w-full" style={{ background: accent }} />
+        </span>
+      </span>
+    );
+  }
+  if (style === "STORY") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-center justify-center gap-1.5 rounded-md bg-[#0e1220]">
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="h-16 w-9 rounded-md p-[1.5px]" style={{ background: `conic-gradient(${accent}, #fde68a, ${accent})` }}>
+            <span className="block h-full w-full rounded-[5px]" style={{ background: `color-mix(in srgb, ${accent} 35%, #1a1f33)` }} />
+          </span>
+        ))}
+      </span>
+    );
+  }
+  if (style === "SANCTUAIRE") {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-20 flex-col items-center justify-end gap-1.5 rounded-md pb-2"
+        style={{ background: `radial-gradient(ellipse 70% 70% at 50% 0%, color-mix(in srgb, ${accent} 60%, transparent), transparent 70%), color-mix(in srgb, ${accent} 12%, #0b0f1c)` }}
+      >
+        <span className="h-10 w-8 rounded-t-full" style={{ boxShadow: `0 0 0 1px ${accent}`, background: `color-mix(in srgb, ${accent} 30%, #1a1f33)` }} />
+        <span className="h-1.5 w-12 rounded-sm bg-white/80" />
+      </span>
+    );
+  }
+  if (style === "TERROIR") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-end justify-between gap-2 rounded-md p-2.5" style={{ background: `color-mix(in srgb, ${accent} 10%, #fafaf8)` }}>
+        <span className="flex flex-col gap-1.5"><span className="h-2 w-12 rounded-sm bg-slate-800" /><span className="h-1.5 w-8 rounded-full border border-slate-400" /></span>
+        <span className="h-14 w-10 rounded-b-sm rounded-t-full" style={{ background: accent }} />
+      </span>
+    );
+  }
+  if (style === "STADE") {
+    return (
+      <span aria-hidden="true" className="relative flex h-20 flex-col justify-end gap-1.5 overflow-hidden rounded-md bg-slate-950 p-2.5">
+        <span className="absolute inset-y-0 right-5 w-4 -skew-x-12" style={{ background: accent }} />
+        <span className="relative h-2.5 w-14 rounded-sm bg-white" />
+        <span className="relative flex gap-1"><span className="h-3.5 w-5 rounded-sm bg-neutral-800" /><span className="h-3.5 w-5 rounded-sm bg-neutral-800" /><span className="h-3.5 w-5 rounded-sm bg-neutral-800" /></span>
+      </span>
+    );
+  }
+  if (style === "LINEUP") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-md p-2.5" style={{ background: `linear-gradient(180deg, ${accent}, #020617)` }}>
+        <span className="h-2.5 w-16 rounded-sm bg-white" />
+        <span className="flex gap-1"><span className="h-1.5 w-6 rounded-sm bg-white/70" /><span className="h-1.5 w-8 rounded-sm bg-white/70" /><span className="h-1.5 w-5 rounded-sm bg-white/70" /></span>
+      </span>
+    );
+  }
+  if (style === "DIPLOME") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-center justify-center rounded-md bg-slate-100 p-2">
+        <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-white" style={{ boxShadow: `inset 0 0 0 2px ${accent}, inset 0 0 0 5px #fff, inset 0 0 0 6px ${accent}` }}>
+          <span className="h-4 w-4 rounded-full border border-dashed" style={{ borderColor: accent }} />
+          <span className="h-1.5 w-12 rounded-sm bg-slate-800" />
+        </span>
+      </span>
+    );
+  }
+  if (style === "COURONNE") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-md" style={{ background: `color-mix(in srgb, ${accent} 10%, #fdfdfd)` }}>
+        <span className="h-5 w-5 rounded-full bg-white" style={{ boxShadow: `0 0 0 1px ${accent}` }} />
+        <span className="h-1.5 w-14 rounded-sm bg-slate-800" />
+        <span className="flex w-12 items-center gap-1"><span className="h-px flex-1" style={{ background: accent }} /><span className="h-1.5 w-1.5 rotate-45" style={{ background: accent }} /><span className="h-px flex-1" style={{ background: accent }} /></span>
+      </span>
+    );
+  }
+  if (style === "MAGAZINE") {
+    return (
+      <span aria-hidden="true" className="grid h-20 grid-cols-2 overflow-hidden rounded-md border border-slate-200 bg-white">
+        <span style={{ background: accent }} />
+        <span className="flex flex-col justify-center gap-1.5 p-2">
+          <span className="h-2 w-full rounded-sm bg-slate-800" />
+          <span className="h-2 w-3/4 rounded-sm bg-slate-800" />
+          <span className="h-1 w-1/2 rounded-sm bg-slate-300" />
+        </span>
+      </span>
+    );
+  }
+  if (style === "POP") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col justify-end gap-1.5 rounded-md p-2.5" style={{ background: `color-mix(in srgb, ${accent} 30%, #ffffff)` }}>
+        <span className="h-2.5 w-16 rounded-sm bg-slate-900" />
+        <span className="flex gap-1.5">
+          <span className="h-5 w-8 rounded-sm border-2 border-slate-900 bg-white shadow-[2px_2px_0_0_#0f172a]" />
+          <span className="h-5 w-8 rounded-sm border-2 border-slate-900 bg-white shadow-[2px_2px_0_0_#0f172a]" />
+        </span>
+      </span>
+    );
+  }
+  if (style === "SOIREE") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col justify-between rounded-md bg-[#0e1220] p-2.5">
+        <span className="h-1.5 w-12 rounded-sm bg-white/80" />
+        <span className="flex gap-1">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="h-5 flex-1 rounded-sm" style={{ background: `color-mix(in srgb, ${accent} 35%, #1a1f33)` }} />
+          ))}
+        </span>
+      </span>
+    );
+  }
+  if (style === "BILLET") {
+    return (
+      <span aria-hidden="true" className="relative flex h-20 flex-col rounded-md bg-slate-50">
+        <span className="h-10 rounded-t-md p-2.5" style={{ background: accent }}>
+          <span className="block h-1.5 w-12 rounded-sm bg-white/90" />
+        </span>
+        <span className="absolute inset-x-2.5 bottom-2 flex h-7 rounded-sm bg-white shadow-sm">
+          <span className="flex-1" />
+          <span className="w-8 border-l border-dashed border-slate-300" />
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span aria-hidden="true" className="flex h-20 flex-col justify-end rounded-md bg-[linear-gradient(180deg,#475569,#0f172a)] p-2.5">
+      <span className="h-2 w-16 rounded-sm bg-white" />
+      <span className="mt-1.5 h-1 w-10 rounded-sm" style={{ background: accent }} />
+    </span>
+  );
+}
+
+const TAGLINE_MAX = 80;
+
+/** Accepte « RRGGBB » sans dièse, « #RGB » et « #RRGGBB ». */
+function parseHex(raw: string): string | null {
+  const value = raw.trim();
+  if (value === "") return null;
+  return normalizeBrandColor(value.startsWith("#") ? value : `#${value}`);
+}
 
 export default function EventDesignPage() {
   const router = useRouter();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
 
   const [title, setTitle] = useState("");
@@ -58,9 +306,18 @@ export default function EventDesignPage() {
   const [status, setStatus] = useState("");
   const [tagline, setTagline] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
-  const [brandColor, setBrandColor] = useState("#6366F1");
+  // "" = aucune couleur choisie : la page utilise la couleur par défaut.
+  const [brandColor, setBrandColor] = useState("");
   const [layout, setLayout] = useState<EventLayoutId>("GRID");
+  const [coverUrl, setCoverUrl] = useState("");
+  const [pageStyle, setPageStyle] = useState<EventPageStyleValue>("AFFICHE");
+  const [fontStyle, setFontStyle] = useState<EventFontStyleValue>("FESTIVAL");
+  const [heroBackground, setHeroBackground] = useState<EventHeroBackgroundValue>("IMAGE");
+  const [presetCategory, setPresetCategory] = useState<EventPresetCategoryId>("beaute");
+  const [presetQuery, setPresetQuery] = useState("");
+  const [saved, setSaved] = useState<Saved | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [previewWidth, setPreviewWidth] = useState<"phone" | "desktop">("phone");
   const [isExtracting, setIsExtracting] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -68,28 +325,79 @@ export default function EventDesignPage() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
 
-  const trimmedColor = brandColor.trim();
-  const colorIsValid = trimmedColor === "" || HEX.test(trimmedColor);
-  const theme = useMemo(() => buildEventTheme(colorIsValid ? trimmedColor : null), [colorIsValid, trimmedColor]);
-  const colorSwatch = normalizeBrandColor(trimmedColor) ?? "#6366F1";
+  const parsedColor = parseHex(brandColor);
+  const colorIsValid = brandColor.trim() === "" || parsedColor !== null;
+  const theme = useMemo(() => buildEventTheme(parsedColor), [parsedColor]);
+  const swatch = parsedColor ?? DEFAULT_BRAND_COLOR;
   const presetsByVibe = useMemo(() => getBrandPresetsByVibe(), []);
+  const visiblePresets = useMemo(() => filterPresets(presetCategory, presetQuery), [presetCategory, presetQuery]);
+  const trimmedTagline = tagline.trim();
+  const taglineTooShort = trimmedTagline.length === 1;
+  const accentWasDarkened = theme.accentStrong.toLowerCase() !== theme.accent.toLowerCase();
 
-  const loadEvent = useCallback(async (token: string) => {
-    const events = await apiFetch<EventDetail[]>("/events", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const found = events.find((item) => item.id === eventId);
-    if (!found) {
-      throw new Error(isEn ? "Event not found." : "Évènement introuvable.");
-    }
-    setTitle(found.title);
-    setSlug(found.slug);
-    setStatus(found.status);
-    setTagline(found.tagline ?? "");
-    setLogoUrl(found.logoUrl ?? "");
-    setBrandColor(found.brandColor ?? "#6366F1");
-    setLayout(found.layout ?? "GRID");
-  }, [eventId, isEn]);
+  const current: Saved = {
+    tagline: trimmedTagline,
+    logoUrl: logoUrl.trim(),
+    brandColor: parsedColor ?? "",
+    layout,
+    coverUrl: coverUrl.trim(),
+    pageStyle,
+    fontStyle,
+    heroBackground
+  };
+  const isDirty = saved !== null && JSON.stringify(current) !== JSON.stringify(saved);
+  const dirtyRef = useRef(isDirty);
+  dirtyRef.current = isDirty;
+
+  // Garde « modifications non enregistrées » à la sortie de la page.
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  const loadEvent = useCallback(
+    async (token: string) => {
+      const events = await apiFetch<EventDetail[]>("/events", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const found = events.find((item) => item.id === eventId);
+      if (!found) {
+        throw new Error(t("design.notFound"));
+      }
+      setTitle(found.title);
+      setSlug(found.slug);
+      setStatus(found.status);
+      setTagline(found.tagline ?? "");
+      setLogoUrl(found.logoUrl ?? "");
+      setBrandColor(found.brandColor ?? "");
+      setLayout(found.layout ?? "GRID");
+      setCoverUrl(found.coverUrl ?? "");
+      setPageStyle(found.pageStyle ?? "AFFICHE");
+      setFontStyle(found.fontStyle ?? "FESTIVAL");
+      setHeroBackground(found.heroBackground ?? "IMAGE");
+      // Ouvre la famille du modèle déjà en place, s'il y en a un.
+      const savedColor = normalizeBrandColor(found.brandColor ?? "");
+      const inUse = EVENT_PRESETS.find(
+        (p) => p.pageStyle === found.pageStyle && p.fontStyle === found.fontStyle && p.brandColor.toLowerCase() === savedColor
+      );
+      if (inUse) setPresetCategory(inUse.category);
+      setSaved({
+        tagline: (found.tagline ?? "").trim(),
+        logoUrl: found.logoUrl ?? "",
+        brandColor: normalizeBrandColor(found.brandColor ?? "") ?? "",
+        layout: found.layout ?? "GRID",
+        coverUrl: found.coverUrl ?? "",
+        pageStyle: found.pageStyle ?? "AFFICHE",
+        fontStyle: found.fontStyle ?? "FESTIVAL",
+        heroBackground: found.heroBackground ?? "IMAGE"
+      });
+    },
+    [eventId, t]
+  );
 
   useEffect(() => {
     const token = getStoredToken();
@@ -98,11 +406,9 @@ export default function EventDesignPage() {
       return;
     }
     void loadEvent(token)
-      .catch((caughtError) =>
-        setLoadError(caughtError instanceof Error ? caughtError.message : isEn ? "Loading failed." : "Chargement impossible.")
-      )
+      .catch((caughtError) => setLoadError(caughtError instanceof Error ? caughtError.message : t("design.loadFailed")))
       .finally(() => setIsLoading(false));
-  }, [loadEvent, router, isEn]);
+  }, [loadEvent, router, t]);
 
   const handleExtractColor = async () => {
     if (!logoUrl) return;
@@ -111,12 +417,10 @@ export default function EventDesignPage() {
       const color = await extractColorFromImage(logoUrl);
       if (color) {
         setBrandColor(color);
-        showToast.success(isEn ? "Color extracted from logo." : "Couleur extraite du logo.");
+        showToast.success(t("design.extracted"));
       } else {
-        showToast.error(isEn ? "Could not extract color." : "Impossible d'extraire la couleur.");
+        showToast.error(t("design.noDominant"));
       }
-    } catch {
-      showToast.error(isEn ? "Extraction failed." : "Échec de l'extraction.");
     } finally {
       setIsExtracting(false);
     }
@@ -130,75 +434,71 @@ export default function EventDesignPage() {
       return;
     }
     if (!colorIsValid) {
-      setError(isEn ? "Invalid color format." : "Format de couleur invalide.");
+      setError(t("design.hexInvalid"));
+      return;
+    }
+    if (taglineTooShort) {
+      setError(t("design.taglineTooShort"));
       return;
     }
     setError("");
     setIsSaving(true);
     try {
-      const trimmedTagline = tagline.trim();
-      const trimmedLogo = logoUrl.trim();
-      const normalized = normalizeBrandColor(trimmedColor);
+      // Un champ vidé part en null : l'API l'efface (M3).
       await apiFetch(`/events/${eventId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           layout,
-          ...(trimmedTagline ? { tagline: trimmedTagline } : {}),
-          ...(trimmedLogo ? { logoUrl: trimmedLogo } : {}),
-          ...(normalized ? { brandColor: normalized } : {})
+          pageStyle,
+          fontStyle,
+          heroBackground,
+          coverUrl: coverUrl.trim() || null,
+          tagline: trimmedTagline || null,
+          logoUrl: logoUrl.trim() || null,
+          brandColor: parsedColor
         })
       });
-      showToast.success(isEn ? "Appearance saved." : "Apparence enregistrée.");
+      setSaved(current);
+      showToast.success(t("design.saved"));
       setPreviewKey((k) => k + 1);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : isEn ? "Save failed." : "Enregistrement impossible.");
+      setError(caughtError instanceof Error ? caughtError.message : t("design.saveFailed"));
     } finally {
       setIsSaving(false);
     }
   };
 
   if (isLoading) {
-    return <LoadingState variant="rows" count={4} label={isEn ? "Loading…" : "Chargement…"} />;
+    return <LoadingState variant="rows" count={4} label={t("design.title")} />;
   }
 
   if (loadError) {
-    return (
-      <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 font-medium text-destructive" role="alert">
-        {loadError}
-      </div>
-    );
+    return <FormError>{loadError}</FormError>;
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8 pb-24 sm:pb-0">
       <DashboardBreadcrumb
         isEn={isEn}
         items={[
-          { label: isEn ? "Events" : "Évènements", href: "/dashboard/events" },
+          { label: t("design.crumbEvents"), href: "/dashboard/events" },
           { label: title, href: `/dashboard/events/${eventId}/candidates` },
-          { label: isEn ? "Customize page" : "Personnaliser la page" }
+          { label: t("design.crumb") }
         ]}
       />
 
-      <header className="flex flex-col gap-4 border-b border-border/50 pb-6 lg:flex-row lg:items-end lg:justify-between">
+      <header className="flex flex-col gap-4 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
-          <span className="text-sm font-bold uppercase tracking-widest text-primary">
-            {isEn ? "Public voting page" : "Page publique de vote"}
-          </span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{title}</h2>
-          <p className="max-w-xl text-muted-foreground">
-            {isEn
-              ? "Logo, colors and layout. Voters get a dedicated page at your share link."
-              : "Logo, couleurs et disposition. Vos votants accèdent à une page dédiée via votre lien de partage."}
-          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("design.title")}</h1>
+          <p className="max-w-xl text-slate-600">{t("design.lead")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <CopyPublicLinkButton eventSlug={slug} isEn={isEn} />
           <Button asChild variant="secondary">
             <Link href={publicEventPath(slug)} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
-              {isEn ? "Open live page" : "Ouvrir la page live"}
+              {t("design.openPage")}
             </Link>
           </Button>
         </div>
@@ -209,139 +509,293 @@ export default function EventDesignPage() {
           eventId={eventId}
           token={getStoredToken() ?? ""}
           isEn={isEn}
-          title={isEn ? "Publish this event" : "Publier cet évènement"}
-          description={
-            isEn
-              ? "Your page is ready — activate it so voters can access it."
-              : "Votre page est prête — activez-la pour la rendre accessible aux votants."
-          }
+          title={t("design.publishTitle")}
+          description={t("design.publishDesc")}
           onActivated={() => setStatus("ACTIVE")}
         />
       ) : null}
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
-        <Card className="space-y-8 border border-border/50 p-6 shadow-sm lg:p-8">
-          <form className="space-y-8" onSubmit={onSubmit}>
-            <LogoUploadField
-              value={logoUrl}
-              onChange={setLogoUrl}
-              token={getStoredToken() ?? ""}
-              label={isEn ? "Event logo" : "Logo de l'évènement"}
-            />
+        <Card className="p-5 lg:p-8">
+          <form id="design-form" className="space-y-8" onSubmit={onSubmit} noValidate>
+            <LogoUploadField value={logoUrl} onChange={setLogoUrl} token={getStoredToken() ?? ""} label={t("design.logo")} />
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">
-                  {isEn ? "Header & accent color" : "Couleur d'en-tête et accents"}
-                </span>
-                {logoUrl && (
-                  <button
-                    type="button"
-                    onClick={handleExtractColor}
-                    disabled={isExtracting}
-                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-primary transition-all hover:bg-primary/10"
-                  >
-                    {isExtracting ? (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-3.5 w-3.5" />
-                    )}
-                    {isEn ? "Extract from logo" : "Depuis le logo"}
-                  </button>
-                )}
-              </div>
-
-              {/* Presets by vibe */}
-              <div className="space-y-4">
-                {Object.entries(presetsByVibe).map(([vibe, presets]) => {
-                  const labels = VIBE_LABELS[vibe] || { fr: vibe, en: vibe };
+            <section aria-labelledby="presets-title" className="min-w-0 space-y-3">
+              <h2 id="presets-title" className="text-sm font-semibold text-slate-900">{t("design.presets.title")}</h2>
+              <p className="text-xs text-slate-600">{t("design.presets.leadCount", { count: EVENT_PRESETS.length })}</p>
+              <Input
+                id="preset-search"
+                type="search"
+                value={presetQuery}
+                onChange={(event) => setPresetQuery(event.target.value)}
+                // Entrée ne doit pas enregistrer le formulaire depuis la recherche.
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.preventDefault();
+                }}
+                label={t("design.presets.search")}
+                placeholder={t("design.presets.searchHint")}
+              />
+              {presetQuery.trim() === "" ? (
+                <div role="group" aria-label={t("design.presets.families")} className="flex flex-wrap gap-1.5">
+                  {EVENT_PRESET_CATEGORIES.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      aria-pressed={presetCategory === category.id}
+                      onClick={() => setPresetCategory(category.id)}
+                      className={`min-h-9 rounded-full border px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${presetCategory === category.id ? "border-slate-900 bg-slate-900 text-white" : "border-border text-slate-700 hover:bg-accent/60"}`}
+                    >
+                      {isEn ? category.en : category.fr}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-600" aria-live="polite">
+                  {visiblePresets.length > 0
+                    ? t("design.presets.results", { count: visiblePresets.length })
+                    : t("design.presets.empty", { query: presetQuery.trim() })}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+                {visiblePresets.map((preset) => {
+                  const active = pageStyle === preset.pageStyle && fontStyle === preset.fontStyle && (parsedColor ?? "") === preset.brandColor.toLowerCase();
+                  const name = isEn ? preset.en : preset.fr;
                   return (
-                    <div key={vibe}>
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                        {isEn ? labels.en : labels.fr}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {presets.map((preset) => {
-                          const selected = colorSwatch === preset.color;
-                          return (
-                            <button
-                              key={preset.color}
-                              type="button"
-                              aria-label={preset.label}
-                              title={preset.label}
-                              aria-pressed={selected}
-                              onClick={() => setBrandColor(preset.color)}
-                              className={`group relative h-8 w-8 rounded-full border-2 transition-all hover:scale-110 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
-                                selected
-                                  ? "border-foreground ring-2 ring-primary/30 scale-110"
-                                  : "border-transparent"
-                              }`}
-                              style={{ backgroundColor: preset.color }}
-                            >
-                              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                                {preset.label}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    <button
+                      key={preset.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setPageStyle(preset.pageStyle);
+                        setFontStyle(preset.fontStyle);
+                        setBrandColor(preset.brandColor.toLowerCase());
+                        showToast.success(t("design.presets.applied", { name }));
+                      }}
+                      className={`flex min-h-12 min-w-0 items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-slate-900 ring-1 ring-slate-900" : "border-border hover:bg-accent/60"}`}
+                    >
+                      <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full" style={{ background: preset.brandColor }} />
+                      <span className="min-w-0">
+                        <span className="line-clamp-2 font-semibold leading-snug text-slate-900">{name}</span>
+                        <span className="block truncate text-xs text-slate-600">{t(`design.style.${preset.pageStyle}` as MessageKey)}</span>
+                      </span>
+                    </button>
                   );
                 })}
               </div>
+            </section>
 
-              <div className="flex items-center gap-3 pt-2">
-                <input
-                  type="color"
-                  aria-label={isEn ? "Pick color" : "Choisir une couleur"}
-                  value={colorSwatch}
-                  onChange={(e) => setBrandColor(e.target.value)}
-                  className="h-10 w-12 cursor-pointer rounded-lg border border-border bg-background p-1"
-                />
-                <Input
-                  id="brandColor"
-                  label=""
-                  aria-label={isEn ? "Hex color" : "Couleur hex"}
-                  value={brandColor}
-                  onChange={(e) => setBrandColor(e.target.value)}
-                  placeholder="#6366F1"
-                  state={colorIsValid ? "default" : "error"}
-                  className="max-w-[160px]"
-                />
+            <fieldset className="min-w-0 space-y-3">
+              <legend className="text-sm font-semibold text-slate-900">{t("design.style.title")}</legend>
+              <p className="text-xs text-slate-600">{t("design.style.lead")}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="radiogroup" aria-label={t("design.style.title")}>
+                {PAGE_STYLES.map((id) => {
+                  const selected = pageStyle === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setPageStyle(id)}
+                      className={`flex flex-col gap-3 rounded-md border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-slate-900 ring-1 ring-slate-900" : "border-border hover:bg-accent/60"}`}
+                    >
+                      <StyleThumb style={id} accent={theme.accent} />
+                      <span>
+                        <span className="block font-semibold text-slate-900">{t(`design.style.${id}` as MessageKey)}</span>
+                        <span className="mt-1 block text-xs text-slate-600">{t(`design.style.${id}.desc` as MessageKey)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+            </fieldset>
 
-              <motion.div
-                layout
-                className="overflow-hidden rounded-xl"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentAlt} 100%)`
-                }}
-              >
-                <div className="flex items-center gap-3 px-5 py-4" style={{ color: theme.headerFg }}>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg text-xs font-black"
-                    style={{ background: `${theme.headerFg}15`, border: `1px solid ${theme.headerFg}20` }}>
-                    {title.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold">{title}</p>
-                    {tagline && <p className="text-[11px] opacity-75">{tagline}</p>}
-                  </div>
+            <ImageUploadField
+              value={coverUrl}
+              onChange={setCoverUrl}
+              token={getStoredToken() ?? ""}
+              label={t("design.cover.title")}
+              hint={t("design.cover.hint")}
+              preview={
+                <div className="flex aspect-[16/9] w-40 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                  {coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">16:9</span>
+                  )}
                 </div>
-              </motion.div>
-            </div>
-
-            <Input
-              id="tagline"
-              label={isEn ? "Tagline (optional)" : "Slogan (optionnel)"}
-              value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
-              placeholder={isEn ? "e.g. Vote for your favorite artist" : "ex. Votez pour votre artiste préféré"}
+              }
             />
 
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-foreground">
-                {isEn ? "Candidates layout" : "Disposition des candidats"}
-              </span>
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="text-sm font-semibold text-slate-900">{t("design.bg.title")}</legend>
+              <div className="inline-flex flex-wrap gap-1 rounded-md border border-border p-1" role="radiogroup" aria-label={t("design.bg.title")}>
+                {(["IMAGE", "COLOR"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={heroBackground === mode}
+                    disabled={mode === "IMAGE" && !coverUrl}
+                    onClick={() => setHeroBackground(mode)}
+                    className={`min-h-10 rounded-sm px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${heroBackground === mode && (mode === "COLOR" || coverUrl) ? "bg-slate-900 text-white" : "text-slate-900 hover:bg-accent"}`}
+                  >
+                    {t(`design.bg.${mode}` as MessageKey)}
+                  </button>
+                ))}
+              </div>
+              {!coverUrl ? <p className="text-xs text-slate-600">{t("design.bg.needCover")}</p> : null}
+            </fieldset>
+
+            <fieldset className="min-w-0 space-y-3">
+              <legend className="text-sm font-semibold text-slate-900">{t("design.font.title")}</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="radiogroup" aria-label={t("design.font.title")}>
+                {FONT_STYLES.map((font) => {
+                  const selected = fontStyle === font.id;
+                  return (
+                    <button
+                      key={font.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setFontStyle(font.id)}
+                      className={`min-w-0 rounded-md border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-slate-900 ring-1 ring-slate-900" : "border-border hover:bg-accent/60"}`}
+                    >
+                      <span
+                        className="block truncate text-2xl uppercase leading-tight text-slate-900"
+                        style={{ fontFamily: font.family, fontWeight: font.weight }}
+                      >
+                        {title.split(/\s+/)[0] || "SHADOMA"}
+                      </span>
+                      <span className="mt-2 block text-sm font-semibold text-slate-900">{t(`design.font.${font.id}` as MessageKey)}</span>
+                      <span className="block text-xs text-slate-600">{t(`design.font.${font.id}.desc` as MessageKey)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <fieldset className="min-w-0 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <legend className="text-sm font-semibold text-slate-900">{t("design.color")}</legend>
+                {logoUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleExtractColor()}
+                    disabled={isExtracting}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-semibold text-primary hover:bg-accent"
+                  >
+                    {isExtracting ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Wand2 className="h-4 w-4" aria-hidden="true" />}
+                    {t("design.fromLogo")}
+                  </button>
+                ) : null}
+              </div>
+
+              {Object.entries(presetsByVibe).map(([vibe, presets]) => (
+                <div key={vibe}>
+                  <p className="mb-2 text-xs font-semibold text-slate-600">{t(`design.vibe.${vibe}` as MessageKey)}</p>
+                  <div className="flex flex-wrap gap-3">
+                    {presets.map((preset) => {
+                      const selected = swatch.toLowerCase() === preset.color.toLowerCase();
+                      const label = isEn ? preset.labelEn : preset.label;
+                      return (
+                        <button
+                          key={preset.color}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setBrandColor(preset.color)}
+                          className="flex w-16 flex-col items-center gap-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span
+                            className={`size-11 rounded-md border ${selected ? "border-slate-900 ring-2 ring-slate-900 ring-offset-2" : "border-border"}`}
+                            style={{ backgroundColor: preset.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="text-center text-xs leading-tight text-slate-600">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex items-start gap-3 pt-2">
+                <input
+                  type="color"
+                  aria-label={t("design.pickColor")}
+                  value={swatch}
+                  onChange={(e) => setBrandColor(e.target.value)}
+                  className="h-11 w-12 cursor-pointer rounded-md border border-border bg-background p-1"
+                />
+                <div className="max-w-[220px] flex-1">
+                  <Input
+                    id="brandColor"
+                    label={t("design.hex")}
+                    value={brandColor}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    placeholder={DEFAULT_BRAND_COLOR}
+                    state={colorIsValid ? "default" : "error"}
+                    errorText={colorIsValid ? undefined : t("design.hexInvalid")}
+                  />
+                </div>
+              </div>
+
+              {/* Échantillon plat dans le langage de la mini-plateforme : nav soulignée, bouton et lien en accent lisible. */}
+              <div className="rounded-md border border-border bg-background p-4" style={theme.cssVars}>
+                <p className="mb-3 text-xs font-semibold text-slate-600">{t("design.sample")}</p>
+                <div className="flex items-center justify-between gap-3 border-b border-slate-900 pb-3">
+                  <span className="truncate text-sm font-medium uppercase tracking-[0.3em] text-slate-900">{title}</span>
+                  <span className="border-b pb-0.5 text-[11px] font-medium uppercase tracking-[0.22em]" style={{ borderColor: theme.accentStrong }}>
+                    {t("minisite.results")}
+                  </span>
+                </div>
+                {trimmedTagline ? (
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: theme.accentInk }}>
+                    {trimmedTagline}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap items-center gap-4">
+                  <span className="inline-flex h-11 items-center rounded-md px-5 text-sm font-semibold text-white" style={{ background: theme.accentStrong }}>
+                    {t("design.samplePay")}
+                  </span>
+                  <span className="text-sm font-semibold underline underline-offset-4" style={{ color: theme.accentInk }}>
+                    {t("design.sampleLink")}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600" aria-live="polite">
+                {t("design.contrastGood", { ratio: contrastRatio(theme.accentStrong, "#ffffff").toFixed(1) })}
+              </p>
+              {accentWasDarkened ? (
+                <p className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                  {t("design.contrastAdjusted")}
+                  <span className="inline-block size-5 rounded-md border border-border" style={{ background: theme.accentStrong }} aria-hidden="true" />
+                  <span className="font-mono text-xs">{theme.accentStrong}</span>
+                </p>
+              ) : null}
+            </fieldset>
+
+            <div className="space-y-1">
+              <Input
+                id="tagline"
+                label={t("design.tagline")}
+                value={tagline}
+                maxLength={TAGLINE_MAX}
+                onChange={(e) => setTagline(e.target.value)}
+                state={taglineTooShort ? "error" : "default"}
+                errorText={taglineTooShort ? t("design.taglineTooShort") : undefined}
+              />
+              <p className="flex justify-between gap-3 text-xs text-slate-600">
+                <span>{t("design.taglineHelp")}</span>
+                <span className="tabular-nums">
+                  {tagline.length}/{TAGLINE_MAX}
+                </span>
+              </p>
+            </div>
+
+            <fieldset className="min-w-0 space-y-3">
+              <legend className="text-sm font-semibold text-slate-900">{t("design.layout")}</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="radiogroup">
                 {EVENT_LAYOUTS.map((opt) => {
                   const selected = layout === opt.id;
@@ -352,55 +806,55 @@ export default function EventDesignPage() {
                       role="radio"
                       aria-checked={selected}
                       onClick={() => setLayout(opt.id)}
-                      className={`rounded-xl border p-4 text-left transition-all ${
-                        selected ? "border-primary bg-primary/5 ring-2 ring-primary/30" : "border-border hover:border-primary/40"
-                      }`}
+                      className={`rounded-md border p-4 text-left ${selected ? "border-slate-900 ring-1 ring-slate-900" : "border-border hover:bg-accent/60"}`}
                     >
-                      <span className="block font-semibold text-foreground">{isEn ? opt.en : opt.fr}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">{isEn ? opt.descEn : opt.descFr}</span>
+                      <span className="block font-semibold text-slate-900">{isEn ? opt.en : opt.fr}</span>
+                      <span className="mt-1 block text-xs text-slate-600">{isEn ? opt.descEn : opt.descFr}</span>
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </fieldset>
 
-            {error ? (
-              <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            ) : null}
+            <FormError>{error}</FormError>
+            {isDirty ? <p className="text-sm text-slate-600">{t("design.unsaved")}</p> : null}
 
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit" loading={isSaving} size="lg">
-                {isEn ? "Save appearance" : "Enregistrer l'apparence"}
+            {/* Collant en bas sur mobile, au-dessus de la zone de sécurité. */}
+            <div className="fixed inset-x-0 bottom-0 z-20 flex gap-3 border-t border-border bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:border-0 sm:p-0">
+              <Button type="submit" loading={isSaving} className="h-12 flex-1 sm:flex-none">
+                {t("design.save")}
               </Button>
-              <Button type="button" variant="ghost" asChild>
-                <Link href={`/dashboard/events/${eventId}/candidates`}>
-                  {isEn ? "Back to candidates" : "Retour aux candidats"}
-                </Link>
+              <Button type="button" variant="ghost" asChild className="hidden h-12 sm:inline-flex">
+                <Link href={`/dashboard/events/${eventId}/candidates`}>{t("design.back")}</Link>
               </Button>
             </div>
           </form>
         </Card>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-lg font-bold text-foreground">{isEn ? "Live preview" : "Aperçu en direct"}</h3>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setPreviewKey((k) => k + 1)}>
-              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-              {isEn ? "Refresh" : "Actualiser"}
-            </Button>
+        <section aria-labelledby="preview-title" className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="preview-title" className="text-lg font-bold text-slate-900">{t("design.preview")}</h2>
+            <div className="flex gap-1" role="group" aria-label={t("design.preview")}>
+              <Button type="button" variant={previewWidth === "phone" ? "secondary" : "ghost"} size="sm" className="min-h-11" aria-pressed={previewWidth === "phone"} onClick={() => setPreviewWidth("phone")}>
+                {t("design.phone")}
+              </Button>
+              <Button type="button" variant={previewWidth === "desktop" ? "secondary" : "ghost"} size="sm" className="min-h-11" aria-pressed={previewWidth === "desktop"} onClick={() => setPreviewWidth("desktop")}>
+                {t("design.desktop")}
+              </Button>
+            </div>
           </div>
-          <CopyPublicLinkButton eventSlug={slug} isEn={isEn} />
-          <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
+          <p className="text-sm text-slate-600">{t("design.previewHelp")}</p>
+          {/* Zone défilante (aperçu téléphone plus large que la colonne) : atteignable au clavier. */}
+          <div tabIndex={0} role="region" aria-label={t("design.previewTitle")} className="overflow-x-auto rounded-md border border-border bg-muted/30 p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <iframe
               key={previewKey}
-              title={isEn ? "Event preview" : "Aperçu de l'évènement"}
+              title={t("design.previewTitle")}
               src={publicEventPath(slug)}
-              className="h-[min(720px,70vh)] w-full bg-muted/30"
+              className="mx-auto block h-[min(720px,70vh)] bg-background"
+              style={{ width: previewWidth === "phone" ? 390 : "100%" }}
             />
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

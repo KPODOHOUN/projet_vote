@@ -44,7 +44,7 @@ export default function VoteEventsPage({ params }: VoteEventsPageProps) {
     <main className="flex min-h-screen flex-col items-center bg-muted/30 px-4 py-12 sm:px-6 lg:px-8">
       <Card className="mb-8 w-full max-w-4xl overflow-hidden rounded-2xl border-none bg-background p-6 shadow-xl sm:p-10 lg:p-12">
         <header className="mb-12 border-b border-border/50 pb-8">
-          <Badge variant="outline" className="mb-6 w-fit border-primary/30 bg-primary/5 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+          <Badge variant="outline" className="mb-6 w-fit border-0 bg-transparent px-0 py-0 text-sm font-semibold text-slate-600">
             {isEn ? "Public events" : "Évènements publics"}
           </Badge>
           <h1 className="mb-4 text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl">

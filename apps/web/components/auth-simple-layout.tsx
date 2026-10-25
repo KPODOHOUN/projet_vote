@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { AmbientBackdrop } from "./ambient-backdrop";
 import { AuthMobileBrandHeader } from "./auth-mobile-brand-header";
 
 type AuthSimpleLayoutProps = {
@@ -7,17 +6,17 @@ type AuthSimpleLayoutProps = {
   contentClassName?: string;
 };
 
-/** Formulaire centré sans panneau image — pages utilitaires (reset, vérif e-mail, etc.). */
+/**
+ * Pages utilitaires (reset, vérif e-mail, invitation, callback OAuth) : une
+ * colonne sur fond neutre, wordmark SHADOMA, carte opaque, sans verre (7.5).
+ */
 export function AuthSimpleLayout({ children, contentClassName = "max-w-md" }: AuthSimpleLayoutProps) {
   return (
-    <AmbientBackdrop
-      data-zone="secure-flow"
-      className="flex min-h-screen flex-col items-center justify-center px-4 py-8 sm:px-8"
-    >
-      <main className="flex w-full flex-col items-center">
-        <AuthMobileBrandHeader className={`mb-8 w-full ${contentClassName}`} />
-        <div className={`w-full ${contentClassName}`}>{children}</div>
+    <div data-zone="secure-flow" className="min-h-screen bg-muted/40 px-4 py-8 sm:px-8 sm:py-16">
+      <main className={`mx-auto w-full ${contentClassName}`}>
+        <AuthMobileBrandHeader className="mb-8" />
+        {children}
       </main>
-    </AmbientBackdrop>
+    </div>
   );
 }

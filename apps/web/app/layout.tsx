@@ -44,6 +44,28 @@ const jetbrains = localFont({
   fallback: ["JetBrains Mono", "ui-monospace", "monospace"]
 });
 
+// Polices de titres des mini-plateformes (/e/*), au choix de l'organisateur.
+// Non préchargées : seules les pages d'événement qui les utilisent les chargent.
+const unbounded = localFont({
+  src: "./fonts/unbounded.woff2",
+  weight: "200 900",
+  style: "normal",
+  variable: "--font-festival",
+  display: "swap",
+  preload: false,
+  fallback: ["Plus Jakarta Sans", "system-ui", "sans-serif"]
+});
+
+const playfair = localFont({
+  src: "./fonts/playfair-display.woff2",
+  weight: "400 900",
+  style: "normal",
+  variable: "--font-gala",
+  display: "swap",
+  preload: false,
+  fallback: ["Georgia", "serif"]
+});
+
 // Base canonique partagée avec sitemap.ts / robots.ts. metadataBase permet aux
 // pages /e/[slug] de produire des URLs OG absolues à partir de chemins relatifs.
 const DEFAULT_TITLE = `${SITE_NAME} · Plateforme de votes`;
@@ -85,7 +107,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
     // on neutralise le faux positif d'hydratation sur CET élément uniquement.
     <html
       lang="fr"
-      className={`${jakarta.variable} ${inter.variable} ${jetbrains.variable}`}
+      className={`${jakarta.variable} ${inter.variable} ${jetbrains.variable} ${unbounded.variable} ${playfair.variable}`}
       suppressHydrationWarning
     >
       <body>

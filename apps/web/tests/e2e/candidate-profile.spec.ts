@@ -69,7 +69,8 @@ test("annuaire → profil candidat : navigation, deep-link partagé, 404", async
   await page.goto(`/e/${eventSlug}`);
   await expect(page.getByRole("heading", { level: 1, name: eventTitle })).toBeVisible();
   await expect(page.getByRole("link", { name: /Alice Candidate/ })).toBeVisible();
-  await expect(page.getByText("0 votes").first()).toBeVisible();
+  // FR : « voix » est invariable (« 0 voix », « 1 voix »).
+  await expect(page.getByText("0 voix").first()).toBeVisible();
 
   // 5) Clic sur la carte → profil du candidat (lien sécurisé publicRef).
   await page.getByRole("link", { name: /Alice Candidate/ }).click();

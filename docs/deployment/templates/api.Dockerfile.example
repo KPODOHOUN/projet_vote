@@ -1,0 +1,29 @@
+# Modèle non testé — image de l'API NestJS (monorepo npm workspaces).
+# Copier en Dockerfile (le .gitignore exclut Dockerfile*), construire depuis la racine :
+#   docker build -f Dockerfile -t shadoma-api .
+# Les secrets sont injectés à l'exécution (variables d'environnement), jamais dans l'image.
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/db/package.json packages/db/
+COPY packages/shared/package.json packages/shared/
+RUN npm ci --workspace=@votezpro/api --include-workspace-root
+COPY tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+RUN npx prisma generate --schema packages/db/prisma/schema.prisma \
+ && npm --prefix packages/shared run build \
+ && npm --prefix packages/db run build \
+ && npm --prefix apps/api run build
+
+FROM node:22-bookworm-slim
+ENV NODE_ENV=production
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && apt-get clean
+COPY --from=build /app /app
+USER node
+EXPOSE 3001
+# Les migrations se lancent à part, avant le démarrage : npm run db:migrate:deploy
+CMD ["node", "apps/api/dist/main.js"]

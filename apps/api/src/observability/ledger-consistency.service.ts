@@ -1,5 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import { PaymentPurpose, PaymentStatus } from "@prisma/client";
+import {
+  LedgerBucket,
+  LedgerDirection,
+  PaymentPurpose,
+  PaymentStatus,
+  WalletLedgerKind
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 export type LedgerInconsistency = {
@@ -11,6 +17,25 @@ export type LedgerInconsistency = {
 export type LedgerReport = {
   votesPaidWithoutSucceededPayment: LedgerInconsistency[];
   succeededPaymentsWithoutPaidVote: LedgerInconsistency[];
+};
+
+export type WalletBalanceCheck = {
+  walletId: string;
+  tenantId: string;
+  storedHeldCfa: number;
+  storedWithdrawableCfa: number;
+  ledgerHeldCfa: number;
+  ledgerWithdrawableCfa: number;
+  /** Lignes sans direction ou sans compartiment (antérieures à ADR-021, indécidables). */
+  unknownEntries: number;
+  /** ok : soldes = journal ; drift : écart ; unverifiable : lignes inconnues, comparaison impossible. */
+  status: "ok" | "drift" | "unverifiable";
+};
+
+export type WalletReconciliation = {
+  wallets: WalletBalanceCheck[];
+  driftCount: number;
+  unknownEntries: number;
 };
 
 /**
@@ -58,5 +83,70 @@ export class LedgerConsistencyService {
       }));
 
     return { votesPaidWithoutSucceededPayment, succeededPaymentsWithoutPaidVote };
+  }
+
+  /**
+   * ADR-021 : recalcule réserve et disponible depuis le journal signé et les
+   * compare aux soldes stockés. HELD_RELEASE est un transfert (CREDIT
+   * WITHDRAWABLE + débit implicite de HELD). Une ligne sans sens n'est jamais
+   * additionnée : le wallet devient « unverifiable ».
+   */
+  async reconcileWallets(): Promise<WalletReconciliation> {
+    const wallets = await this.prisma.client.organizerWallet.findMany({
+      select: { id: true, tenantId: true, heldCfa: true, withdrawableCfa: true }
+    });
+    const groups = await this.prisma.client.walletLedgerEntry.groupBy({
+      by: ["walletId", "kind", "direction", "bucket"],
+      _sum: { amountCfa: true },
+      _count: { _all: true }
+    });
+
+    const totals = new Map<string, { held: number; withdrawable: number; unknown: number }>();
+    for (const g of groups) {
+      const t = totals.get(g.walletId) ?? { held: 0, withdrawable: 0, unknown: 0 };
+      const amount = g._sum.amountCfa ?? 0;
+      if (g.direction === null || g.bucket === null) {
+        t.unknown += g._count._all;
+      } else {
+        const signed = g.direction === LedgerDirection.CREDIT ? amount : -amount;
+        if (g.bucket === LedgerBucket.HELD) t.held += signed;
+        else t.withdrawable += signed;
+        if (g.kind === WalletLedgerKind.HELD_RELEASE) t.held -= amount;
+      }
+      totals.set(g.walletId, t);
+    }
+
+    const checks = wallets.map<WalletBalanceCheck>((w) => {
+      const t = totals.get(w.id) ?? { held: 0, withdrawable: 0, unknown: 0 };
+      const matches = t.held === w.heldCfa && t.withdrawable === w.withdrawableCfa;
+      return {
+        walletId: w.id,
+        tenantId: w.tenantId,
+        storedHeldCfa: w.heldCfa,
+        storedWithdrawableCfa: w.withdrawableCfa,
+        ledgerHeldCfa: t.held,
+        ledgerWithdrawableCfa: t.withdrawable,
+        unknownEntries: t.unknown,
+        status: t.unknown > 0 ? "unverifiable" : matches ? "ok" : "drift"
+      };
+    });
+
+    return {
+      wallets: checks,
+      driftCount: checks.filter((c) => c.status === "drift").length,
+      unknownEntries: checks.reduce((sum, c) => sum + c.unknownEntries, 0)
+    };
+  }
+
+  /** Résumé pour la vue d'ensemble admin (F1) : des compteurs, aucun montant. */
+  async summarizeWallets() {
+    const report = await this.reconcileWallets();
+    return {
+      walletsChecked: report.wallets.length,
+      driftCount: report.driftCount,
+      unverifiableCount: report.wallets.filter((w) => w.status === "unverifiable").length,
+      unknownEntries: report.unknownEntries,
+      driftTenantIds: report.wallets.filter((w) => w.status === "drift").map((w) => w.tenantId)
+    };
   }
 }

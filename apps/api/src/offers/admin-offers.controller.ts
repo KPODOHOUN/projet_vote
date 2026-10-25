@@ -11,6 +11,7 @@ import { EventStatsService } from "./event-stats.service";
 import { OfferSettingsService } from "./offer-settings.service";
 import { OrganizerOffersService } from "./organizer-offers.service";
 import { WithdrawalsService } from "./withdrawals.service";
+import { LedgerConsistencyService } from "../observability/ledger-consistency.service";
 
 @Controller("admin/offers")
 @UseGuards(AuthGuard, RolesGuard)
@@ -22,8 +23,15 @@ export class AdminOffersController {
     private readonly eventStats: EventStatsService,
     private readonly organizerOffers: OrganizerOffersService,
     private readonly settlement: EventSettlementService,
-    private readonly commissionOverride: CommissionOverrideService
+    private readonly commissionOverride: CommissionOverrideService,
+    private readonly ledger: LedgerConsistencyService
   ) {}
+
+  /** Réconciliation journal ↔ soldes (ADR-021), en compteurs. */
+  @Get("ledger-reconciliation")
+  ledgerReconciliation() {
+    return this.ledger.summarizeWallets();
+  }
 
   @Get("settings")
   getSettings() {
@@ -86,6 +94,11 @@ export class AdminOffersController {
   @Get("events/:eventId")
   eventDetail(@Param("eventId") eventId: string) {
     return this.eventStats.getEventStats(eventId);
+  }
+
+  @Get("events/:eventId/commission")
+  getEventCommission(@Param("eventId") eventId: string) {
+    return this.offerSettings.describeEscrowCommission(eventId);
   }
 
   @Put("events/:eventId/commission")

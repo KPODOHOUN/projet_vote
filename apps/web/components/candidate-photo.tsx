@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cloudinaryTransform } from "../lib/og-image-url";
 
 function initials(name: string): string {
   return name
@@ -14,7 +15,7 @@ function initials(name: string): string {
 /**
  * Photo d'un candidat avec repli initiales. Si `photoUrl` est absent ou que
  * l'image casse au chargement (`onError`), on affiche les initiales sur un fond
- * accent-teinté clair (texte ink lisible quelle que soit la couleur organisateur).
+ * aplat très clair teinté par l'événement (maquette « 3 · Résultats »), initiales à l'encre.
  */
 export function CandidatePhoto({
   photoUrl,
@@ -31,7 +32,15 @@ export function CandidatePhoto({
   const cls = className || (size === "lg" ? "w-full h-full object-cover" : "w-full h-full object-cover");
   if (!photoUrl || broken) {
     return (
-      <span className={`flex items-center justify-center bg-muted text-muted-foreground font-bold tracking-widest ${cls}`} data-placeholder="true" aria-hidden="true">
+      <span
+        className={`flex items-center justify-center text-lg font-light uppercase tracking-[0.24em] text-[var(--mini-ink,var(--color-slate-900))] ${cls}`}
+        style={{
+          background:
+            "var(--mini-photo-bg, color-mix(in srgb, var(--event-accent-strong, var(--color-brand-600)) 10%, white))"
+        }}
+        data-placeholder="true"
+        aria-hidden="true"
+      >
         {initials(fullName)}
       </span>
     );
@@ -39,10 +48,7 @@ export function CandidatePhoto({
   // Pour les URLs Cloudinary, servir une image dimensionnée + auto format/qualité
   // (insère une transformation dans le chemin /upload/). Autres URLs inchangées.
   const width = size === "lg" ? 640 : 160;
-  const src =
-    photoUrl.includes("res.cloudinary.com") && photoUrl.includes("/upload/")
-      ? photoUrl.replace("/upload/", `/upload/w_${width},c_fill,f_auto,q_auto/`)
-      : photoUrl;
+  const src = cloudinaryTransform(photoUrl, `w_${width},c_fill,g_auto,f_auto,q_auto`);
   // eslint-disable-next-line @next/next/no-img-element
   return <img className={cls} src={src} alt="" loading="lazy" onError={() => setBroken(true)} />;
 }

@@ -30,6 +30,40 @@ enum EventLayout {
   SPOTLIGHT
 }
 
+// Habillage de la mini-plateforme publique, choisi par l'organisateur.
+enum EventPageStyle {
+  AFFICHE // photo de couverture en plein écran derrière le titre
+  SOIREE  // fond sombre, compte à rebours en grand
+  BILLET  // aplat de la couleur de l'événement, infos en billet
+  COURONNE // composition centrée de gala, logo en médaillon, portraits encadrés
+  MAGAZINE // une de magazine : couverture en demi-écran, mosaïque de candidats
+  POP      // aplats vifs, contours encre et ombres franches
+  TERROIR  // agronomie, foires, gastronomie : arche, étiquettes
+  STADE    // sport, tournois : bande diagonale, tableau de score, maillots
+  LINEUP   // concerts, talents : affiche de festival, noms en programmation
+  DIPLOME  // écoles, prix : cadre de certificat, sceau, portraits ronds
+  MARCHE   // foires agricoles, produits locaux : auvent rayé, ardoise, cagettes
+  MENU     // gastronomie : carte de restaurant, candidats en liste à points de conduite
+  WAX      // mode africaine, patrimoine : motifs de pagne à la couleur de l'événement
+  CAMPUS   // écoles, jeunesse : papier quadrillé, surligneur, polaroïds
+  BADGE    // entreprise, salons : badges de conférence, grille fine
+  STORY    // médias, créateurs : fond sombre, cartes verticales 9:16
+  SANCTUAIRE // chorales, foi : fond nuit, halo, portraits en arche
+}
+
+// Fond des bandeaux : image de couverture (si importée) ou couleur unie.
+enum EventHeroBackground {
+  IMAGE
+  COLOR
+}
+
+// Police des titres de la mini-plateforme.
+enum EventFontStyle {
+  FESTIVAL  // Unbounded
+  GALA      // Playfair Display
+  CLASSIQUE // Plus Jakarta Sans (police de la plateforme)
+}
+
 enum PaymentStatus {
   INITIATED
   PENDING
@@ -71,6 +105,18 @@ enum WalletLedgerKind {
   ADJUSTMENT
   HELD_ALLOCATION
   HELD_RELEASE
+}
+
+/// ADR-021 : sens de l'écriture (montant toujours positif).
+enum LedgerDirection {
+  CREDIT
+  DEBIT
+}
+
+/// ADR-021 : compartiment touché. HELD_RELEASE = transfert, écrit CREDIT WITHDRAWABLE.
+enum LedgerBucket {
+  HELD
+  WITHDRAWABLE
 }
 
 enum WithdrawalStatus {
@@ -245,6 +291,9 @@ model WalletLedgerEntry {
   walletId    String
   kind        WalletLedgerKind
   amountCfa   Int
+  /// NULL = ligne antérieure à ADR-021 dont le sens n'a pas pu être déduit.
+  direction   LedgerDirection?
+  bucket      LedgerBucket?
   eventId     String?
   paymentId   String?
   withdrawalId String?
@@ -324,6 +373,11 @@ model Event {
   brandColor      String?
   // Public page layout template (how candidates are displayed on /e/{slug}).
   layout          EventLayout @default(GRID)
+  // Image de couverture (import Cloudinary), style de page et police des titres.
+  coverUrl        String?
+  pageStyle       EventPageStyle @default(AFFICHE)
+  fontStyle       EventFontStyle @default(FESTIVAL)
+  heroBackground  EventHeroBackground @default(IMAGE)
   // Per-event voting rule: if set, every vote must match this unit price.
   voteUnitPriceCfa Int?
   // Per-event platform commission override, in basis points (1% = 100 bps).
@@ -1052,4 +1106,19 @@ model AdminApiKey {
   updatedAt   DateTime @updatedAt
 
   @@index([revokedAt])
+}
+
+/// Image importée (logo, couverture, photo de candidat) quand Cloudinary n'est
+/// pas configuré : stockée en base, servie par /uploads/files/{id}.{ext}.
+/// Aucun service de fichiers externe requis.
+model StoredImage {
+  /// 32 caractères hexadécimaux aléatoires (non devinable).
+  id        String   @id
+  tenantId  String?
+  mime      String
+  size      Int
+  bytes     Bytes
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
 }

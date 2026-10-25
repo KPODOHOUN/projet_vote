@@ -105,7 +105,7 @@ export function PlanUpgradeModal({
 
                         {/* Header */}
                         <div className="mb-8 text-center">
-                            <div className="mb-3 inline-flex items-center rounded-full bg-primary/10 px-3.5 py-1.5 text-xs font-bold uppercase tracking-widest text-primary">
+                            <div className="mb-3 inline-flex items-center text-xs font-semibold text-slate-600">
                                 {isEn ? "Upgrade" : "Améliorer"}
                             </div>
                             <h2 className="text-2xl font-extrabold text-foreground">

@@ -57,7 +57,8 @@ test("pages publiques d'un évènement : rendu SSR + état zéro des résultats"
   await expect(page.getByRole("heading", { name: eventTitle })).toBeVisible();
   await expect(page.getByText(organizerName)).toBeVisible();
   await expect(page.getByText("Le vote n'est pas ouvert")).toBeVisible();
-  await expect(page.getByRole("link", { name: "résultats en direct" })).toBeVisible();
+  // Libellé « résultats en direct » remplacé (7.11-b : il n'y a pas de direct).
+  await expect(page.getByRole("link", { name: "Voir les résultats" })).toBeVisible();
 
   // 5) Page publique des résultats (SSR). Aucun vote payé → état zéro + invariant.
   await page.goto(`/e/${eventSlug}/results`);

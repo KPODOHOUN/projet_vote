@@ -80,6 +80,65 @@ test("createEvent: layout par défaut GRID, et layout choisi persisté + exposé
   assert.equal(pub.event.layout, "SPOTLIGHT");
 });
 
+test("personnalisation de la mini-plateforme : couverture, style de page, police (défauts, mise à jour, contrat public)", async () => {
+  const t = await tenant("ev-style");
+  const ev = await events.createEvent(owner(t.id), {
+    slug: "style-default",
+    title: "Style Default",
+    startsAt: past(),
+    endsAt: future()
+  });
+  assert.equal(ev.coverUrl, null);
+  assert.equal(ev.pageStyle, "AFFICHE");
+  assert.equal(ev.fontStyle, "FESTIVAL");
+
+  const cover = "https://res.cloudinary.com/demo/image/upload/v1/cover.jpg";
+  const updated = await events.updateEvent(owner(t.id), ev.id, {
+    coverUrl: cover,
+    pageStyle: "SOIREE",
+    fontStyle: "GALA"
+  });
+  assert.equal(updated.coverUrl, cover);
+  assert.equal(updated.pageStyle, "SOIREE");
+  assert.equal(updated.fontStyle, "GALA");
+
+  await prisma.candidate.create({ data: { eventId: ev.id, fullName: "Ada", number: 1, publicRef: "ada-ref" } });
+  const hub = await votes.getPublicEventBySlug("style-default");
+  const profile = await votes.getPublicCandidate("style-default", "ada-ref");
+  const results = await votes.getPublicEventResults("style-default");
+  for (const branding of [hub.event.branding, profile.event.branding, results.event.branding]) {
+    assert.equal(branding.coverUrl, cover);
+    assert.equal(branding.pageStyle, "SOIREE");
+    assert.equal(branding.fontStyle, "GALA");
+  }
+
+  // Fond des bandeaux : image par défaut, couleur unie au choix ; exposé en public.
+  assert.equal(ev.heroBackground, "IMAGE");
+  const colorBg = await events.updateEvent(owner(t.id), ev.id, { heroBackground: "COLOR" });
+  assert.equal(colorBg.heroBackground, "COLOR");
+  assert.equal((await votes.getPublicEventBySlug("style-default")).event.branding.heroBackground, "COLOR");
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { heroBackground: "VIDEO" }));
+
+  for (const style of ["COURONNE", "MAGAZINE", "POP", "TERROIR", "STADE", "LINEUP", "DIPLOME", "MARCHE", "MENU", "WAX", "CAMPUS", "BADGE", "STORY", "SANCTUAIRE", "BILLET", "AFFICHE"]) {
+    const next = await events.updateEvent(owner(t.id), ev.id, { pageStyle: style });
+    assert.equal(next.pageStyle, style);
+  }
+
+  // Images importées sans Cloudinary : chemin relatif servi par l'API, accepté pour le logo et la couverture.
+  const stored = "/api/v1/uploads/files/0123456789abcdef0123456789abcdef.png";
+  const withStored = await events.updateEvent(owner(t.id), ev.id, { logoUrl: stored, coverUrl: stored });
+  assert.equal(withStored.logoUrl, stored);
+  assert.equal(withStored.coverUrl, stored);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { logoUrl: "javascript:alert(1)" }));
+
+  // null efface la couverture ; une valeur hors liste est refusée.
+  const cleared = await events.updateEvent(owner(t.id), ev.id, { coverUrl: null });
+  assert.equal(cleared.coverUrl, null);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { pageStyle: "NEON" }));
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { fontStyle: "COMIC" }));
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { coverUrl: "javascript:alert(1)" }));
+});
+
 test("createEvent: rejette endsAt <= startsAt", async () => {
   const t = await tenant();
   await assert.rejects(
@@ -153,4 +212,40 @@ test("updateEvent: pose heldBps au moment de l'activation, jamais avant", async 
 
   const activated = await events.updateEvent(owner(t.id), draft.id, { status: "ACTIVE" });
   assert.equal(activated.heldBps, 5_000);
+});
+
+test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre organisateur ; payload public cohérent", async () => {
+  const t = await tenant("brand-clear");
+  const other = await tenant("brand-other");
+  const created = await events.createEvent(owner(t.id), {
+    slug: "brand-clear-evt",
+    title: "Concours marque",
+    startsAt: future(),
+    endsAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    tagline: "Édition 2026",
+    logoUrl: "https://res.cloudinary.com/demo/image/upload/logo.png",
+    brandColor: "#F59E0B"
+  });
+
+  // Un autre organisateur ne peut ni lire ni effacer.
+  await assert.rejects(
+    events.updateEvent(owner(other.id), created.id, { tagline: null, logoUrl: null, brandColor: null }),
+    /introuvable/
+  );
+  const untouched = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
+  assert.equal(untouched.tagline, "Édition 2026");
+
+  await events.updateEvent(owner(t.id), created.id, { tagline: null, logoUrl: null, brandColor: null });
+  const cleared = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
+  assert.deepEqual([cleared.tagline, cleared.logoUrl, cleared.brandColor], [null, null, null]);
+
+  // Absent ≠ null : un champ non envoyé ne change pas.
+  await events.updateEvent(owner(t.id), created.id, { tagline: "Retour" });
+  const partial = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
+  assert.deepEqual([partial.tagline, partial.logoUrl, partial.brandColor], ["Retour", null, null]);
+
+  const pub = await votes.getPublicEventBySlug("brand-clear-evt");
+  assert.equal(pub.event.branding.tagline, "Retour");
+  assert.equal(pub.event.branding.logoUrl, null);
+  assert.equal(pub.event.branding.brandColor, null);
 });

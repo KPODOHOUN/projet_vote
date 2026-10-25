@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Bot, LoaderCircle, MessageCircle, Send, X } from "lucide-react";
 import { getApiBaseUrl } from "../lib/api-base-url";
@@ -26,7 +26,28 @@ export function isChatWidgetRoute(pathname: string): boolean {
 /** Gate pathname : n’instancie le widget que sur les parcours publics. */
 export function ChatWidgetGate() {
   const pathname = usePathname() ?? "";
-  if (!isChatWidgetRoute(pathname)) return null;
+  const onChatRoute = isChatWidgetRoute(pathname);
+  const [enabled, setEnabled] = useState(false);
+
+  // L’API dit si l’assistant est configuré (clé OpenAI présente) ; sans réponse
+  // positive, le widget n’apparaît pas.
+  useEffect(() => {
+    if (!onChatRoute) return;
+    let cancelled = false;
+    fetch(`${getApiBaseUrl()}/chat/status`)
+      .then((response) => (response.ok ? response.json() : { enabled: false }))
+      .then((data: { enabled?: boolean }) => {
+        if (!cancelled) setEnabled(data.enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onChatRoute]);
+
+  if (!onChatRoute || !enabled) return null;
   return <ChatWidget />;
 }
 
@@ -85,7 +106,7 @@ export function ChatWidget() {
     <div className="chat-widget fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
       {open && (
         <section className="mb-3 flex h-[min(70dvh,30rem)] w-[min(calc(100vw-2rem),22rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl" aria-label="Assistant SHADOMA Votes">
-          <header className="flex items-center justify-between bg-gradient-to-br from-brand-500 to-brand-700 px-4 py-3 text-white">
+          <header className="flex items-center justify-between bg-brand-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20"><Bot className="h-5 w-5" /></span>
               <div><p className="text-sm font-bold">Assistant SHADOMA</p><p className="text-xs text-white/75">En ligne pour vous aider</p></div>
@@ -101,7 +122,7 @@ export function ChatWidget() {
             {isSending && <div className="flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle className="h-4 w-4 animate-spin" />L’assistant réfléchit…</div>}
           </div>
           <form onSubmit={sendMessage} className="flex gap-2 border-t border-border p-3">
-            <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Écrivez votre question…" aria-label="Question à l’assistant" disabled={isSending} className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-primary focus:ring-2" />
+            <input value={message} onChange={(event) => setMessage(event.target.value)} maxLength={500} placeholder="Écrivez votre question…" aria-label="Question à l’assistant" disabled={isSending} className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-primary focus:ring-2" />
             <button type="submit" disabled={!message.trim() || isSending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" aria-label="Envoyer"><Send className="h-4 w-4" /></button>
           </form>
         </section>

@@ -60,7 +60,7 @@ export function EventDashboardShell({
 
       <header className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">
+          <p className="text-xs font-semibold text-slate-600">
             {isEn ? "Event workspace" : "Espace évènement"}
           </p>
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">{eventTitle}</h1>

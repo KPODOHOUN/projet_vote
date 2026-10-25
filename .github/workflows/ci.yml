@@ -56,6 +56,9 @@ jobs:
       - name: Lint — apps/web
         run: npm --prefix apps/web run lint
 
+      - name: Unit tests — apps/web (node:test)
+        run: npm --prefix apps/web test
+
   api-tests:
     runs-on: ubuntu-latest
     services:
@@ -92,6 +95,11 @@ jobs:
         working-directory: apps/api
         run: npm test
 
+      # test:offers lit DATABASE_URL directement (contrairement à `npm test` qui
+      # l'exporte lui-même) : sans cette variable l'étape tomberait sur env.ts.
       - name: Run offers module tests (npm run test:offers)
         working-directory: apps/api
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test
         run: npm run test:offers

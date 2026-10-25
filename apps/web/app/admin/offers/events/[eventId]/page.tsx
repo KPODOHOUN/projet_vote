@@ -14,6 +14,7 @@ import {
   AdminPageShell,
   AdminSection
 } from "@/components/admin/admin-shell";
+import { EventCommissionPanel } from "@/components/admin/event-commission-panel";
 
 type EventOfferStats = {
   eventId: string;
@@ -148,6 +149,12 @@ export default function AdminOfferEventDetailPage() {
               ) : null}
             </div>
           </AdminSection>
+
+          {stats.offerType === "ESCROW" ? (
+            <AdminSection title={isEn ? "Commission" : "Commission"}>
+              <EventCommissionPanel eventId={stats.eventId} />
+            </AdminSection>
+          ) : null}
 
           <AdminSection title={isEn ? "Activity" : "Activité"}>
             <Card className="space-y-2 p-5 text-sm">

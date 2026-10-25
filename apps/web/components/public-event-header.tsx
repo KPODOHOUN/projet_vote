@@ -1,116 +1,110 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, type CSSProperties } from "react";
 
-import { LanguageSwitcher } from "../lib/i18n-provider";
-import { buildEventTheme } from "../lib/brand";
-import { SITE_NAME } from "../lib/site";
+import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
+
+export type MinisitePage = "candidates" | "results" | "tickets";
+
+/**
+ * Fond sur lequel l'en-tête est posé :
+ * - "page" : fond de la page (clair, ou nuit pour le style Soirée) ;
+ * - "image" : par-dessus la photo de couverture (style Affiche) ;
+ * - "accent" : sur l'aplat de la couleur de l'événement (style Billet).
+ */
+export type HeaderTone = "page" | "image" | "accent";
 
 type PublicEventHeaderProps = {
-  isEn?: boolean;
   eventTitle: string;
+  slug: string;
   logoUrl?: string | null;
-  brandColor?: string | null;
-  tagline?: string | null;
-  resultsHref?: string | undefined;
+  active?: MinisitePage | undefined;
+  showResults?: boolean;
+  ticketsHref?: string | undefined;
+  tone?: HeaderTone;
 };
 
+// Couleur de texte et fond de référence par fond (le sélecteur de langue les lit).
+const TONE_VARS: Record<HeaderTone, CSSProperties | undefined> = {
+  page: { "--event-header-fg": "var(--mini-ink)", "--event-header-bg": "var(--mini-bg)" } as CSSProperties,
+  image: { "--event-header-fg": "#ffffff", "--event-header-bg": "#0f172a" } as CSSProperties,
+  accent: undefined
+};
+
+// Langage de la maquette « 3 · Résultats » : nav en capitales espacées, filet
+// sous l'onglet actif, dans la couleur du texte de l'en-tête.
+const navLink =
+  "inline-flex min-h-11 items-center text-[11px] font-medium uppercase tracking-[0.22em] hover:opacity-65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current";
+
+/** En-tête des mini-plateformes : même structure pour tous les événements. */
 export function PublicEventHeader({
-  isEn = false,
   eventTitle,
+  slug,
   logoUrl,
-  brandColor,
-  tagline,
-  resultsHref
+  active,
+  showResults = true,
+  ticketsHref,
+  tone = "page"
 }: PublicEventHeaderProps) {
-  const theme = buildEventTheme(brandColor);
+  const { t } = useI18n();
   const [logoBroken, setLogoBroken] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const showLogo = Boolean(logoUrl) && !logoBroken;
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  const item = (page: MinisitePage, href: string, label: string) => (
+    <Link href={href} aria-current={active === page ? "page" : undefined} className={navLink}>
+      <span className="pb-1" style={active === page ? { borderBottom: "2px solid currentColor" } : undefined}>
+        {label}
+      </span>
+    </Link>
+  );
 
   return (
     <header
-      className={`sticky top-0 z-40 w-full transition-all duration-300 ${
-        scrolled ? "shadow-lg" : "shadow-sm"
-      }`}
-      style={{
-        background: scrolled
-          ? `linear-gradient(135deg, ${theme.headerBg} 0%, ${theme.accentAlt} 100%)`
-          : theme.headerBg,
-        color: theme.headerFg
-      }}
+      className="relative z-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-[clamp(20px,4vw,56px)] py-4 text-[var(--event-header-fg)] sm:py-5"
+      style={TONE_VARS[tone]}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          {showLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={logoUrl!}
-              alt=""
-              className="h-10 w-10 shrink-0 rounded-xl border object-cover shadow-sm"
-              style={{ borderColor: `${theme.headerFg}30` }}
-              onError={() => setLogoBroken(true)}
-            />
-          ) : (
-            <span
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-black shadow-sm"
-              style={{
-                background: `${theme.headerFg}15`,
-                border: `1px solid ${theme.headerFg}20`
-              }}
-              aria-hidden="true"
-            >
-              {eventTitle.slice(0, 2).toUpperCase()}
-            </span>
-          )}
-          <div className="min-w-0">
-            <span className="block truncate text-sm font-bold sm:text-base">{eventTitle}</span>
-            {tagline && (
-              <span className="block truncate text-[11px] opacity-75 sm:text-xs">
-                {tagline}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {resultsHref ? (
-            <Link
-              href={resultsHref}
-              className="inline-flex items-center rounded-full px-4 py-1.5 text-xs sm:text-sm font-bold transition-all hover:scale-105 hover:shadow-md"
-              style={{
-                background: `${theme.headerFg}15`,
-                color: theme.headerFg
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = `${theme.headerFg}25`}
-              onMouseLeave={(e) => e.currentTarget.style.background = `${theme.headerFg}15`}
-            >
-              <span className="mr-1.5 h-2 w-2 animate-pulse rounded-full bg-current opacity-70" />
-              {isEn ? "Live results" : "Classement"}
-            </Link>
-          ) : null}
-          <LanguageSwitcher variant="brand-header" />
-        </div>
-      </div>
+      <Link
+        href={`/e/${slug}`}
+        className="flex min-h-11 min-w-0 items-center gap-3 hover:opacity-65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+      >
+        {showLogo ? (
+          // Logo de taille fixe servi par Cloudinary : <img> suffit ici.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl!}
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 shrink-0 rounded-md bg-white object-contain p-0.5"
+            onError={() => setLogoBroken(true)}
+          />
+        ) : null}
+        <span className="truncate text-base font-semibold uppercase tracking-[0.3em] sm:text-lg sm:tracking-[0.4em]">
+          {eventTitle}
+        </span>
+      </Link>
+      <nav aria-label={t("publicEvent.nav")} className="flex flex-wrap items-center gap-x-6 gap-y-1 sm:gap-x-8">
+        {item("candidates", `/e/${slug}`, t("minisite.candidates"))}
+        {showResults ? item("results", `/e/${slug}/results`, t("minisite.results")) : null}
+        {ticketsHref ? item("tickets", ticketsHref, t("minisite.tickets")) : null}
+        <LanguageSwitcher variant="brand-header" />
+      </nav>
     </header>
   );
 }
 
-export function PublicEventFooter({ isEn = false }: { isEn?: boolean }) {
+/** Pied (maquette) : titre de l'événement en grand, mention SHADOMA. Encre, ou nuit en Soirée. */
+export function PublicEventFooter({ eventTitle }: { eventTitle: string }) {
+  const { t } = useI18n();
   return (
-    <footer className="border-t border-border/40 bg-background/80 py-6 text-center">
-      <p className="text-xs text-muted-foreground">
-        {isEn ? "Powered by" : "Propulsé par"}{" "}
-        <Link href="/" className="font-semibold text-foreground hover:text-primary transition-colors">
-          {SITE_NAME}
-        </Link>
-      </p>
+    <footer className="flex flex-wrap items-end justify-between gap-6 border-t border-[var(--mini-line)] bg-slate-900 px-[clamp(20px,4vw,56px)] pb-11 pt-14 text-white [[data-page-style=soiree]_&]:bg-[var(--mini-bg)]">
+      <span className="mini-title mini-footer-title max-w-full [[data-page-style=soiree]_&]:text-[var(--mini-accent)]">
+        {eventTitle}
+      </span>
+      <Link href="/" className="text-[13px] font-light text-white/75 hover:opacity-65">
+        {t("minisite.hostedBy")}
+      </Link>
     </footer>
   );
 }

@@ -32,8 +32,7 @@ function TicketValidationContent() {
   const params = useParams<{ ticketId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { locale } = useI18n();
-  const isEn = locale === "en";
+  const { t } = useI18n();
   const ticketId = params.ticketId;
   const secret = searchParams.get("s");
 
@@ -50,7 +49,8 @@ function TicketValidationContent() {
         const data = await apiFetch<TicketDetail>(`/public/tickets/${ticketId}`);
         setTicket(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Ticket introuvable");
+        // Message vide : l'écran d'erreur affiche alors « Billet introuvable ».
+        setError(err instanceof Error ? err.message : "");
       } finally {
         setIsLoading(false);
       }
@@ -74,7 +74,7 @@ function TicketValidationContent() {
       });
       setValidationResult(result);
     } catch (err) {
-      setValidateError(err instanceof Error ? err.message : "Erreur de validation");
+      setValidateError(err instanceof Error ? err.message : t("ticket.validateError"));
     } finally {
       setIsValidating(false);
     }
@@ -87,8 +87,8 @@ function TicketValidationContent() {
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center space-y-4">
           <AlertCircle className="w-16 h-16 mx-auto text-destructive" />
-          <h1 className="text-xl font-black">{isEn ? "Invalid ticket" : "Ticket invalide"}</h1>
-          <p className="text-sm text-muted-foreground">{error || (isEn ? "Ticket not found" : "Ticket introuvable")}</p>
+          <h1 className="text-xl font-black">{t("ticket.invalid")}</h1>
+          <p className="text-sm text-muted-foreground">{error || t("ticket.notFound")}</p>
         </Card>
       </div>
     );
@@ -108,17 +108,17 @@ function TicketValidationContent() {
 
           <div className="bg-muted/40 rounded-xl p-4 space-y-3 text-left">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">{isEn ? "Status" : "Statut"}</span>
+              <span className="text-muted-foreground">{t("ticket.status")}</span>
               <Badge variant={isValid ? "default" : ticket.status === "USED" ? "secondary" : "destructive"}>{ticket.status}</Badge>
             </div>
             {ticket.holderName && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground"><User className="w-3 h-3 inline mr-1" />{isEn ? "Holder" : "Titulaire"}</span>
+                <span className="text-muted-foreground"><User className="w-3 h-3 inline mr-1" />{t("ticket.holder")}</span>
                 <span className="font-bold">{ticket.holderName}</span>
               </div>
             )}
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">{isEn ? "Price" : "Prix"}</span>
+              <span className="text-muted-foreground">{t("ticket.price")}</span>
               <span className="font-bold">{ticket.amountCfa.toLocaleString()} XOF</span>
             </div>
           </div>
@@ -127,16 +127,16 @@ function TicketValidationContent() {
             <>
               {!isValid && ticket.status !== "USED" ? (
                 <div className="p-4 rounded-xl bg-destructive/5 border border-destructive/10 text-center">
-                  <p className="text-sm font-bold text-destructive">{isEn ? "This ticket is not yet paid" : "Ce billet n'est pas encore payé"}</p>
+                  <p className="text-sm font-bold text-destructive">{t("ticket.notPaid")}</p>
                 </div>
               ) : ticket.status === "USED" ? (
                 <div className="p-4 rounded-xl bg-muted border border-border/50 text-center">
-                  <p className="text-sm font-bold text-muted-foreground">{isEn ? "This ticket was already used" : "Ce billet a déjà été utilisé"}</p>
+                  <p className="text-sm font-bold text-muted-foreground">{t("ticket.alreadyUsed")}</p>
                 </div>
               ) : (
                 <Button size="lg" className="w-full h-14 text-base font-bold" onClick={onValidate} disabled={isValidating}>
                   {isValidating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <ShieldCheck className="w-5 h-5 mr-2" />}
-                  {isValidating ? (isEn ? "Validating..." : "Validation...") : (isEn ? "Validate entry" : "Valider l'entrée")}
+                  {isValidating ? t("ticket.validating") : t("ticket.validateEntry")}
                 </Button>
               )}
             </>
@@ -145,7 +145,7 @@ function TicketValidationContent() {
           {validationResult && validationResult.valid && (
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="p-6 rounded-xl bg-emerald-500/5 border border-emerald-500/10 space-y-2">
               <CheckCircle2 className="w-12 h-12 mx-auto text-[var(--color-success)]" />
-              <p className="font-black text-lg text-[var(--color-success-text)]">{isEn ? "Entry validated!" : "Entrée validée !"}</p>
+              <p className="font-black text-lg text-[var(--color-success-text)]">{t("ticket.entryValidated")}</p>
               <p className="text-sm text-muted-foreground">
                 {validationResult.ticket?.holderName && `${validationResult.ticket.holderName} · `}
                 {validationResult.ticket?.ticketType}

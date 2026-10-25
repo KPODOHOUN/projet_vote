@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useI18n } from "@/lib/i18n-provider";
+import { showToast } from "@/lib/toast";
 import { Button } from "@/components/ui";
 
 type OAuthProvider = "google";
+type EnabledProviders = Record<OAuthProvider, boolean>;
 
 type OAuthButtonsProps = {
   label?: string;
@@ -14,6 +16,24 @@ type OAuthButtonsProps = {
 export function OAuthButtons({ label }: OAuthButtonsProps) {
   const { t } = useI18n();
   const [loadingProvider, setLoadingProvider] = useState<OAuthProvider | null>(null);
+  // null = pas encore connu : rien n'est affiché plutôt qu'un bouton qui apparaît puis disparaît.
+  const [enabled, setEnabled] = useState<EnabledProviders | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<EnabledProviders>("/auth/oauth/providers")
+      .then((result) => {
+        if (!cancelled) setEnabled(result);
+      })
+      // API injoignable (ou ancienne version sans cette route) : on garde le
+      // bouton, et le clic affichera l'erreur réelle.
+      .catch(() => {
+        if (!cancelled) setEnabled({ google: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleOAuth = async (provider: OAuthProvider) => {
     if (loadingProvider) return;
@@ -21,10 +41,13 @@ export function OAuthButtons({ label }: OAuthButtonsProps) {
     try {
       const { url } = await apiFetch<{ url: string }>(`/auth/oauth/${provider}/authorize`);
       window.location.href = url;
-    } catch {
+    } catch (err) {
       setLoadingProvider(null);
+      showToast.error(err instanceof Error && err.message ? err.message : t("auth.oauth.startFailed"));
     }
   };
+
+  if (!enabled?.google) return null;
 
   return (
     <div className="space-y-3">

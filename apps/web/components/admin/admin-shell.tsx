@@ -18,7 +18,7 @@ export function AdminPageHeader({ eyebrow, title, description, actions }: AdminP
   return (
     <header className="flex flex-col gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-start sm:justify-between">
       <div className="space-y-2">
-        <span className="text-sm font-bold uppercase tracking-widest text-primary">{eyebrow}</span>
+        <span className="text-sm font-semibold text-slate-600">{eyebrow}</span>
         <h1 className="text-3xl font-extrabold tracking-tight text-foreground">{title}</h1>
         {description ? <p className="max-w-2xl text-muted-foreground">{description}</p> : null}
       </div>

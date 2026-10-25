@@ -37,6 +37,8 @@ export interface ConfirmDialogProps {
   destructive?: boolean;
   /** Désactive le déclencheur (ex. action en cours). */
   disabled?: boolean;
+  /** Désactive le bouton de confirmation (ex. champ obligatoire vide dans `children`). */
+  confirmDisabled?: boolean;
 }
 
 export function ConfirmDialog({
@@ -52,6 +54,7 @@ export function ConfirmDialog({
   variant,
   destructive = true,
   disabled,
+  confirmDisabled,
 }: ConfirmDialogProps) {
   const isDestructive = variant ? variant === "destructive" : destructive;
   return (
@@ -76,6 +79,7 @@ export function ConfirmDialog({
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={confirmDisabled}
             className={cn(
               isDestructive &&
                 buttonVariants({ variant: "destructive" })

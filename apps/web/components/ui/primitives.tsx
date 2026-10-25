@@ -167,7 +167,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
 /* ── StatusChip ──────────────────────────────────────────────────────────────
    Tons sémantiques avec icône (jamais la couleur seule) et paires de contraste
    ≥4.5:1 — corrige aussi le contraste warning/pending (amber trop clair). */
-type ChipTone =
+export type ChipTone =
   | "live"
   | "active"
   | "pending"

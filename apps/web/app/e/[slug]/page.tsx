@@ -5,16 +5,19 @@
 // contrat RÉEL de GET /votes/public/event/:slug → { organizer, event, candidates }.
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Card } from "../../../components/ui/card";
-import { EmptyState, StatusChip } from "../../../components/ui/primitives";
 import { SITE_NAME } from "../../../lib/site";
 import { getServerLocale } from "../../../lib/locale-server";
-import { formatEventStatus, publicEventDateLocale, translate, type MessageKey } from "../../../lib/i18n";
+import { translate, translateVars, type MessageKey } from "../../../lib/i18n";
+import { formatEventDate } from "../../../lib/format";
+import { getVotePhase } from "../../../lib/vote-phase";
+import { pageStyleOf } from "../../../lib/minisite-style";
+import { EventHero } from "../../../components/event-hero";
+import { PhaseNotice } from "../../../components/phase-notice";
+import { openGraphLocale, publicVoteDescription } from "../../../lib/public-meta";
+import { ogImageUrl } from "../../../lib/og-image-url";
 import { PublicEventShell } from "../../../components/public-event-shell";
 import { AnimatedCandidatesSection } from "../../../components/animated-candidates-section";
-import { Calendar, Users } from "lucide-react";
 
 import { fetchPublicEvent } from "../../../lib/public-event-fetch";
 
@@ -34,12 +37,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       robots: { index: false, follow: false }
     };
   }
-  const { event, organizer } = data;
-  const title = `${event.title} · Votez en ligne`;
-  const description =
-    event.branding.tagline?.trim() ||
-    `Soutenez votre candidat favori au vote « ${event.title} » organisé par ${organizer.displayName}. Vote payant sécurisé, résultats en direct.`;
+  const { event } = data;
+  const title = translateVars(locale, "meta.hub.title", { event: event.title });
+  const description = publicVoteDescription(event, locale);
   const url = `/e/${event.slug}`;
+  // Logo recadré si présent, sinon carte typographique générée (/e/{slug}/og).
+  const ogImage = ogImageUrl(event.branding.logoUrl) ?? `${url}/og`;
   return {
     title,
     description,
@@ -50,78 +53,62 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url,
       siteName: SITE_NAME,
       type: "website",
-      ...(event.branding.logoUrl ? { images: [{ url: event.branding.logoUrl }] } : {})
+      locale: openGraphLocale(locale),
+      images: [{ url: ogImage, width: 1200, height: 630, alt: event.title }]
     },
-    twitter: { card: "summary_large_image", title, description }
+    twitter: { card: "summary_large_image", title, description, images: [ogImage] }
   };
 }
-
-// Legacy candidate card components removed in favor of shared AnimatedCandidatesSection
 
 export default async function PublicEventPage({ params }: PageProps) {
   const { slug } = await params;
   const locale = await getServerLocale();
-  const isEn = locale === "en";
   const t9n = (key: MessageKey) => translate(locale, key);
-  const dateLocale = publicEventDateLocale(locale);
   const data = await fetchPublicEvent(slug);
   if (!data) {
     notFound();
   }
 
   const { organizer, event, candidates } = data;
-  const isOpen = event.status === "ACTIVE";
-  const statusLabel = formatEventStatus(event.status, isEn);
+  // Rendu no-store : la phase et le compte à rebours partent de l'instant de la requête.
+  const now = Date.now();
+  const phase = getVotePhase(event);
+  const startLabel = formatEventDate(event.startsAt, locale);
+  const resultsHref = `/e/${event.slug}/results`;
 
   return (
-    <PublicEventShell
-      isEn={isEn}
-      eventTitle={event.title}
-      slug={event.slug}
-      branding={event.branding}
-    >
-      <main className="flex flex-col items-center px-4 py-8 sm:px-6 lg:px-8">
-        <Card surface="glass" className="mb-8 w-full max-w-5xl overflow-hidden p-6 sm:p-10 lg:p-12">
-          <header className="mb-10 border-b border-border/50 pb-8">
-            {event.branding.tagline ? (
-              <p className="mb-3 text-sm font-bold uppercase tracking-widest text-primary">{event.branding.tagline}</p>
-            ) : null}
-            <h1 className="mb-4 text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl">{event.title}</h1>
-            <p className="mb-4 text-sm text-muted-foreground">
-              {t9n("pub.organizedBy")} <span className="font-semibold text-foreground">{organizer.displayName}</span>
-            </p>
-            <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-muted-foreground">
-              <StatusChip tone={isOpen ? "live" : "muted"} label={statusLabel} />
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                {isOpen ? `${t9n("pub.closesOn")} ` : `${t9n("pub.closedOn")} `}
-                {new Date(event.endsAt).toLocaleDateString(dateLocale)}
-              </div>
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates" headerInHero>
+      <main>
+        {/* Bandeau dans le style choisi par l'organisateur (Affiche, Soirée, Billet). */}
+        <EventHero event={event} organizer={organizer} phase={phase} locale={locale} now={now} />
+
+        <div className="space-y-14 px-[clamp(20px,4vw,56px)] pb-24 pt-14">
+          <PhaseNotice phase={phase} locale={locale} startLabel={startLabel} resultsHref={resultsHref} />
+
+          <section id="candidates" aria-labelledby="candidates-title" className="scroll-mt-6">
+            <div className="mb-10 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--mini-line)] pb-6">
+              <h2 id="candidates-title" className="mini-title mini-h2">
+                {t9n("minisite.candidates")}
+              </h2>
+              {candidates.length > 0 ? (
+                <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--mini-muted)]">
+                  {translateVars(locale, "hub.inRunning", { count: String(candidates.length) })}
+                </span>
+              ) : null}
             </div>
-          </header>
-
-        {!isOpen ? (
-          <div className="mb-10 rounded-xl border border-[var(--color-info)]/30 bg-[var(--color-info)]/10 p-6">
-            <p className="text-center text-[var(--color-info-text)]">
-              {t9n("pub.voteClosed")}{" "}
-              <Link href={`/e/${event.slug}/results`} className="font-semibold underline underline-offset-2 hover:opacity-80">
-                {t9n("pub.seeLiveResults")}
-              </Link>
-              .
-            </p>
-          </div>
-        ) : null}
-
-        {candidates.length === 0 ? (
-          <EmptyState
-            icon={<Users className="size-12 text-muted-foreground/50" aria-hidden="true" />}
-            title={t9n("pub.noCandidates")}
-            description={t9n("pub.noCandidatesDesc")}
-          />
-        ) : (
-          <AnimatedCandidatesSection slug={event.slug} candidates={candidates} layout={event.layout ?? "GRID"} isEn={isEn} />
-        )}
-        </Card>
+            {candidates.length === 0 ? (
+              <p className="text-sm text-[var(--mini-muted)]">{t9n("hub.noCandidates")}</p>
+            ) : (
+              <AnimatedCandidatesSection
+                slug={event.slug}
+                candidates={candidates}
+                layout={event.layout ?? "GRID"}
+                closed={phase === "closed"}
+                cardStyle={pageStyleOf(event.branding.pageStyle)}
+              />
+            )}
+          </section>
+        </div>
       </main>
     </PublicEventShell>
   );

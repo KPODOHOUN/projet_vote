@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import { getApiBaseUrl } from "./api-base-url";
+import { prepareImageForUpload } from "./image-resize";
 
 export type CloudinarySignature = {
   cloudName: string;
@@ -14,9 +15,12 @@ export function cloudinaryConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);
 }
 
-/** Upload fichier depuis le PC disponible (Cloudinary ou upload direct en dev). */
+/**
+ * Import de fichier toujours disponible : Cloudinary s'il est configuré, sinon
+ * l'API stocke l'image en base (aucun service de fichiers requis).
+ */
 export function isFileUploadAvailable(): boolean {
-  return cloudinaryConfigured() || process.env.NODE_ENV === "development";
+  return true;
 }
 
 async function uploadViaCloudinary(file: File, token: string): Promise<string> {
@@ -81,12 +85,14 @@ async function uploadViaApi(file: File, token: string): Promise<string> {
 }
 
 /**
- * Upload photo candidat : Cloudinary si configuré, sinon upload direct via l'API (dev).
- * Renvoie l'URL à stocker dans photoUrl.
+ * Import d'une image (photo de candidat, logo, couverture) : réduite dans le
+ * navigateur, puis envoyée à Cloudinary s'il est configuré, sinon à l'API qui
+ * la stocke en base. Renvoie l'URL à enregistrer.
  */
 export async function uploadCandidatePhoto(file: File, token: string): Promise<string> {
+  const prepared = await prepareImageForUpload(file);
   if (cloudinaryConfigured()) {
-    return uploadViaCloudinary(file, token);
+    return uploadViaCloudinary(prepared, token);
   }
-  return uploadViaApi(file, token);
+  return uploadViaApi(prepared, token);
 }

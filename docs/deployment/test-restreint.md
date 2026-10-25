@@ -88,6 +88,13 @@ FEEXPAY_SHOP_ID=<shop id sandbox>
 
 PLATFORM_PAYOUT_NETWORK=MTN
 PLATFORM_PAYOUT_ACCOUNT=00000000
+
+# Connexion Google (optionnel — sans ces clés, le bouton Google est masqué).
+# Identifiant OAuth « Application Web » dans Google Cloud Console, avec
+# l'URI de redirection autorisée = GOOGLE_CALLBACK_URL ci-dessous.
+GOOGLE_CLIENT_ID=<xxx.apps.googleusercontent.com>
+GOOGLE_CLIENT_SECRET=<secret>
+GOOGLE_CALLBACK_URL=https://shadoma-votes.vercel.app/oauth/callback/google
 ```
 
 > `FEEXPAY_API_KEY` **doit** commencer par `test_` (sandbox). Sinon l’API refuse de démarrer en production.
@@ -103,13 +110,20 @@ PLATFORM_PAYOUT_ACCOUNT=00000000
 ```bash
 NEXT_PUBLIC_APP_NAME=SHADOMA Votes
 NEXT_PUBLIC_APP_URL=https://shadoma-votes.vercel.app
-NEXT_PUBLIC_API_BASE_URL=https://shadoma-api.onrender.com/api/v1
+API_BASE_URL=https://shadoma-api.onrender.com
+# NEXT_PUBLIC_API_BASE_URL : NE PAS la définir (voir encadré ci-dessous)
 ```
 
 4. **Deploy**. Note l’URL finale.
-5. Reviens sur Render → mets à jour `API_CORS_ORIGINS` et `APP_PUBLIC_URL` avec l’URL Vercel exacte → **Manual Deploy**.
+5. Reviens sur Render → mets à jour `API_CORS_ORIGINS`, `APP_PUBLIC_URL` et `GOOGLE_CALLBACK_URL` avec l’URL Vercel exacte → **Manual Deploy**.
 
-> `NEXT_PUBLIC_API_BASE_URL` doit se terminer par `/api/v1`.
+> `API_BASE_URL` = origine Render **sans** `/api/v1`. Le navigateur appelle alors
+> `https://shadoma-votes.vercel.app/api/v1/…`, que Vercel relaie vers Render
+> (rewrite de `apps/web/next.config.ts`). C'est indispensable : `vercel.app` et
+> `onrender.com` sont deux sites distincts, et en appel direct le navigateur ne
+> renvoie pas les cookies de l'API → connexion Google refusée (« État de sécurité
+> OAuth invalide ») et session perdue au rechargement. `NEXT_PUBLIC_*` est figée
+> au build : après tout changement, **redéploie** le front.
 
 ---
 

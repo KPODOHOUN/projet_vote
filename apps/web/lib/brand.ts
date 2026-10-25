@@ -2,10 +2,37 @@ import type { CSSProperties } from "react";
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
+export type EventPageStyleValue =
+  | "AFFICHE"
+  | "SOIREE"
+  | "BILLET"
+  | "COURONNE"
+  | "MAGAZINE"
+  | "POP"
+  | "TERROIR"
+  | "STADE"
+  | "LINEUP"
+  | "DIPLOME"
+  | "MARCHE"
+  | "MENU"
+  | "WAX"
+  | "CAMPUS"
+  | "BADGE"
+  | "STORY"
+  | "SANCTUAIRE";
+export type EventHeroBackgroundValue = "IMAGE" | "COLOR";
+export type EventFontStyleValue = "FESTIVAL" | "GALA" | "CLASSIQUE";
+
 export type EventBranding = {
   logoUrl: string | null;
   brandColor: string | null;
   tagline: string | null;
+  /** Personnalisation de la mini-plateforme (absente des anciennes réponses). */
+  coverUrl?: string | null;
+  pageStyle?: EventPageStyleValue | null;
+  fontStyle?: EventFontStyleValue | null;
+  /** Fond des bandeaux : couverture (si importée) ou couleur unie. */
+  heroBackground?: EventHeroBackgroundValue | null;
 };
 
 export function normalizeBrandColor(value: string | null | undefined): string | null {
@@ -40,8 +67,30 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 }
 
+/** Couleur par défaut d'un événement : brand-600, 6,3:1 avec du blanc. */
+export const DEFAULT_BRAND_COLOR = "#4f46e5";
+const INK = "#0f172a";
+const WHITE = "#ffffff";
+const MIN_TEXT_CONTRAST = 4.5;
+/** Fond du style « Soirée ». */
+export const NIGHT_GROUND = "#0e1220";
+
+/** Rapport de contraste WCAG 2.x entre deux couleurs. */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** Le plus lisible de blanc ou d'encre sur `bg`. */
+function onBest(bg: string): { color: string; ratio: number } {
+  const white = contrastRatio(WHITE, bg);
+  const ink = contrastRatio(INK, bg);
+  return white >= ink ? { color: WHITE, ratio: white } : { color: INK, ratio: ink };
+}
+
 export function readableTextOnBackground(hex: string): string {
-  return relativeLuminance(hex) > 0.55 ? "#0f172a" : "#ffffff";
+  return onBest(hex).color;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -63,7 +112,7 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
     else if (max === gn) h = ((bn - rn) / delta + 2) * 60;
     else h = ((rn - gn) / delta + 4) * 60;
   }
-  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+  return { h, s: s * 100, l: l * 100 };
 }
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -78,43 +127,138 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-function shiftColor(hex: string, lightnessShift: number, saturationShift = 0): string {
-  const hsl = hexToHsl(hex);
-  const newL = Math.max(0, Math.min(100, hsl.l + lightnessShift));
-  const newS = Math.max(0, Math.min(100, hsl.s + saturationShift));
-  return hslToHex(hsl.h, newS, newL);
+/**
+ * Version de la couleur utilisable pour du texte et des boutons sur fond blanc :
+ * on assombrit (teinte et saturation conservées, luminosité −1 point par pas)
+ * jusqu'à 4,5:1. Une couleur déjà lisible est rendue telle quelle.
+ */
+export function deriveAccentStrong(accent: string): string {
+  if (contrastRatio(accent, WHITE) >= MIN_TEXT_CONTRAST) return accent;
+  const { h, s, l } = hexToHsl(accent);
+  for (let lightness = Math.floor(l); lightness >= 8; lightness -= 1) {
+    const candidate = hslToHex(h, s, lightness);
+    if (contrastRatio(candidate, WHITE) >= MIN_TEXT_CONTRAST) return candidate;
+  }
+  return hslToHex(h, s, 8);
+}
+
+/**
+ * Version de la couleur lisible sur le fond nuit (style « Soirée ») : on
+ * éclaircit (teinte et saturation conservées) jusqu'à 4,5:1.
+ */
+export function deriveAccentBright(accent: string): string {
+  if (contrastRatio(accent, NIGHT_GROUND) >= MIN_TEXT_CONTRAST) return accent;
+  const { h, s, l } = hexToHsl(accent);
+  for (let lightness = Math.ceil(l); lightness <= 96; lightness += 1) {
+    const candidate = hslToHex(h, s, lightness);
+    if (contrastRatio(candidate, NIGHT_GROUND) >= MIN_TEXT_CONTRAST) return candidate;
+  }
+  return hslToHex(h, s, 96);
+}
+
+/** `color-mix(in srgb, a p%, b)` : `percent` % de `a`, le reste de `b`. */
+export function mixHex(a: string, b: string, percent: number): string {
+  const x = hexToRgb(a);
+  const y = hexToRgb(b);
+  const p = percent / 100;
+  return rgbToHex(x.r * p + y.r * (1 - p), x.g * p + y.g * (1 - p), x.b * p + y.b * (1 - p));
+}
+
+/**
+ * Fonds clairs des mini-plateformes (`--mini-bg`, `--mini-wash` de globals.css) :
+ * [part de la couleur de l'événement en %, couleur de base]. À tenir à jour
+ * avec globals.css ; le test de brand.ts vérifie le contraste sur chacun.
+ */
+export const MINI_LIGHT_GROUNDS: ReadonlyArray<readonly [number, string]> = [
+  [4, "#f8fafc"], // défaut (Affiche, Billet)
+  [7, "#fdfdfd"], // Couronne
+  [0, "#ffffff"], // Magazine
+  [16, "#ffffff"], // Pop
+  [22, "#ffffff"], // Pop, aplats
+  [7, "#fafaf8"], // Terroir
+  [5, "#f3f4f6"], // Stade
+  [6, "#f5f6f8"], // Diplôme
+  [5, "#f4ecdc"], // Marché (kraft)
+  [10, "#fffaf0"], // Marché, aplats
+  [4, "#faf6ee"], // Menu
+  [6, "#fffaf2"], // Wax
+  [0, "#fbfbf8"], // Campus
+  [0, "#f5f6f8"] // Badge
+];
+
+/**
+ * Accent des textes de mini-plateforme sur fond clair (sur-titres, numéros) :
+ * comme `deriveAccentStrong`, mais lisible (≥ 4,5:1) sur chacun des fonds
+ * teintés, pas seulement sur le blanc.
+ */
+export function deriveAccentInk(accent: string): string {
+  const grounds = MINI_LIGHT_GROUNDS.map(([percent, base]) => mixHex(accent, base, percent));
+  const readable = (color: string) => grounds.every((ground) => contrastRatio(color, ground) >= MIN_TEXT_CONTRAST);
+  const start = deriveAccentStrong(accent);
+  if (readable(start)) return start;
+  const { h, s, l } = hexToHsl(start);
+  for (let lightness = Math.floor(l); lightness >= 4; lightness -= 1) {
+    const candidate = hslToHex(h, s, lightness);
+    if (readable(candidate)) return candidate;
+  }
+  return hslToHex(h, s, 4);
 }
 
 export type EventTheme = {
+  /** Couleur choisie par l'organisateur : décor et aplats sans texte. */
   accent: string;
-  accentAlt: string;
+  /** Texte, liens, boutons sur fond blanc (≥ 4,5:1). */
+  accentStrong: string;
+  /** Texte d'accent sur les fonds clairs teintés des mini-plateformes (≥ 4,5:1). */
+  accentInk: string;
   headerBg: string;
   headerFg: string;
+  /** Texte, liens, boutons sur le fond nuit (≥ 4,5:1). */
+  accentBright: string;
+  /** Texte posé sur un aplat `accentBright`. */
+  onBright: string;
   cssVars: CSSProperties;
 };
 
+/**
+ * Thème d'un événement, dérivé au rendu (la couleur est stockée telle quelle).
+ * Garanties : `--color-primary` ≥ 4,5:1 sur blanc, texte d'en-tête ≥ 4,5:1.
+ * La couleur brute n'est jamais une couleur de texte sur fond clair.
+ */
 export function buildEventTheme(brandColor: string | null | undefined): EventTheme {
-  const accent = normalizeBrandColor(brandColor) ?? "#6366F1";
-  const accentAlt = shiftColor(accent, 15, 10);
-  const headerFg = readableTextOnBackground(accent);
+  const accent = normalizeBrandColor(brandColor) ?? DEFAULT_BRAND_COLOR;
+  const accentStrong = deriveAccentStrong(accent);
+  const accentInk = deriveAccentInk(accent);
+  const onAccent = onBest(accent);
+  const headerBg = onAccent.ratio >= MIN_TEXT_CONTRAST ? accent : accentStrong;
+  const headerFg = onAccent.ratio >= MIN_TEXT_CONTRAST ? onAccent.color : WHITE;
+  const accentBright = deriveAccentBright(accent);
+  const onBright =
+    contrastRatio(WHITE, accentBright) >= contrastRatio(NIGHT_GROUND, accentBright) ? WHITE : NIGHT_GROUND;
   return {
     accent,
-    accentAlt,
-    headerBg: accent,
+    accentStrong,
+    accentInk,
+    headerBg,
     headerFg,
+    accentBright,
+    onBright,
     cssVars: {
+      "--event-accent-bright": accentBright,
+      "--event-on-bright": onBright,
+      "--event-night": NIGHT_GROUND,
       "--event-accent": accent,
-      "--event-accent-alt": accentAlt,
+      "--event-accent-strong": accentStrong,
+      "--event-accent-ink": accentInk,
+      "--event-on-strong": WHITE,
       "--event-accent-soft": hexToRgba(accent, 0.12),
       "--event-accent-muted": hexToRgba(accent, 0.25),
       "--event-accent-light": hexToRgba(accent, 0.06),
-      "--event-header-bg": accent,
+      "--event-header-bg": headerBg,
       "--event-header-fg": headerFg,
-      "--color-primary": accent,
-      "--color-ring": accent,
-      "--event-gradient-start": accent,
-      "--event-gradient-end": accentAlt,
-      "--event-glow": hexToRgba(accent, 0.3),
+      "--color-primary": accentStrong,
+      "--color-primary-foreground": WHITE,
+      "--color-ring": accentStrong,
     } as CSSProperties
   };
 }
@@ -126,39 +270,70 @@ export function brandStyle(value: string | null | undefined): CSSProperties | un
 }
 
 /* ── Extract dominant color from an image (client-side) ────────────────── */
+/**
+ * Couleur dominante exploitable d'une image (RGBA à plat). Ignore les pixels
+ * transparents, quasi blancs (L > 92 %), quasi noirs (L < 8 %) et peu saturés
+ * (S < 15 %) ; parmi les compartiments restants, la fréquence l'emporte, la
+ * saturation départage. Renvoie null si rien n'est exploitable. Fonction pure
+ * (testée sans canvas dans brand.test.ts).
+ */
+export function dominantColorFromPixels(data: ArrayLike<number>): string | null {
+  const buckets = new Map<string, { r: number; g: number; b: number; count: number; sat: number }>();
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
+    if (a < 128) continue;
+    const max = Math.max(r, g, b) / 255;
+    const min = Math.min(r, g, b) / 255;
+    const l = (max + min) / 2;
+    if (l > 0.92 || l < 0.08) continue;
+    const d = max - min;
+    const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    if (sat < 0.15) continue;
+    const key = `${r >> 5},${g >> 5},${b >> 5}`;
+    const entry = buckets.get(key);
+    if (entry) {
+      entry.r += r;
+      entry.g += g;
+      entry.b += b;
+      entry.count += 1;
+      entry.sat += sat;
+    } else {
+      buckets.set(key, { r, g, b, count: 1, sat });
+    }
+  }
+  let best: { r: number; g: number; b: number; count: number; sat: number } | null = null;
+  let bestScore = 0;
+  for (const entry of buckets.values()) {
+    const score = entry.count * (0.5 + entry.sat / entry.count);
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+  if (!best) return null;
+  return rgbToHex(Math.round(best.r / best.count), Math.round(best.g / best.count), Math.round(best.b / best.count));
+}
+
 export function extractColorFromImage(url: string): Promise<string | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 100;
-      canvas.height = 100;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(null); return; }
-      ctx.drawImage(img, 0, 0, 100, 100);
-      const data: number[] = Array.from(ctx.getImageData(0, 0, 100, 100).data);
-      const colorCounts: Record<string, { r: number; g: number; b: number; count: number }> = {};
-      for (let i = 0; i < data.length; i += 16) {
-        const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
-        if (a < 128) continue;
-        const key = `${Math.round(r / 32)},${Math.round(g / 32)},${Math.round(b / 32)}`;
-        if (colorCounts[key]) {
-          colorCounts[key]!.count++;
-        } else {
-          colorCounts[key] = { r, g, b, count: 1 };
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 100;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
         }
+        ctx.drawImage(img, 0, 0, 100, 100);
+        // getImageData lève une SecurityError si l'image n'autorise pas le CORS.
+        resolve(dominantColorFromPixels(ctx.getImageData(0, 0, 100, 100).data));
+      } catch {
+        resolve(null);
       }
-      let maxCount = 0;
-      let dominant = { r: 99, g: 102, b: 241 };
-      for (const key in colorCounts) {
-        const entry = colorCounts[key]!;
-        if (entry.count > maxCount) {
-          maxCount = entry.count;
-          dominant = entry;
-        }
-      }
-      resolve(rgbToHex(dominant.r, dominant.g, dominant.b));
     };
     img.onerror = () => resolve(null);
     img.src = url;
@@ -169,30 +344,34 @@ export function extractColorFromImage(url: string): Promise<string | null> {
 export interface BrandPreset {
   color: string;
   label: string;
+  labelEn: string;
   vibe: "luxe" | "nature" | "festif" | "pro" | "culture" | "sport";
 }
 
 export const BRAND_COLOR_PRESETS: BrandPreset[] = [
   // Luxe
-  { color: "#6366F1", label: "Indigo royal", vibe: "luxe" },
-  { color: "#8B5CF6", label: "Violet électrique", vibe: "luxe" },
-  { color: "#0F172A", label: "Bleu nuit profond", vibe: "luxe" },
-  { color: "#1E293B", label: "Ardoise premium", vibe: "luxe" },
+  { color: "#6366F1", label: "Indigo royal", labelEn: "Royal indigo", vibe: "luxe" },
+  { color: "#8B5CF6", label: "Violet électrique", labelEn: "Electric violet", vibe: "luxe" },
+  { color: "#0F172A", label: "Bleu nuit profond", labelEn: "Deep night blue", vibe: "luxe" },
+  { color: "#1E293B", label: "Ardoise", labelEn: "Slate", vibe: "luxe" },
   // Festif
-  { color: "#F59E0B", label: "Or chatoyant", vibe: "festif" },
-  { color: "#EF4444", label: "Rouge passion", vibe: "festif" },
-  { color: "#F97316", label: "Orange feu", vibe: "festif" },
-  { color: "#EC4899", label: "Rose élégant", vibe: "festif" },
+  { color: "#F59E0B", label: "Or chatoyant", labelEn: "Gold", vibe: "festif" },
+  { color: "#EF4444", label: "Rouge passion", labelEn: "Passion red", vibe: "festif" },
+  { color: "#F97316", label: "Orange feu", labelEn: "Fire orange", vibe: "festif" },
+  { color: "#EC4899", label: "Rose élégant", labelEn: "Rose", vibe: "festif" },
   // Nature
-  { color: "#10B981", label: "Émeraude", vibe: "nature" },
-  { color: "#059669", label: "Forêt profonde", vibe: "nature" },
-  { color: "#0D9488", label: "Teal océan", vibe: "nature" },
-  { color: "#14B8A6", label: "Turquoise", vibe: "nature" },
+  { color: "#10B981", label: "Émeraude", labelEn: "Emerald", vibe: "nature" },
+  { color: "#059669", label: "Forêt profonde", labelEn: "Deep forest", vibe: "nature" },
+  { color: "#0D9488", label: "Teal océan", labelEn: "Ocean teal", vibe: "nature" },
+  { color: "#14B8A6", label: "Turquoise", labelEn: "Turquoise", vibe: "nature" },
   // Pro / Culture
-  { color: "#3B82F6", label: "Bleu confiance", vibe: "pro" },
-  { color: "#0EA5E9", label: "Ciel serein", vibe: "pro" },
-  { color: "#7C2D12", label: "Terre d'Afrique", vibe: "culture" },
-  { color: "#B45309", label: "Cuir noble", vibe: "culture" },
+  { color: "#3B82F6", label: "Bleu confiance", labelEn: "Trust blue", vibe: "pro" },
+  { color: "#0EA5E9", label: "Ciel serein", labelEn: "Clear sky", vibe: "pro" },
+  { color: "#7C2D12", label: "Terre d'Afrique", labelEn: "African earth", vibe: "culture" },
+  { color: "#B45309", label: "Cuir noble", labelEn: "Leather", vibe: "culture" },
+  // Sport
+  { color: "#E11D48", label: "Rouge écarlate", labelEn: "Scarlet", vibe: "sport" },
+  { color: "#0284C7", label: "Bleu dynamique", labelEn: "Bright blue", vibe: "sport" },
 ];
 
 export function getBrandPresetsByVibe(): Record<string, BrandPreset[]> {

@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { XCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { setStoredToken } from "@/lib/auth";
+import { authLoginUrl } from "@/lib/auth-navigation";
 import { useI18n } from "@/lib/i18n-provider";
-import { Button, LoadingState } from "@/components/ui";
+import { Button, Card, FormError, LoadingState } from "@/components/ui";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
-import { GlassCard } from "@/components/glass-card";
 
 type CallbackResponse = {
   accessToken: string;
@@ -50,26 +49,23 @@ export default function OAuthCallbackPage() {
 
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-6 text-center sm:p-8">
+      <Card className="w-full p-6 sm:p-8">
         {error ? (
           <>
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-error)]/10">
-              <XCircle className="h-7 w-7 text-[var(--color-error-text)]" aria-hidden="true" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              {t("auth.oauth.callbackErrorTitle")}
-            </h1>
-            <p role="alert" className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              {error}
-            </p>
-            <Button asChild className="mt-6 w-full">
-              <Link href="/">{t("auth.oauth.backHome")}</Link>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t("auth.oauth.callbackErrorTitle")}</h1>
+            <FormError className="mt-3">{error}</FormError>
+            {/* Erreur récupérable : retour à la modale de connexion (7.5). */}
+            <Button asChild className="mt-6 h-12 w-full">
+              <Link href={authLoginUrl()}>{t("auth.oauth.retryLogin")}</Link>
             </Button>
+            <Link href="/" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline-offset-4 hover:underline">
+              {t("auth.oauth.backHome")}
+            </Link>
           </>
         ) : (
           <LoadingState label={t("auth.oauth.callbackLoading")} />
         )}
-      </GlassCard>
+      </Card>
     </AuthSimpleLayout>
   );
 }

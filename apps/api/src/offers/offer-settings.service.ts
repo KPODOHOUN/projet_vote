@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { EventStatus } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import {
@@ -22,6 +23,7 @@ import {
   parseIntSetting
 } from "../common/platform-settings";
 import { PrismaService } from "../prisma/prisma.service";
+import { COMMISSION_CEILING_BPS, COMMISSION_FLOOR_BPS } from "./commission-guardrails";
 
 /** Offre 1 External reste en réflexion — désactivée par défaut pendant la phase de test. */
 export const DEFAULT_OFFER1_ENABLED = false;
@@ -256,6 +258,47 @@ export class OfferSettingsService {
     if (event?.commissionBps != null) return event.commissionBps;
     if (event?.tenant.commissionBps != null) return event.tenant.commissionBps;
     return settings.offer2PerVoteCommissionBps;
+  }
+
+  /**
+   * Vue admin du taux Escrow d'un événement : valeur effective, d'où elle vient,
+   * bornes publiques et gel (un événement sorti de DRAFT ne peut plus changer).
+   */
+  async describeEscrowCommission(eventId: string): Promise<{
+    enabled: boolean;
+    effectiveBps: number;
+    source: "event" | "tenant" | "default" | "disabled";
+    eventBps: number | null;
+    tenantBps: number | null;
+    defaultBps: number;
+    floorBps: number;
+    ceilingBps: number;
+    frozen: boolean;
+  }> {
+    const settings = await this.getSettings();
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { status: true, commissionBps: true, tenant: { select: { commissionBps: true } } }
+    });
+    if (!event) throw new NotFoundException("Évènement introuvable.");
+    const enabled = settings.offer2PerVoteCommissionEnabled;
+    const eventBps = event.commissionBps ?? null;
+    const tenantBps = event.tenant.commissionBps ?? null;
+    const defaultBps = settings.offer2PerVoteCommissionBps;
+    const source = !enabled ? "disabled" : eventBps != null ? "event" : tenantBps != null ? "tenant" : "default";
+    const effectiveBps =
+      source === "disabled" ? 0 : source === "event" ? eventBps! : source === "tenant" ? tenantBps! : defaultBps;
+    return {
+      enabled,
+      effectiveBps,
+      source,
+      eventBps,
+      tenantBps,
+      defaultBps,
+      floorBps: COMMISSION_FLOOR_BPS,
+      ceilingBps: COMMISSION_CEILING_BPS,
+      frozen: event.status !== EventStatus.DRAFT
+    };
   }
 
   /** Commission calculée à partir d'un taux déjà résolu (pas du taux plat des settings). */

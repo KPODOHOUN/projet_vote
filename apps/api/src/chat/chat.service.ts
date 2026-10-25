@@ -1,54 +1,75 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { HttpException, HttpStatus, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from "@nestjs/common";
+import { z } from "zod";
+import { env } from "../config/env";
+import { type ChatQuotaStore, createChatQuotaStore } from "./chat-quota";
 
-const SYSTEM_PROMPT = `Tu es un assistant virtuel de SHADOMA Votes, une plateforme SaaS de votes payants pour l'Afrique francophone.
+export const CHAT_QUOTA_STORE = Symbol("CHAT_QUOTA_STORE");
 
-Tu aides les visiteurs du site (votants et organisateurs) en cas de problème.
+const chatMessageSchema = z.object({
+  message: z.string().trim().min(1).max(500)
+});
 
-RÈGLES IMPORTANTES :
-- Réponds TOUJOURS en français (sauf si l'utilisateur écrit dans une autre langue).
-- Sois poli, clair et concis. Maximum 3-4 phrases par réponse.
-- Si l'utilisateur a un problème technique, propose des étapes concrètes.
-- Si tu ne peux pas résoudre le problème, suggère de contacter le support à contact@shadowa.votes.
-- Ne donne JAMAIS d'information sur les clés API, secrets, ou données sensibles.
-- Ne parle pas de prix spécifiques (les tarifs sont définis par les organisateurs).
-- Pour les problèmes de paiement, recommande de vérifier le solde mobile money et de réessayer.
+/** Bornes de coût OpenAI : chaque réponse est courte et le volume journalier est plafonné. */
+const MAX_REPLY_TOKENS = 300;
 
-CE QUE TU PEUX FAIRE :
-- Expliquer comment voter (choisir un candidat, payer via Orange Money/MTN/Moov, recevoir la confirmation)
-- Expliquer comment un organisateur peut créer un événement, ajouter des candidats, lancer les votes
-- Aider avec les problèmes courants : paiement échoué, lien invalide, ticket perdu
-- Expliquer les prérequis techniques (smartphone, connexion internet, compte mobile money)
-- Guider vers les bonnes pages du site
-- Expliquer le concept de vote payant et comment ça fonctionne`;
+/**
+ * Prompt système, audité contre le produit réel (Lot D0-1). Il ne cite aucun
+ * taux, délai, opérateur ni promesse que le code ne tient pas ; le test
+ * chat.service.test.ts refuse les termes interdits.
+ */
+export const CHAT_SYSTEM_PROMPT = `Tu es l'assistant du site SHADOMA Votes, un outil de concours à votes payants en FCFA.
+
+Ce que fait le produit, et seulement cela :
+- Un organisateur crée un compte, confirme son e-mail, crée un concours, ses candidats et le prix d'une voix. Sans prix, personne ne peut voter.
+- Le votant n'a pas de compte. Sur la page du candidat, il choisit le nombre de voix, saisit son numéro Mobile Money et choisit son réseau parmi ceux affichés dans le formulaire.
+- Il valide ensuite la demande de paiement sur son téléphone. La voix compte seulement quand le paiement est confirmé, pas quand il appuie sur le bouton.
+- L'argent arrive dans le portefeuille de l'organisateur : une partie disponible, une partie en réserve jusqu'après la clôture du concours.
+- L'organisateur demande un retrait. Un administrateur SHADOMA le valide ou le refuse à la main ; un refus rend la somme au disponible. L'argent est envoyé par SHADOMA après validation, jamais tout seul.
+
+Règles :
+- Réponds dans la langue de l'utilisateur, en 3 ou 4 phrases au plus.
+- Tu ne connais ni le taux de commission, ni le délai de réserve, ni les montants : dis que le taux est indiqué à l'organisateur avant l'activation de son concours.
+- Paiement qui échoue : vérifier le solde Mobile Money, le numéro, valider la demande sur le téléphone, puis réessayer. Un paiement non confirmé ne compte pas.
+- N'invente aucune fonctionnalité, aucune adresse e-mail, aucun numéro de téléphone. Pour le reste, renvoie vers l'organisateur du concours (votants) ou vers la page Mentions légales du site (organisateurs).
+- Ne donne jamais d'information sur des clés, des secrets ou les données d'une autre personne.`;
 
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
-  private readonly apiKey: string | undefined;
+  // Redis quand API_REDIS_URL est défini (plafond partagé entre instances),
+  // sinon mémoire du processus (plafond multiplié par le nombre d'instances).
+  private readonly quota: ChatQuotaStore;
 
-  constructor() {
-    this.apiKey = process.env.OPENAI_API_KEY;
+  constructor(@Optional() @Inject(CHAT_QUOTA_STORE) quota?: ChatQuotaStore) {
+    this.quota = quota ?? createChatQuotaStore();
   }
 
-  async chat(message: string): Promise<string> {
-    if (!this.apiKey) {
-      return "Désolé, l'assistant n'est pas configuré. Contactez le support à contact@shadowa.votes.";
+  isEnabled(): boolean {
+    return Boolean(env.OPENAI_API_KEY);
+  }
+
+  async chat(payload: unknown, ip: string): Promise<string> {
+    const { message } = chatMessageSchema.parse(payload);
+    const apiKey = env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new ServiceUnavailableException("L'assistant n'est pas disponible.");
     }
+    await this.consumeDailyQuota(ip);
 
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`
+          Authorization: `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: CHAT_SYSTEM_PROMPT },
             { role: "user", content: message }
           ],
-          max_tokens: 300,
+          max_tokens: MAX_REPLY_TOKENS,
           temperature: 0.7
         })
       });
@@ -68,6 +89,15 @@ export class ChatService {
       this.logger.error("Chat error", err);
       if (err instanceof ServiceUnavailableException) throw err;
       throw new ServiceUnavailableException("Erreur de communication avec l'assistant AI.");
+    }
+  }
+
+  private async consumeDailyQuota(ip: string): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    const counts = await this.quota.hit(today, ip);
+    if (counts.ip > env.CHAT_DAILY_LIMIT_PER_IP || counts.global > env.CHAT_DAILY_LIMIT) {
+      await this.quota.undo(today, ip);
+      throw new HttpException("L'assistant a atteint sa limite pour aujourd'hui. Réessayez demain.", HttpStatus.TOO_MANY_REQUESTS);
     }
   }
 }

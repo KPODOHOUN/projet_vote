@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../../lib/api";
 import { getStoredToken } from "../../../../lib/auth";
+import { LogoUploadField } from "../../../../components/logo-upload-field";
 import { useI18n } from "../../../../lib/i18n-provider";
 import { Button, Input, Card } from "@/components/ui";
 import { DashboardBreadcrumb } from "@/components/dashboard-breadcrumb";
@@ -175,7 +176,7 @@ export default function NewEventPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8 pb-24 sm:pb-0">
       <DashboardBreadcrumb
         isEn={isEn}
         items={[
@@ -185,9 +186,8 @@ export default function NewEventPage() {
       />
 
       <header className="flex flex-col gap-2">
-        <span className="text-sm font-bold uppercase tracking-widest text-primary">{isEn ? "New event" : "Nouvel évènement"}</span>
-        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">{isEn ? "Create an event" : "Créer un évènement"}</h2>
-        <p className="max-w-2xl text-lg text-muted-foreground">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{isEn ? "Create an event" : "Créer un évènement"}</h1>
+        <p className="text-slate-600">
           {isEn
             ? "Name your event and set the dates. We'll create your public voting page automatically."
             : "Donnez un nom à votre évènement et choisissez les dates. Votre page de vote sera créée automatiquement."}
@@ -210,10 +210,10 @@ export default function NewEventPage() {
         </div>
       ) : null}
 
-      <Card className="border border-border/50 bg-card/50 p-8 shadow-sm backdrop-blur-sm">
+      <Card className="p-5 sm:p-8">
         <form className="space-y-8" onSubmit={onSubmit}>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div className="md:col-span-2">
+          <div className="space-y-4">
+            <div>
               <Input
                 id="title"
                 label={isEn ? "Event name" : "Nom de l'évènement"}
@@ -224,20 +224,20 @@ export default function NewEventPage() {
               />
             </div>
             {slug ? (
-              <p className="text-sm text-muted-foreground md:col-span-2">
+              <p className="text-sm text-muted-foreground">
                 {isEn
                   ? "A shareable voting link will be created automatically."
                   : "Un lien de vote partageable sera créé automatiquement."}
               </p>
             ) : null}
-            <p className="text-sm text-muted-foreground md:col-span-2">
+            <p className="text-sm text-muted-foreground">
               {isEn
                 ? "Dates default to the next 30 days. Adjust them later in vote settings."
                 : "Les dates couvrent les 30 prochains jours, modifiables plus tard dans les réglages de l'évènement."}
             </p>
           </div>
 
-          <details className="rounded-xl border border-border/50 p-4">
+          <details className="rounded-md border border-border p-4">
             <summary className="cursor-pointer text-sm font-semibold text-foreground">
               {isEn ? "Customize later (optional)" : "Personnaliser plus tard (optionnel)"}
             </summary>
@@ -264,10 +264,14 @@ export default function NewEventPage() {
                   );
                 })}
               </div>
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <Input id="tagline" label={isEn ? "Tagline (optional)" : "Slogan (optionnel)"} value={tagline} onChange={(e) => setTagline(e.target.value)} />
-                <Input id="logoUrl" label={isEn ? "Logo URL (optional)" : "URL du logo (optionnel)"} type="url" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-              </div>
+              <Input id="tagline" label={isEn ? "Tagline (optional)" : "Slogan (optionnel)"} value={tagline} onChange={(e) => setTagline(e.target.value)} />
+              {/* Logo importé (fichier), jamais un lien saisi. */}
+              <LogoUploadField
+                value={logoUrl}
+                onChange={setLogoUrl}
+                token={getStoredToken() ?? ""}
+                label={isEn ? "Logo (optional)" : "Logo (optionnel)"}
+              />
               <Input
                 id="brandColor"
                 label={isEn ? "Brand color (optional)" : "Couleur de marque (optionnel)"}
@@ -279,11 +283,12 @@ export default function NewEventPage() {
             </div>
           </details>
 
-          <div className="flex items-center justify-end gap-4 pt-2">
-            <Button type="button" variant="ghost" onClick={() => router.push("/dashboard/events")}>
+          {/* Collant en bas sur mobile, au-dessus de la zone de sécurité. */}
+          <div className="fixed inset-x-0 bottom-0 z-20 flex items-center justify-end gap-3 border-t border-border bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:border-0 sm:p-0">
+            <Button type="button" variant="ghost" className="hidden sm:inline-flex" onClick={() => router.push("/dashboard/events")}>
               {isEn ? "Cancel" : "Annuler"}
             </Button>
-            <Button type="submit" loading={isSaving} size="lg">
+            <Button type="submit" loading={isSaving} size="lg" className="h-12 flex-1 sm:flex-none">
               {isEn ? "Create event" : "Créer l'évènement"}
             </Button>
           </div>

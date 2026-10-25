@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { getApiBaseUrl } from "./api-base-url";
 
 export type Account = {
   email: string;
@@ -74,4 +75,21 @@ export function deviceLabel(userAgent: string | null, fallback: string): string 
     : null;
   if (browser && os) return `${browser} · ${os}`;
   return browser || os || fallback;
+}
+
+/** Télécharge l'archive RGPD (GET /privacy/export, zip) et la propose au navigateur. */
+export async function downloadPrivacyExport(token: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/privacy/export`, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "export.zip";
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(href);
 }

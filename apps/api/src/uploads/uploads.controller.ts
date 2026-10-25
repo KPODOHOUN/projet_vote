@@ -15,6 +15,8 @@ import type { Response } from "express";
 import { AuthGuard } from "../auth/auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
+import { CurrentUser } from "../auth/current-user.decorator";
+import type { AuthUser } from "../auth/auth.types";
 import { UploadsService, type UploadedImageFile } from "./uploads.service";
 
 const UPLOAD_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.ORGANIZER_OWNER, UserRole.ORGANIZER_STAFF] as const;
@@ -35,8 +37,8 @@ export class UploadsController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...UPLOAD_ROLES)
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5 * 1024 * 1024 } }))
-  uploadImage(@UploadedFile() file: UploadedImageFile | undefined) {
-    return this.uploadsService.storeDirectUpload(file);
+  uploadImage(@UploadedFile() file: UploadedImageFile | undefined, @CurrentUser() user: AuthUser) {
+    return this.uploadsService.storeDirectUpload(file, user.tenantId ?? null);
   }
 }
 

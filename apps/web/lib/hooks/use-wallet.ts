@@ -17,6 +17,16 @@ export type WalletResponse = {
     createdAt: string;
     note: string | null;
   }>;
+  /** Ajouts additifs de l'API (Lot E5) : absents d'une ancienne API. */
+  commissionCfa?: number;
+  byEvent?: Array<{
+    eventId: string;
+    title: string;
+    grossCfa: number;
+    commissionCfa: number;
+    heldCfa: number;
+    creditedAvailableCfa: number;
+  }>;
 };
 
 export type Withdrawal = {
@@ -42,6 +52,31 @@ export function useWithdrawalsQuery(enabled = true) {
     queryKey: ["organizer", "withdrawals"],
     queryFn: () => authedFetch<Withdrawal[]>("/organizer/withdrawals"),
     enabled: enabled && hasToken,
+  });
+}
+
+export type PayoutDestination = { network: string; last4: string } | null;
+
+export function usePayoutDestinationQuery(enabled = true) {
+  const hasToken = Boolean(getStoredToken());
+  return useQuery({
+    queryKey: ["organizer", "payout-destination"],
+    queryFn: () => authedFetch<PayoutDestination>("/organizer/payout-destination"),
+    enabled: enabled && hasToken,
+  });
+}
+
+export function usePayoutDestinationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { phone: string; network: string }) =>
+      authedFetch<{ network: string; last4: string }>("/organizer/payout-destination", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["organizer", "payout-destination"], saved);
+    },
   });
 }
 

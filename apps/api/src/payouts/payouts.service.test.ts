@@ -274,3 +274,15 @@ test("resolveUncertain SUCCEEDED exige un providerRef et marque SUCCEEDED", asyn
   assert.ok(audit, "attendu une entrée AuditLog pour la résolution du payout");
   assert.equal(audit?.actorUserId, admin.userId);
 });
+
+test("payout destination: le résumé expose réseau + 4 derniers chiffres, jamais le numéro", async () => {
+  const tenant = await prisma.tenant.create({
+    data: { slug: `dest-summary-${Date.now().toString(36)}`, displayName: "Dest summary" }
+  });
+  assert.equal(await destinations.getSummaryForTenant(tenant.id), null);
+
+  await destinations.setForTenant(tenant.id, { phone: "+22990123456", network: "MTN" });
+  const summary = await destinations.getSummaryForTenant(tenant.id);
+  assert.deepEqual(summary, { network: "MTN", last4: "3456" });
+  assert.ok(!JSON.stringify(summary).includes("22990123456"));
+});

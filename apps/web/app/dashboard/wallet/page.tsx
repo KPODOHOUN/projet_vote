@@ -3,37 +3,33 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
+import { formatCfa } from "@/lib/format";
 import {
+  usePayoutDestinationQuery,
   useWalletQuery,
   useWithdrawalsQuery,
   useWithdrawalMutation
 } from "@/lib/hooks/use-wallet";
-import {
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  LoadingState,
-  StatusChip
-} from "@/components/ui";
+import { mobileNetworkLabel } from "@/lib/mobile-networks";
+import type { MessageKey } from "@/lib/i18n";
+import { Button, FormError, Input, LoadingState, StatusChip } from "@/components/ui";
 
-function formatCfa(amount: number, isEn: boolean) {
-  return new Intl.NumberFormat(isEn ? "en-GB" : "fr-FR", {
-    style: "currency",
-    currency: "XOF",
-    maximumFractionDigits: 0
-  }).format(amount);
-}
+const WITHDRAWAL_STATUSES = new Set(["PENDING", "APPROVED", "PAID", "REJECTED"]);
 
+/**
+ * Portefeuille (7.7) : disponible en grand à gauche, réserve et commission à
+ * droite (60/40, pas de cartes jumelles), retrait en bloc séparé. Tous les
+ * montants viennent de l'API ; rien n'est calculé dans le navigateur.
+ */
 export default function DashboardWalletPage() {
   const router = useRouter();
   const { locale, t } = useI18n();
-  const isEn = locale === "en";
   const [hasToken] = useState(() => Boolean(getStoredToken()));
 
   useEffect(() => {
@@ -45,19 +41,22 @@ export default function DashboardWalletPage() {
   const walletQuery = useWalletQuery(hasToken);
   const withdrawalsQuery = useWithdrawalsQuery(hasToken);
   const withdrawalMutation = useWithdrawalMutation();
+  const destinationQuery = usePayoutDestinationQuery(hasToken);
+  const destination = destinationQuery.data ?? null;
 
   const [amount, setAmount] = useState("");
+  const [formError, setFormError] = useState("");
 
-  const isLoading = walletQuery.isPending || withdrawalsQuery.isPending;
-  const isError = walletQuery.isError || withdrawalsQuery.isError;
   const wallet = walletQuery.data;
   const withdrawals = withdrawalsQuery.data ?? [];
+  const cfa = (value: number) => formatCfa(value, locale);
 
   const onWithdraw = async (event: FormEvent) => {
     event.preventDefault();
+    setFormError("");
     const amountCfa = Number.parseInt(amount, 10);
     if (!Number.isInteger(amountCfa) || amountCfa <= 0) {
-      showToast.error(t("dash.wallet.invalidAmount"));
+      setFormError(t("dash.wallet.invalidAmount"));
       return;
     }
     try {
@@ -65,128 +64,154 @@ export default function DashboardWalletPage() {
       showToast.success(t("dash.wallet.requestedSuccess"));
       setAmount("");
     } catch (caught) {
-      showToast.error(
-        caught instanceof ApiError
-          ? caught.message
-          : caught instanceof Error
-            ? caught.message
-            : t("dash.wallet.requestFailed")
+      setFormError(
+        caught instanceof ApiError || caught instanceof Error ? caught.message : t("dash.wallet.requestFailed")
       );
     }
   };
 
-  if (isLoading) {
+  if (walletQuery.isPending || withdrawalsQuery.isPending) {
     return <LoadingState variant="rows" count={4} label={t("dash.wallet.loading")} />;
+  }
+
+  if (walletQuery.isError || !wallet) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("wallet.title")}</h1>
+        <FormError>{walletQuery.error instanceof Error ? walletQuery.error.message : t("dash.wallet.requestFailed")}</FormError>
+        <Button variant="secondary" onClick={() => void walletQuery.refetch()}>
+          {t("pay.retry")}
+        </Button>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
-      <header className="space-y-2 border-b border-border/50 pb-6">
-        <span className="text-sm font-bold uppercase tracking-widest text-primary">
-          {t("dash.wallet.kicker")}
-        </span>
-        <h1 className="text-3xl font-extrabold tracking-tight">
-          {t("dash.wallet.title")}
-        </h1>
-        <p className="max-w-2xl text-muted-foreground">
-          {t("dash.wallet.subtitle")}
-        </p>
+      <header className="space-y-2">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("wallet.title")}</h1>
+        <p className="max-w-2xl text-slate-600">{t("wallet.lead")}</p>
       </header>
 
-      {isError ? (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive" role="alert">
-          {walletQuery.error instanceof Error ? walletQuery.error.message : t("dash.wallet.requestFailed")}
+      <section className="grid gap-6 border-b border-border pb-8 md:grid-cols-[3fr_2fr]">
+        <div>
+          <p className="text-sm text-slate-600">{t("wallet.available")}</p>
+          <p className="mt-1 text-4xl font-extrabold text-slate-900 tabular-nums">{cfa(wallet.withdrawableCfa)}</p>
         </div>
-      ) : null}
-
-      {wallet ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground">{t("dash.wallet.available")}</p>
-            <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.withdrawableCfa, isEn)}</p>
-          </Card>
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground">{t("dash.wallet.pending")}</p>
-            <p className="mt-2 text-3xl font-extrabold">{formatCfa(wallet.heldCfa, isEn)}</p>
-          </Card>
-          <p className="sm:col-span-2 text-sm text-muted-foreground">{t("dash.wallet.aggregateNote")}</p>
-        </div>
-      ) : !isError ? (
-        <EmptyState
-          title={t("dash.wallet.noWalletTitle")}
-          description={t("dash.wallet.noWalletDesc")}
-        />
-      ) : null}
-
-      {wallet ? (
-        <Card className="space-y-4 p-6">
-          <h2 className="text-lg font-bold">{t("dash.wallet.requestTitle")}</h2>
-          <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onWithdraw}>
-            <div className="flex-1">
-              <Input
-                id="amount"
-                label={t("dash.wallet.amountLabel")}
-                type="number"
-                min={1}
-                max={wallet.withdrawableCfa}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
+        <dl className="space-y-3 text-sm md:border-l md:border-border md:pl-6">
+          <div className="flex items-baseline justify-between gap-4">
+            <dt className="text-slate-600">{t("wallet.held")}</dt>
+            <dd className="font-bold text-slate-900 tabular-nums">{cfa(wallet.heldCfa)}</dd>
+          </div>
+          {typeof wallet.commissionCfa === "number" ? (
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-slate-600">{t("wallet.commission")}</dt>
+              <dd className="font-bold text-slate-900 tabular-nums">{cfa(wallet.commissionCfa)}</dd>
             </div>
-            <Button type="submit" loading={withdrawalMutation.isPending} disabled={wallet.withdrawableCfa <= 0}>
-              {t("dash.wallet.withdrawButton")}
-            </Button>
-          </form>
-        </Card>
-      ) : null}
+          ) : null}
+        </dl>
+      </section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-bold">{t("dash.wallet.historyTitle")}</h2>
-        {withdrawals.length === 0 ? (
-          <EmptyState
-            title={t("dash.wallet.noWithdrawalsTitle")}
-            description={t("dash.wallet.noWithdrawalsDesc")}
-          />
+      <section aria-labelledby="by-event-title" className="space-y-3">
+        <h2 id="by-event-title" className="text-lg font-bold text-slate-900">{t("wallet.byEvent")}</h2>
+        {!wallet.byEvent ? (
+          <p className="text-sm text-slate-600">{t("wallet.byEventUnavailable")}</p>
+        ) : wallet.byEvent.length === 0 ? (
+          <p className="text-sm text-slate-600">{t("dash.overview.noEventsTitle")}</p>
         ) : (
-          <ul className="space-y-3">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-slate-600">
+                  <th className="py-2 pr-3 font-semibold">{t("wallet.col.event")}</th>
+                  <th className="py-2 pr-3 text-right font-semibold">{t("wallet.col.gross")}</th>
+                  <th className="py-2 pr-3 text-right font-semibold">{t("wallet.col.commission")}</th>
+                  <th className="py-2 pr-3 text-right font-semibold">{t("wallet.col.held")}</th>
+                  <th className="py-2 text-right font-semibold">{t("wallet.col.available")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wallet.byEvent.map((row) => (
+                  <tr key={row.eventId} className="border-b border-border">
+                    <td className="py-2 pr-3 font-medium text-slate-900">{row.title}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{cfa(row.grossCfa)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{cfa(row.commissionCfa)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{cfa(row.heldCfa)}</td>
+                    <td className="py-2 text-right tabular-nums">{cfa(row.creditedAvailableCfa)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="request-title" className="space-y-4 rounded-md border border-border p-5">
+        <h2 id="request-title" className="text-lg font-bold text-slate-900">{t("wallet.request.title")}</h2>
+        <p className="text-sm text-slate-600">
+          {t("wallet.request.number")} :{" "}
+          {destination ? (
+            <span className="font-semibold text-slate-900">
+              {t("payoutDest.current", { network: mobileNetworkLabel(destination.network), last4: destination.last4 })}
+            </span>
+          ) : destinationQuery.isLoading ? null : (
+            <span className="font-semibold text-slate-900">{t("payoutDest.missingForWithdrawal")}</span>
+          )}{" "}
+          <Link href="/dashboard/account#payout-destination" className="font-semibold text-primary underline underline-offset-4">
+            {t("wallet.request.edit")}
+          </Link>
+        </p>
+        <form className="flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onWithdraw} noValidate>
+          <div className="flex-1">
+            <Input
+              id="amount"
+              label={t("dash.wallet.amountLabel")}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={wallet.withdrawableCfa}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+          </div>
+          <Button
+            type="submit"
+            className="h-12"
+            loading={withdrawalMutation.isPending}
+            disabled={wallet.withdrawableCfa <= 0 || !destination}
+          >
+            {t("wallet.request.submit")}
+          </Button>
+        </form>
+        <p className="text-sm text-slate-600">{t("wallet.request.help")}</p>
+        <FormError>{formError}</FormError>
+      </section>
+
+      <section aria-labelledby="requests-title" className="space-y-3">
+        <h2 id="requests-title" className="text-lg font-bold text-slate-900">{t("wallet.requests")}</h2>
+        {withdrawals.length === 0 ? (
+          <p className="text-sm text-slate-600">{t("wallet.noRequests")}</p>
+        ) : (
+          <ul className="border-t border-border">
             {withdrawals.map((w) => (
-              <li
-                key={w.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-              >
+              <li key={w.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3">
                 <div>
-                  <p className="font-semibold">{formatCfa(w.amountCfa, isEn)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(w.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+                  <p className="font-semibold text-slate-900 tabular-nums">{cfa(w.amountCfa)}</p>
+                  <p className="text-xs text-slate-600">
+                    {new Date(w.createdAt).toLocaleString(locale === "en" ? "en-GB" : "fr-FR")}
                   </p>
-                  {w.rejectReason ? (
-                    <p className="mt-1 text-xs text-destructive">{w.rejectReason}</p>
-                  ) : null}
+                  {w.rejectReason ? <p className="mt-1 text-xs text-[var(--color-error-text)]">{w.rejectReason}</p> : null}
                 </div>
-                <StatusChip label={w.status} tone="muted" />
+                <StatusChip
+                  label={WITHDRAWAL_STATUSES.has(w.status) ? t(`withdrawal.status.${w.status}` as MessageKey) : w.status}
+                  tone={w.status === "PAID" ? "success" : w.status === "REJECTED" ? "error" : w.status === "PENDING" ? "pending" : "live"}
+                />
               </li>
             ))}
           </ul>
         )}
       </section>
-
-      {wallet && wallet.recentEntries.length > 0 ? (
-        <section className="space-y-4">
-          <h2 className="text-lg font-bold">{t("dash.wallet.ledgerTitle")}</h2>
-          <ul className="divide-y divide-border rounded-xl border border-border">
-            {wallet.recentEntries.map((entry) => (
-              <li key={entry.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{entry.kind}</p>
-                  {entry.note ? <p className="text-xs text-muted-foreground">{entry.note}</p> : null}
-                </div>
-                <p className="font-semibold">{formatCfa(entry.amountCfa, isEn)}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </div>
   );
 }

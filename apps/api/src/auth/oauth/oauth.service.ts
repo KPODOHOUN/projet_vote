@@ -39,6 +39,13 @@ const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
   },
 };
 
+/** Un fournisseur n'est utilisable que si son id ET son secret sont configurés. */
+export function listEnabledProviders(configs: {
+  google: Pick<ProviderConfig, "clientId" | "clientSecret">;
+}): { google: boolean } {
+  return { google: Boolean(configs.google.clientId && configs.google.clientSecret) };
+}
+
 const JWT_ISSUER = "shadowa-votes";
 const JWT_AUDIENCE = "shadowa-votes-api";
 
@@ -47,6 +54,11 @@ export class OAuthService {
   private readonly logger = new Logger(OAuthService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Permet au front de ne proposer que les boutons réellement fonctionnels. */
+  getEnabledProviders(): { google: boolean } {
+    return listEnabledProviders(OAUTH_PROVIDERS);
+  }
 
   getProviderConfig(provider: string): ProviderConfig {
     if (provider !== "google") {
