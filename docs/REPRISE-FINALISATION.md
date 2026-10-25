@@ -197,13 +197,35 @@ Gates : API 253/253, `test:offers` 35/35, typecheck 0, lint API 0.
 
 **Hypothèse D9-photo** : les trois fichiers de `public/slider` sont des images générées (1024×1024 carré, rendu photoréaliste pour `contest-night`, illustrations pour les deux autres). Hero en aplat `bg-slate-900`, aucune photo.
 
-### Travail sur disque NON COMMITÉ (Bash indisponible : le contrôle de sécurité du harnais ne répondait plus)
-- D6 profil + paiement : `app/e/[slug]/c/[ref]/page.tsx`, `CandidateVoteClient.tsx` (présentation seule ; `use-public-vote-payment.ts` intact, arguments de `submit` identiques). Typecheck 0 et lint 42 vérifiés avant la panne ; **e2e non relancé**.
-- D7 résultats : `app/e/[slug]/results/page.tsx` réécrit (voix seules, podium inégal, « Actualiser », métadonnées via `translate`) + clés `results.*` dans `lib/i18n.ts`. **Non typechecké.**
-- D8 billets : titre aligné à gauche sans icône, bandeau toujours affiché si la vente est fermée, prix via `formatCfa`. **Non typechecké.**
-- D9 auth (partiel) : `AuthSimpleLayout` sur fond neutre sans verre, wordmark texte ; `GlassCard` → `Card` dans check-email, forgot-password, reset-password, verify-email (migré en i18n), accept-invitation (×2), oauth/callback (erreur récupérable « Réessayer la connexion »). **Non typechecké.** Reste : modale d'auth (`max-h-[90dvh]`, offre Escrow seule).
+| `e84333b` | D6 profil + paiement (total en premier, pastilles 2×2, numéro gardé au réessai, message de phase hors fenêtre) ; hook de paiement et payload inchangés | typecheck, lint 42, web 16/16 ; e2e 19/19 |
+| `4a291d2` | D7 résultats (voix seules) + D8 billets (bandeau fermé, prix formatés) | idem |
+| `5eb7679` `597e44b` | D9 pages d'auth sur fond neutre, carte opaque ; modale plate (`max-h-[90dvh]`), offre Escrow seule (e2e `auth-otp-offers` vérifie désormais Escrow présent / External absent) | e2e 19/19 |
+| `3d93bb9` | D10 `/pricing` = « Comment l'argent est séparé » ; CGU : vote confirmé non recrédité, retraits manuels ; centre de cookies en i18n | — |
+| `a432469` | i18n des pages d'auth | `isEn ?` 1 169 → 1 030 |
+
+## Consignes utilisateur reçues en cours de lot (2026-10-25)
+1. **Mini-plateformes = 3 pages** (candidats, profil, résultats) **d'après la maquette `3 · Résultats-html.zip`** (racine du dépôt), uniformes par défaut.
+2. **Adapter les composants existants, ne pas en recréer** ; polices (Inter / Plus Jakarta Sans) et formes (`rounded-md`) de la plateforme, pas Montserrat. Cette consigne prime sur 7.11-b (en-tête en aplat de couleur) : l'en-tête est désormais blanc, nav en capitales espacées, filet d'accent sous l'onglet actif, pied à fond encre.
+3. **Photos : import de fichier uniquement, jamais de lien saisi.**
+
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `209bc81` `7ac1bdb` `ee66bfb` | Mini-plateformes selon la maquette (shell, en-tête, pied, hub, profil, résultats, cartes candidats GRID/LIST/SPOTLIGHT), une seule couleur d'action dans la carte de paiement, pied du site masqué sur `/e/*`, « voix » invariable | captures `docs/validation/{390,1280}/` (5 palettes) regardées ; e2e public 2/2 |
+| `a480772` | `ImageUploadField` sans champ URL (import seul, « Retirer la photo ») ; logo de création d'événement en import | typecheck, lint |
+| `a28c913` | **Bug vérité métier (P1)** : le hub et le profil comptaient les lignes de vote, pas les voix (`votesCount`) — un paiement de 5 voix affichait 1 | votes.service 15/15 (**RED vu** : 2 au lieu de 7) |
+| `bfa4668` `8907a1e` | M5 partage votant : copier, WhatsApp (`wa.me`), partage natif | — |
+
+## Lot E — en cours
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `9611129` | API wallet additive : `commissionCfa`, `byEvent` (brut, commission, réserve, crédité au disponible), `ledgerUnknownEntries`, calculés depuis le journal signé | test:offers 36/36 (RED à la compilation) |
+| `5bab678` | E1 navigation (ordre 7.6, recherche dans le header, « Démarrer » masqué, actif `bg-accent`) | — |
+| `5354c83` | E2 « Aujourd'hui » : disponible en `text-4xl`, réserve et événements actifs en texte, ligne d'action, liste de 5 | — |
+| `6a8c37a` | E5 portefeuille 60/40, commission et tableau par événement depuis l'API | — |
 
 ### Prochaine action exacte
-1. `cd apps/web && npx tsc --noEmit && npm run lint && npm test`.
-2. Commits séparés D6, D7, D8, D9 ; e2e après D7 (`TEST_DATABASE_URL` avec le mot de passe du conteneur).
-3. D9 modale, D10 pricing/légal/cookies, migration `isEn ?` (mesurer `rg -c "isEn \?"`), puis Lots E, F, M, G, H.
+E6 (compte : export `/privacy/export`, suppression), E3/E4 (création, candidats), puis F, M3 (null tagline/logo/couleur), M4 (éditeur), G, H. Captures : `npx playwright test -c playwright.visual.config.ts` (TEST_DATABASE_URL requis).
+
+### Constats ouverts
+- P3 : la fiche utilisateur admin compte des transactions de vote, pas des voix (`admin.service.ts` ~l.627).
+- `pub.votesCount` EN reste « {count} votes » (« 1 votes »).
