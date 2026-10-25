@@ -88,16 +88,16 @@ export function OnboardingChecklist({
   const shareStepIndex = steps.length - 1;
 
   return (
-    <section className="rounded-xl border border-primary/20 bg-primary/5 p-6 space-y-4" aria-labelledby="onboarding-title">
+    <section className="space-y-4 rounded-md border border-border bg-background p-5" aria-labelledby="onboarding-title">
       <div>
-        <h3 id="onboarding-title" className="text-lg font-bold text-foreground">
-          {isEn ? "3 steps to launch" : "3 étapes pour lancer"}
-        </h3>
-        <p className="text-sm text-muted-foreground">
+        <h2 id="onboarding-title" className="text-lg font-bold text-slate-900">
+          {isEn ? `${steps.length} steps to launch` : `${steps.length} étapes pour lancer`}
+        </h2>
+        <p className="text-sm text-slate-600">
           {skipPaymentStep
             ? isEn
-              ? "Go live, then share. We handle payments for you."
-              : "Mettez en ligne, partagez. Nous gérons les paiements pour vous."
+              ? "Go live, then share the link. SHADOMA collects the payments."
+              : "Mettez en ligne, puis partagez le lien. SHADOMA encaisse les paiements."
             : isEn
               ? "Go live, connect Mobile Money, share."
               : "Mettez en ligne, connectez Mobile Money, partagez."}

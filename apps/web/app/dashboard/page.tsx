@@ -60,7 +60,9 @@ export default function DashboardHomePage() {
       (usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit));
   const subscriptionLimitReached =
     Boolean(usage?.hasSubscription) && usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit;
-  const paymentBlocked = !subscriptionBlocked && !paymentReady && !skipPaymentStep;
+  // Escrow : SHADOMA encaisse pour l'organisateur, il n'y a pas de compte Mobile Money à brancher.
+  const noPaymentSetup = skipPaymentStep || isEscrow;
+  const paymentBlocked = !subscriptionBlocked && !paymentReady && !noPaymentSetup;
 
   if (eventsQuery.isPending) {
     return <LoadingState variant="rows" count={4} label={isEn ? "Loading dashboard metrics…" : "Chargement des indicateurs…"} />;
@@ -78,7 +80,7 @@ export default function DashboardHomePage() {
 
   return (
     <div className="space-y-8">
-      <OnboardingChecklist events={events} isEn={isEn} paymentReady={paymentReady} skipPaymentStep={skipPaymentStep} />
+      <OnboardingChecklist events={events} isEn={isEn} paymentReady={paymentReady} skipPaymentStep={noPaymentSetup} />
 
       {subscriptionBlocked && (
         <div

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, UserCircle, Calendar, Users, CreditCard, UserPlus, Bell } from "lucide-react";
+import { Search, UserCircle, Calendar, Users, CreditCard, UserPlus, Bell, LogOut } from "lucide-react";
 import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
 import { apiFetch } from "../lib/api";
 import { getStoredToken, clearAuthStorage } from "../lib/auth";
@@ -126,13 +126,13 @@ export function DashboardHeader() {
   const hasAny = results != null && (results.events.length + results.candidates.length + results.members.length + results.payments.length) > 0;
 
   return (
-    <header className="sticky top-0 border-b border-border bg-background z-30 flex h-16 w-full items-center justify-between gap-4 px-6 sm:px-8">
-      <div ref={boxRef} className="relative flex-1 max-w-md">
+    <header className="sticky top-0 border-b border-border bg-background z-30 flex h-16 w-full items-center justify-between gap-2 pl-[4.5rem] pr-3 sm:gap-4 sm:pr-8 lg:px-8">
+      <div ref={boxRef} className="relative min-w-0 flex-1 max-w-md">
         <form onSubmit={onSubmit} role="search" className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <input
             type="search"
-            className="flex h-10 w-full rounded-full border border-input bg-background/50 pl-10 pr-4 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:bg-background"
+            className="flex h-10 w-full rounded-md border border-input bg-background pl-10 pr-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:bg-background"
             placeholder={t("search.placeholder")}
             aria-label={t("search.label")}
             value={q}
@@ -142,7 +142,7 @@ export function DashboardHeader() {
           />
         </form>
         {isOpen && q.trim().length >= 2 ? (
-          <div className="vp-search-panel absolute top-full left-0 mt-2 w-full sm:w-[400px] bg-card border border-border rounded-xl shadow-lg overflow-hidden z-50 flex flex-col max-h-[70vh]" aria-label={t("search.label")}>
+          <div className="vp-search-panel absolute top-full left-0 mt-2 w-full sm:w-[400px] bg-card border border-border rounded-md shadow-lg overflow-hidden z-50 flex flex-col max-h-[70vh]" aria-label={t("search.label")}>
             {isLoading ? (
               <p className="p-4 text-sm text-center text-muted-foreground">{t("search.loading")}</p>
             ) : error ? (
@@ -202,14 +202,14 @@ export function DashboardHeader() {
         ) : null}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-4">
         <div ref={bellRef} className="relative">
-          <button type="button" className="relative p-2 rounded-full hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={openNotifs} aria-label={`${t("notif.bellLabel")} (${notifCount})`}>
+          <button type="button" className="relative inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={openNotifs} aria-label={`${t("notif.bellLabel")} (${notifCount})`}>
             <Bell className="h-5 w-5" aria-hidden="true" />
             {notifCount > 0 ? <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground transform translate-x-1/4 -translate-y-1/4">{notifCount > 9 ? "9+" : notifCount}</span> : null}
           </button>
           {notifOpen ? (
-            <div className="absolute right-0 top-full mt-2 w-[320px] sm:w-[380px] bg-card border border-border rounded-xl shadow-lg overflow-hidden z-50 flex flex-col max-h-[70vh]" aria-label={t("notif.title")}>
+            <div className="fixed inset-x-3 top-16 z-50 flex max-h-[70vh] flex-col overflow-hidden rounded-md border border-border bg-card shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px]" aria-label={t("notif.title")}>
               <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-muted/20">
                 <strong className="text-sm font-semibold">{t("notif.title")}</strong>
                 <button type="button" className="text-xs font-medium text-primary hover:text-primary/80 transition-colors" onClick={onMarkAll}>{t("notif.markAllRead")}</button>
@@ -238,16 +238,18 @@ export function DashboardHeader() {
           ) : null}
         </div>
         <LanguageSwitcher />
-        <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <span className="hidden items-center gap-2 text-sm font-semibold text-foreground md:flex">
           <UserCircle className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
           <span className="hidden md:inline">{t("common.account")}</span>
         </span>
         <button
           type="button"
           onClick={logout}
-          className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          aria-label={t("nav.logout")}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:px-3"
         >
-          {t("nav.logout")}
+          <LogOut className="h-5 w-5 sm:hidden" aria-hidden="true" />
+          <span className="hidden sm:inline">{t("nav.logout")}</span>
         </button>
       </div>
     </header>

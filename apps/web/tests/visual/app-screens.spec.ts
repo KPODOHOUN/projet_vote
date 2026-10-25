@@ -24,7 +24,7 @@ async function login(page: Page, email: string, password: string) {
   await page.locator("#email").fill(email);
   await page.getByLabel("Mot de passe", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("**/dashboard**");
+  await page.waitForURL(/\/(dashboard|admin)/);
 }
 
 test("écrans organisateur et admin à 390 et 1280 px", async ({ page, request }) => {

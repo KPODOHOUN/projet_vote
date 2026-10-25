@@ -154,7 +154,7 @@ export default function DashboardWalletPage() {
             <span className="font-semibold text-slate-900">
               {t("payoutDest.current", { network: mobileNetworkLabel(destination.network), last4: destination.last4 })}
             </span>
-          ) : destinationQuery.isPending ? null : (
+          ) : destinationQuery.isLoading ? null : (
             <span className="font-semibold text-slate-900">{t("payoutDest.missingForWithdrawal")}</span>
           )}{" "}
           <Link href="/dashboard/account#payout-destination" className="font-semibold text-primary underline underline-offset-4">

@@ -24,7 +24,7 @@ export default function HomePage() {
     <>
       <AppHeader />
       <main id="main-content" className="bg-background">
-        <section id="hero" className="flex min-h-[78vh] items-end bg-slate-900 text-white">
+        <section id="hero" className="flex min-h-[56vh] items-end bg-slate-900 text-white md:min-h-[78vh]">
           <div className="w-full px-5 pb-16 pt-16 md:px-16 md:pb-24">
             <div className="max-w-[34rem]">
               <p className="text-xs font-medium text-white/70">{t("home.meta")}</p>
