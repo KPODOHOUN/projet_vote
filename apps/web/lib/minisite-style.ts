@@ -12,7 +12,14 @@ export type PageStyleKey =
   | "terroir"
   | "stade"
   | "lineup"
-  | "diplome";
+  | "diplome"
+  | "marche"
+  | "menu"
+  | "wax"
+  | "campus"
+  | "badge"
+  | "story"
+  | "sanctuaire";
 export type FontStyleKey = "festival" | "gala" | "classique";
 
 const PAGE_STYLES: Record<string, PageStyleKey> = {
@@ -25,7 +32,14 @@ const PAGE_STYLES: Record<string, PageStyleKey> = {
   TERROIR: "terroir",
   STADE: "stade",
   LINEUP: "lineup",
-  DIPLOME: "diplome"
+  DIPLOME: "diplome",
+  MARCHE: "marche",
+  MENU: "menu",
+  WAX: "wax",
+  CAMPUS: "campus",
+  BADGE: "badge",
+  STORY: "story",
+  SANCTUAIRE: "sanctuaire"
 };
 
 /**
@@ -37,6 +51,11 @@ export function heroImageOf(branding: { coverUrl?: string | null; heroBackground
   return branding.coverUrl;
 }
 const FONT_STYLES: Record<string, FontStyleKey> = { FESTIVAL: "festival", GALA: "gala", CLASSIQUE: "classique" };
+
+/** Styles à fond nuit : l'action prend l'accent éclairci, le paiement revient au clair. */
+export function isNightStyle(style: PageStyleKey): boolean {
+  return style === "soiree" || style === "lineup" || style === "story" || style === "sanctuaire";
+}
 
 /** Valeur API → clé CSS (`data-page-style`). Inconnue ou absente : affiche. */
 export function pageStyleOf(value: string | null | undefined): PageStyleKey {

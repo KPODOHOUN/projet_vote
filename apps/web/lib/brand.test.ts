@@ -10,6 +10,8 @@ import {
   hexToRgb,
   normalizeBrandColor,
   NIGHT_GROUND,
+  MINI_LIGHT_GROUNDS,
+  mixHex,
 } from "./brand";
 
 const WHITE = "#ffffff";
@@ -37,6 +39,18 @@ test("thème: --color-primary atteint 4,5:1 sur blanc pour presets, couleurs lib
     const primary = (theme.cssVars as Record<string, string>)["--color-primary"]!;
     assert.ok(contrastRatio(primary, WHITE) >= 4.5, `${color} → ${primary} : ${contrastRatio(primary, WHITE).toFixed(2)}`);
     assert.equal(primary, theme.accentStrong);
+  }
+});
+
+test("thème: l'accent des textes de mini-plateforme atteint 4,5:1 sur chaque fond clair teinté", () => {
+  for (const color of SAMPLE) {
+    const theme = buildEventTheme(color);
+    assert.equal((theme.cssVars as Record<string, string>)["--event-accent-ink"], theme.accentInk);
+    for (const [percent, base] of MINI_LIGHT_GROUNDS) {
+      const ground = mixHex(normalizeBrandColor(color) ?? DEFAULT_BRAND_COLOR, base, percent);
+      const ratio = contrastRatio(theme.accentInk, ground);
+      assert.ok(ratio >= 4.5, `${color} → ${theme.accentInk} sur ${ground} (${percent} % sur ${base}) = ${ratio.toFixed(2)}`);
+    }
   }
 });
 

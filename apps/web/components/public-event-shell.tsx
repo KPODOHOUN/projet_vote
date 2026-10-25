@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { buildEventTheme, type EventBranding } from "../lib/brand";
-import { fontStyleOf, heroImageOf, pageStyleOf } from "../lib/minisite-style";
+import { fontStyleOf, heroImageOf, isNightStyle, pageStyleOf } from "../lib/minisite-style";
 import { cloudinaryTransform } from "../lib/og-image-url";
 import { PublicEventFooter, PublicEventHeader, type HeaderTone, type MinisitePage } from "./public-event-header";
 
@@ -48,11 +48,11 @@ export function PublicEventShell({
   const theme = buildEventTheme(branding.brandColor);
   const tone = headerToneFor(branding);
   const pageStyle = pageStyleOf(branding.pageStyle);
-  // En Soirée, l'action prend l'accent éclairci (lisible sur le fond nuit) ;
+  // En style nuit (Soirée, Line-up, Story, Sanctuaire), l'action prend l'accent éclairci (lisible sur le fond nuit) ;
   // posé en ligne car les variables du thème le sont aussi. Le paiement
   // (secure-flow) revient à l'accent foncé via globals.css.
   const style =
-    pageStyle === "soiree" || pageStyle === "lineup"
+    isNightStyle(pageStyle)
       ? ({
           ...theme.cssVars,
           "--color-primary": theme.accentBright,

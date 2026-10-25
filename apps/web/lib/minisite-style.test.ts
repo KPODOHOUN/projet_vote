@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { countdownParts, pageStyleOf, fontStyleOf, heroImageOf } from "./minisite-style";
+import { countdownParts, pageStyleOf, fontStyleOf, heroImageOf, isNightStyle } from "./minisite-style";
 
 test("style de page : valeurs API → clé CSS, défaut affiche", () => {
   assert.equal(pageStyleOf("AFFICHE"), "affiche");
@@ -13,6 +13,9 @@ test("style de page : valeurs API → clé CSS, défaut affiche", () => {
   assert.equal(pageStyleOf("STADE"), "stade");
   assert.equal(pageStyleOf("LINEUP"), "lineup");
   assert.equal(pageStyleOf("DIPLOME"), "diplome");
+  for (const value of ["MARCHE", "MENU", "WAX", "CAMPUS", "BADGE", "STORY", "SANCTUAIRE"]) {
+    assert.equal(pageStyleOf(value), value.toLowerCase());
+  }
   assert.equal(pageStyleOf(undefined), "affiche");
   assert.equal(pageStyleOf("NEON"), "affiche");
 });
@@ -47,4 +50,9 @@ test("fond du bandeau : couverture sauf si « couleur unie » ou absente", () =>
   assert.equal(heroImageOf({ coverUrl: "/c.jpg" }), "/c.jpg");
   assert.equal(heroImageOf({ coverUrl: "/c.jpg", heroBackground: "COLOR" }), null);
   assert.equal(heroImageOf({ coverUrl: null, heroBackground: "IMAGE" }), null);
+});
+
+test("styles nuit : fond sombre pour Soirée, Line-up, Story et Sanctuaire seulement", () => {
+  for (const key of ["soiree", "lineup", "story", "sanctuaire"] as const) assert.equal(isNightStyle(key), true, key);
+  for (const key of ["affiche", "billet", "marche", "menu", "wax", "campus", "badge", "diplome"] as const) assert.equal(isNightStyle(key), false, key);
 });

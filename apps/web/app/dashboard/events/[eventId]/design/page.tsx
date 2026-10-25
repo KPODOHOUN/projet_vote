@@ -21,7 +21,12 @@ import {
   type EventHeroBackgroundValue,
   type EventPageStyleValue
 } from "../../../../../lib/brand";
-import { EVENT_PRESETS } from "../../../../../lib/event-presets";
+import {
+  EVENT_PRESETS,
+  EVENT_PRESET_CATEGORIES,
+  filterPresets,
+  type EventPresetCategoryId
+} from "../../../../../lib/event-presets";
 import { EVENT_LAYOUTS, type EventLayoutId } from "../../../../../lib/event-layouts";
 import { publicEventPath } from "../../../../../lib/site";
 import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcrumb";
@@ -68,7 +73,14 @@ const PAGE_STYLES: EventPageStyleValue[] = [
   "TERROIR",
   "STADE",
   "LINEUP",
-  "DIPLOME"
+  "DIPLOME",
+  "MARCHE",
+  "MENU",
+  "WAX",
+  "CAMPUS",
+  "BADGE",
+  "STORY",
+  "SANCTUAIRE"
 ];
 const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: number }> = [
   { id: "FESTIVAL", family: "var(--font-festival)", weight: 300 },
@@ -78,6 +90,101 @@ const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: numb
 
 /** Vignette schématique d'un style de page (formes seulement, aucun contenu inventé). */
 function StyleThumb({ style, accent }: { style: EventPageStyleValue; accent: string }) {
+  if (style === "MARCHE") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col overflow-hidden rounded-md" style={{ background: `color-mix(in srgb, ${accent} 6%, #f4ecdc)` }}>
+        <span className="h-4 shrink-0" style={{ background: `repeating-linear-gradient(90deg, ${accent} 0 10px, #fffaf0 10px 20px)` }} />
+        <span className="flex flex-1 items-end justify-between gap-2 p-2">
+          <span className="h-2 w-12 rounded-sm bg-slate-800" />
+          <span className="h-8 w-10 rounded-sm border-2 border-[#8b6a43] bg-[#1f2a24]" />
+        </span>
+      </span>
+    );
+  }
+  if (style === "MENU") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-center justify-center rounded-md bg-[#f1ebe0] p-2">
+        <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#fffdf7] px-3" style={{ boxShadow: `inset 0 0 0 1px ${accent}` }}>
+          <span className="h-1.5 w-10 rounded-sm bg-slate-800" />
+          <span className="flex w-full items-end gap-1"><span className="h-1 w-5 bg-slate-400" /><span className="flex-1 border-b border-dotted border-slate-400" /><span className="h-1 w-3 bg-slate-400" /></span>
+          <span className="flex w-full items-end gap-1"><span className="h-1 w-7 bg-slate-400" /><span className="flex-1 border-b border-dotted border-slate-400" /><span className="h-1 w-3 bg-slate-400" /></span>
+        </span>
+      </span>
+    );
+  }
+  if (style === "WAX") {
+    return (
+      <span aria-hidden="true" className="grid h-20 grid-cols-2 overflow-hidden rounded-md border border-slate-200 bg-[#fffaf2]">
+        <span
+          style={{
+            backgroundColor: accent,
+            backgroundImage: "radial-gradient(circle, #fff7e6 0 17%, transparent 18%), radial-gradient(circle, transparent 0 31%, #0f172a 32% 38%, transparent 39%)",
+            backgroundSize: "16px 16px"
+          }}
+        />
+        <span className="flex flex-col justify-center gap-1.5 p-2">
+          <span className="h-2 w-full rounded-sm bg-slate-800" />
+          <span className="h-1.5 w-3/4" style={{ background: `repeating-linear-gradient(90deg, ${accent} 0 6px, #0f172a 6px 8px, #f5b301 8px 11px, #0f172a 11px 13px)` }} />
+        </span>
+      </span>
+    );
+  }
+  if (style === "CAMPUS") {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-20 items-center justify-between gap-2 rounded-md p-2.5"
+        style={{
+          backgroundColor: "#fbfbf8",
+          backgroundImage: `linear-gradient(color-mix(in srgb, ${accent} 14%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, ${accent} 14%, transparent) 1px, transparent 1px)`,
+          backgroundSize: "8px 8px"
+        }}
+      >
+        <span className="h-2.5 w-14 rounded-sm" style={{ background: `linear-gradient(transparent 40%, color-mix(in srgb, ${accent} 50%, transparent) 40%)` }} />
+        <span className="h-14 w-11 rotate-3 bg-white p-1 pb-3 shadow"><span className="block h-full w-full" style={{ background: accent }} /></span>
+      </span>
+    );
+  }
+  if (style === "BADGE") {
+    return (
+      <span
+        aria-hidden="true"
+        className="relative flex h-20 items-end justify-center rounded-md bg-[#f5f6f8]"
+        style={{ backgroundImage: "radial-gradient(rgb(15 23 42 / 0.18) 1px, transparent 1.4px)", backgroundSize: "8px 8px" }}
+      >
+        <span className="absolute left-[42%] top-0 h-6 w-1.5 -rotate-12" style={{ background: accent }} />
+        <span className="absolute right-[42%] top-0 h-6 w-1.5 rotate-12" style={{ background: accent }} />
+        <span className="relative mb-1.5 flex h-14 w-12 flex-col items-center overflow-hidden rounded-md bg-white shadow">
+          <span className="mt-1 h-0.5 w-4 rounded-full bg-slate-200" />
+          <span className="mt-1.5 h-5 w-5 rounded-full" style={{ background: `color-mix(in srgb, ${accent} 30%, white)` }} />
+          <span className="mt-auto h-2.5 w-full" style={{ background: accent }} />
+        </span>
+      </span>
+    );
+  }
+  if (style === "STORY") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-center justify-center gap-1.5 rounded-md bg-[#0e1220]">
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="h-16 w-9 rounded-md p-[1.5px]" style={{ background: `conic-gradient(${accent}, #fde68a, ${accent})` }}>
+            <span className="block h-full w-full rounded-[5px]" style={{ background: `color-mix(in srgb, ${accent} 35%, #1a1f33)` }} />
+          </span>
+        ))}
+      </span>
+    );
+  }
+  if (style === "SANCTUAIRE") {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-20 flex-col items-center justify-end gap-1.5 rounded-md pb-2"
+        style={{ background: `radial-gradient(ellipse 70% 70% at 50% 0%, color-mix(in srgb, ${accent} 60%, transparent), transparent 70%), color-mix(in srgb, ${accent} 12%, #0b0f1c)` }}
+      >
+        <span className="h-10 w-8 rounded-t-full" style={{ boxShadow: `0 0 0 1px ${accent}`, background: `color-mix(in srgb, ${accent} 30%, #1a1f33)` }} />
+        <span className="h-1.5 w-12 rounded-sm bg-white/80" />
+      </span>
+    );
+  }
   if (style === "TERROIR") {
     return (
       <span aria-hidden="true" className="flex h-20 items-end justify-between gap-2 rounded-md p-2.5" style={{ background: `color-mix(in srgb, ${accent} 10%, #fafaf8)` }}>
@@ -206,6 +313,8 @@ export default function EventDesignPage() {
   const [pageStyle, setPageStyle] = useState<EventPageStyleValue>("AFFICHE");
   const [fontStyle, setFontStyle] = useState<EventFontStyleValue>("FESTIVAL");
   const [heroBackground, setHeroBackground] = useState<EventHeroBackgroundValue>("IMAGE");
+  const [presetCategory, setPresetCategory] = useState<EventPresetCategoryId>("beaute");
+  const [presetQuery, setPresetQuery] = useState("");
   const [saved, setSaved] = useState<Saved | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [previewWidth, setPreviewWidth] = useState<"phone" | "desktop">("phone");
@@ -221,6 +330,7 @@ export default function EventDesignPage() {
   const theme = useMemo(() => buildEventTheme(parsedColor), [parsedColor]);
   const swatch = parsedColor ?? DEFAULT_BRAND_COLOR;
   const presetsByVibe = useMemo(() => getBrandPresetsByVibe(), []);
+  const visiblePresets = useMemo(() => filterPresets(presetCategory, presetQuery), [presetCategory, presetQuery]);
   const trimmedTagline = tagline.trim();
   const taglineTooShort = trimmedTagline.length === 1;
   const accentWasDarkened = theme.accentStrong.toLowerCase() !== theme.accent.toLowerCase();
@@ -269,6 +379,12 @@ export default function EventDesignPage() {
       setPageStyle(found.pageStyle ?? "AFFICHE");
       setFontStyle(found.fontStyle ?? "FESTIVAL");
       setHeroBackground(found.heroBackground ?? "IMAGE");
+      // Ouvre la famille du modèle déjà en place, s'il y en a un.
+      const savedColor = normalizeBrandColor(found.brandColor ?? "");
+      const inUse = EVENT_PRESETS.find(
+        (p) => p.pageStyle === found.pageStyle && p.fontStyle === found.fontStyle && p.brandColor.toLowerCase() === savedColor
+      );
+      if (inUse) setPresetCategory(inUse.category);
       setSaved({
         tagline: (found.tagline ?? "").trim(),
         logoUrl: found.logoUrl ?? "",
@@ -406,9 +522,42 @@ export default function EventDesignPage() {
 
             <section aria-labelledby="presets-title" className="min-w-0 space-y-3">
               <h2 id="presets-title" className="text-sm font-semibold text-slate-900">{t("design.presets.title")}</h2>
-              <p className="text-xs text-slate-600">{t("design.presets.lead")}</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {EVENT_PRESETS.map((preset) => {
+              <p className="text-xs text-slate-600">{t("design.presets.leadCount", { count: EVENT_PRESETS.length })}</p>
+              <Input
+                id="preset-search"
+                type="search"
+                value={presetQuery}
+                onChange={(event) => setPresetQuery(event.target.value)}
+                // Entrée ne doit pas enregistrer le formulaire depuis la recherche.
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.preventDefault();
+                }}
+                label={t("design.presets.search")}
+                placeholder={t("design.presets.searchHint")}
+              />
+              {presetQuery.trim() === "" ? (
+                <div role="group" aria-label={t("design.presets.families")} className="flex flex-wrap gap-1.5">
+                  {EVENT_PRESET_CATEGORIES.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      aria-pressed={presetCategory === category.id}
+                      onClick={() => setPresetCategory(category.id)}
+                      className={`min-h-9 rounded-full border px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${presetCategory === category.id ? "border-slate-900 bg-slate-900 text-white" : "border-border text-slate-700 hover:bg-accent/60"}`}
+                    >
+                      {isEn ? category.en : category.fr}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-600" aria-live="polite">
+                  {visiblePresets.length > 0
+                    ? t("design.presets.results", { count: visiblePresets.length })
+                    : t("design.presets.empty", { query: presetQuery.trim() })}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+                {visiblePresets.map((preset) => {
                   const active = pageStyle === preset.pageStyle && fontStyle === preset.fontStyle && (parsedColor ?? "") === preset.brandColor.toLowerCase();
                   const name = isEn ? preset.en : preset.fr;
                   return (
@@ -426,7 +575,7 @@ export default function EventDesignPage() {
                     >
                       <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full" style={{ background: preset.brandColor }} />
                       <span className="min-w-0">
-                        <span className="block truncate font-semibold text-slate-900">{name}</span>
+                        <span className="line-clamp-2 font-semibold leading-snug text-slate-900">{name}</span>
                         <span className="block truncate text-xs text-slate-600">{t(`design.style.${preset.pageStyle}` as MessageKey)}</span>
                       </span>
                     </button>
@@ -602,7 +751,7 @@ export default function EventDesignPage() {
                   </span>
                 </div>
                 {trimmedTagline ? (
-                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: theme.accentStrong }}>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: theme.accentInk }}>
                     {trimmedTagline}
                   </p>
                 ) : null}
@@ -610,7 +759,7 @@ export default function EventDesignPage() {
                   <span className="inline-flex h-11 items-center rounded-md px-5 text-sm font-semibold text-white" style={{ background: theme.accentStrong }}>
                     {t("design.samplePay")}
                   </span>
-                  <span className="text-sm font-semibold underline underline-offset-4" style={{ color: theme.accentStrong }}>
+                  <span className="text-sm font-semibold underline underline-offset-4" style={{ color: theme.accentInk }}>
                     {t("design.sampleLink")}
                   </span>
                 </div>
@@ -695,7 +844,8 @@ export default function EventDesignPage() {
             </div>
           </div>
           <p className="text-sm text-slate-600">{t("design.previewHelp")}</p>
-          <div className="overflow-x-auto rounded-md border border-border bg-muted/30 p-2">
+          {/* Zone défilante (aperçu téléphone plus large que la colonne) : atteignable au clavier. */}
+          <div tabIndex={0} role="region" aria-label={t("design.previewTitle")} className="overflow-x-auto rounded-md border border-border bg-muted/30 p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <iframe
               key={previewKey}
               title={t("design.previewTitle")}

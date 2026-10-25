@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const useManualServers = process.env.PW_MANUAL_SERVERS === "1";
+// Port du site Next de test ; E2E_WEB_PORT si 3100 est déjà pris sur la machine.
+const webPort = process.env.E2E_WEB_PORT ?? "3100";
 process.env.E2E_API_BASE_URL ??= "http://127.0.0.1:3011/api/v1";
 
 // Base dédiée aux e2e (convention identique au script `npm test` de l'API).
@@ -22,7 +24,7 @@ export default defineConfig({
     }
   ],
   use: {
-    baseURL: "http://127.0.0.1:3100",
+    baseURL: `http://127.0.0.1:${webPort}`,
     trace: "retain-on-failure",
     storageState: {
       cookies: [
@@ -52,7 +54,7 @@ export default defineConfig({
               // API_CORS_ORIGINS : en NODE_ENV=test, main.ts n'autorise que localhost:3000
               // (le wildcard n'existe qu'en development) — sans ça, les fetchs navigateur
               // 3100 → 3011 (login, maintenance…) sont bloqués par le preflight CORS.
-              `export NODE_ENV=test DATABASE_URL="${e2eDatabaseUrl}" MAIL_RESEND_API_KEY= API_DISABLE_THROTTLE=1 API_CORS_ORIGINS="http://127.0.0.1:3100,http://localhost:3100" && ` +
+              `export NODE_ENV=test DATABASE_URL="${e2eDatabaseUrl}" MAIL_RESEND_API_KEY= API_DISABLE_THROTTLE=1 API_CORS_ORIGINS="http://127.0.0.1:${webPort},http://localhost:${webPort}" && ` +
               "npm --prefix ../../packages/shared run build && npm --prefix ../../packages/db run build && npm --prefix ../api run build && " +
               // migrate deploy, comme en production : le drift schema/migrations est
               // nul (prisma migrate diff sur base vierge, 2026-10-25).
@@ -69,8 +71,8 @@ export default defineConfig({
             // API_BASE_URL : rewrite /api/v1/* de next.config.ts (défaut 3001) —
             // sans elle, le proxy SSR tombe sur un port sans API (ECONNREFUSED).
             command:
-              "NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3011/api/v1 API_BASE_URL=http://127.0.0.1:3011 npm run build && NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3011/api/v1 API_BASE_URL=http://127.0.0.1:3011 npm run start -- -p 3100",
-            url: "http://127.0.0.1:3100",
+              "NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3011/api/v1 API_BASE_URL=http://127.0.0.1:3011 npm run build && NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3011/api/v1 API_BASE_URL=http://127.0.0.1:3011 npm run start -- -p " + webPort,
+            url: `http://127.0.0.1:${webPort}`,
             reuseExistingServer: false,
             timeout: 300000
           }

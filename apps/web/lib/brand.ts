@@ -12,7 +12,14 @@ export type EventPageStyleValue =
   | "TERROIR"
   | "STADE"
   | "LINEUP"
-  | "DIPLOME";
+  | "DIPLOME"
+  | "MARCHE"
+  | "MENU"
+  | "WAX"
+  | "CAMPUS"
+  | "BADGE"
+  | "STORY"
+  | "SANCTUAIRE";
 export type EventHeroBackgroundValue = "IMAGE" | "COLOR";
 export type EventFontStyleValue = "FESTIVAL" | "GALA" | "CLASSIQUE";
 
@@ -149,11 +156,61 @@ export function deriveAccentBright(accent: string): string {
   return hslToHex(h, s, 96);
 }
 
+/** `color-mix(in srgb, a p%, b)` : `percent` % de `a`, le reste de `b`. */
+export function mixHex(a: string, b: string, percent: number): string {
+  const x = hexToRgb(a);
+  const y = hexToRgb(b);
+  const p = percent / 100;
+  return rgbToHex(x.r * p + y.r * (1 - p), x.g * p + y.g * (1 - p), x.b * p + y.b * (1 - p));
+}
+
+/**
+ * Fonds clairs des mini-plateformes (`--mini-bg`, `--mini-wash` de globals.css) :
+ * [part de la couleur de l'événement en %, couleur de base]. À tenir à jour
+ * avec globals.css ; le test de brand.ts vérifie le contraste sur chacun.
+ */
+export const MINI_LIGHT_GROUNDS: ReadonlyArray<readonly [number, string]> = [
+  [4, "#f8fafc"], // défaut (Affiche, Billet)
+  [7, "#fdfdfd"], // Couronne
+  [0, "#ffffff"], // Magazine
+  [16, "#ffffff"], // Pop
+  [22, "#ffffff"], // Pop, aplats
+  [7, "#fafaf8"], // Terroir
+  [5, "#f3f4f6"], // Stade
+  [6, "#f5f6f8"], // Diplôme
+  [5, "#f4ecdc"], // Marché (kraft)
+  [10, "#fffaf0"], // Marché, aplats
+  [4, "#faf6ee"], // Menu
+  [6, "#fffaf2"], // Wax
+  [0, "#fbfbf8"], // Campus
+  [0, "#f5f6f8"] // Badge
+];
+
+/**
+ * Accent des textes de mini-plateforme sur fond clair (sur-titres, numéros) :
+ * comme `deriveAccentStrong`, mais lisible (≥ 4,5:1) sur chacun des fonds
+ * teintés, pas seulement sur le blanc.
+ */
+export function deriveAccentInk(accent: string): string {
+  const grounds = MINI_LIGHT_GROUNDS.map(([percent, base]) => mixHex(accent, base, percent));
+  const readable = (color: string) => grounds.every((ground) => contrastRatio(color, ground) >= MIN_TEXT_CONTRAST);
+  const start = deriveAccentStrong(accent);
+  if (readable(start)) return start;
+  const { h, s, l } = hexToHsl(start);
+  for (let lightness = Math.floor(l); lightness >= 4; lightness -= 1) {
+    const candidate = hslToHex(h, s, lightness);
+    if (readable(candidate)) return candidate;
+  }
+  return hslToHex(h, s, 4);
+}
+
 export type EventTheme = {
   /** Couleur choisie par l'organisateur : décor et aplats sans texte. */
   accent: string;
   /** Texte, liens, boutons sur fond blanc (≥ 4,5:1). */
   accentStrong: string;
+  /** Texte d'accent sur les fonds clairs teintés des mini-plateformes (≥ 4,5:1). */
+  accentInk: string;
   headerBg: string;
   headerFg: string;
   /** Texte, liens, boutons sur le fond nuit (≥ 4,5:1). */
@@ -171,6 +228,7 @@ export type EventTheme = {
 export function buildEventTheme(brandColor: string | null | undefined): EventTheme {
   const accent = normalizeBrandColor(brandColor) ?? DEFAULT_BRAND_COLOR;
   const accentStrong = deriveAccentStrong(accent);
+  const accentInk = deriveAccentInk(accent);
   const onAccent = onBest(accent);
   const headerBg = onAccent.ratio >= MIN_TEXT_CONTRAST ? accent : accentStrong;
   const headerFg = onAccent.ratio >= MIN_TEXT_CONTRAST ? onAccent.color : WHITE;
@@ -180,6 +238,7 @@ export function buildEventTheme(brandColor: string | null | undefined): EventThe
   return {
     accent,
     accentStrong,
+    accentInk,
     headerBg,
     headerFg,
     accentBright,
@@ -190,6 +249,7 @@ export function buildEventTheme(brandColor: string | null | undefined): EventThe
       "--event-night": NIGHT_GROUND,
       "--event-accent": accent,
       "--event-accent-strong": accentStrong,
+      "--event-accent-ink": accentInk,
       "--event-on-strong": WHITE,
       "--event-accent-soft": hexToRgba(accent, 0.12),
       "--event-accent-muted": hexToRgba(accent, 0.25),

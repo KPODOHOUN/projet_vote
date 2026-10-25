@@ -42,6 +42,13 @@ enum EventPageStyle {
   STADE    // sport, tournois : bande diagonale, tableau de score, maillots
   LINEUP   // concerts, talents : affiche de festival, noms en programmation
   DIPLOME  // écoles, prix : cadre de certificat, sceau, portraits ronds
+  MARCHE   // foires agricoles, produits locaux : auvent rayé, ardoise, cagettes
+  MENU     // gastronomie : carte de restaurant, candidats en liste à points de conduite
+  WAX      // mode africaine, patrimoine : motifs de pagne à la couleur de l'événement
+  CAMPUS   // écoles, jeunesse : papier quadrillé, surligneur, polaroïds
+  BADGE    // entreprise, salons : badges de conférence, grille fine
+  STORY    // médias, créateurs : fond sombre, cartes verticales 9:16
+  SANCTUAIRE // chorales, foi : fond nuit, halo, portraits en arche
 }
 
 // Fond des bandeaux : image de couverture (si importée) ou couleur unie.

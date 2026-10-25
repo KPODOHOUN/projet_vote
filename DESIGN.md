@@ -14,12 +14,12 @@ Source de vérité du design. Les tokens vivent dans `apps/web/app/globals.css` 
 | Rôle | Token | Valeur | Usage |
 |---|---|---|---|
 | Encre | `slate-900` | `#0F172A` | titres, texte principal, filets forts |
-| Encre secondaire | `slate-600` | `#475569` | texte d'appui (jamais plus clair pour un texte utile) |
+| Encre secondaire | `slate-600` | `#475569` | texte d'appui (jamais plus clair pour un texte utile) ; c'est aussi `--color-muted-foreground`, à 4,5:1 sur `--color-muted` (slate-100) |
 | Action | `brand-600` / `--color-primary` | `#4F46E5` | bouton principal, lien |
 | Repère admin | `gold-600` / `gold-700` | `#D97706` | liseré admin, médaille du 1er — jamais sur un bouton d'argent |
 | Succès / erreur / info / alerte | `--color-*-text` | `#047857` / `#DC2626` / `#1D4ED8` / `#B45309` | texte d'état, toujours ≥ 4,5:1 |
 
-Dans une mini-plateforme, `--color-primary` = `--event-accent-strong` (moteur `lib/brand.ts`, ≥ 4,5:1 garanti). La couleur brute de l'événement (`--event-accent`) ne sert qu'aux aplats sans texte (barres, filet sous l'onglet actif).
+Dans une mini-plateforme, `--color-primary` = `--event-accent-strong` (moteur `lib/brand.ts`, ≥ 4,5:1 garanti). La couleur brute de l'événement (`--event-accent`) ne sert qu'aux aplats sans texte (barres, filet sous l'onglet actif). Les textes d'accent des pages `/e/*` (sur-titres, numéros) prennent `--event-accent-ink` via `--mini-accent` : assombri jusqu'à 4,5:1 sur chacun des fonds clairs teintés (`MINI_LIGHT_GROUNDS`, à tenir à jour avec `globals.css`).
 
 ## Typographie
 
@@ -61,6 +61,15 @@ En-tête commun : logo, titre en capitales espacées, onglets soulignés. Pied �
 | **Stade** | Sport, tournois : fond nuit, couverture en biais, bande diagonale à l'accent, compte à rebours en tableau de score. | Maillot : grand numéro, bandeau du nom à l'accent | Fond clair, titres gras |
 | **Line-up** | Concerts, talents : affiche de festival, couverture en bichromie (noir et accent) ; les candidats forment la programmation, en très grand. | Noms en programmation (pas de grille photo) | Fond nuit, comme Soirée |
 | **Diplôme** | Écoles, prix : cadre de certificat à double filet, sceau (logo cerclé en pointillé), ornement. | Portrait rond cerclé | Fond teinté |
+| **Marché** | Foires agricoles, produits locaux, artisanat : auvent rayé à la couleur de l'événement, prix et compte à rebours sur ardoise, fond kraft. | Cagette photo, étiquette de prix à encoche | Fond kraft teinté |
+| **Menu** | Gastronomie, restaurants, cocktails : carte de restaurant à double filet, infos à points de conduite, couverture en assiette ronde. | Liste de plats : nom ……… voix (pas de grille photo) | Fond crème teinté |
+| **Wax** | Mode africaine, patrimoine, festivals : demi-écran en motif de pagne (CSS, accent + crème + encre), bande kente. | Photo dans un cadre wax, bande kente sous le nom | Fond crème teinté |
+| **Campus** | Écoles, quiz, jeunesse : papier quadrillé sur toute la page, titre surligné, infos sur feuille lignée, couverture en polaroïd. | Polaroïd incliné, pastille de numéro | Papier quadrillé |
+| **Badge** | Entreprise, salons, élections : badge de conférence au cordon, infos en grille à filets. | Badge nominatif, voix dans le bandeau du bas | Grille à points |
+| **Story** | Médias, créateurs, radio : couverture verticale 9:16 dans un anneau dégradé, couverture floutée en fond. | Carte 9:16 dans un anneau | Fond nuit, comme Soirée |
+| **Sanctuaire** | Chorales, foi, récitation : composition centrée, halo de lumière, couverture en arche. | Portrait en arche, double filet | Fond nuit teinté |
+
+Styles à fond nuit (`isNightStyle`, `lib/minisite-style.ts`) : Soirée, Line-up, Story, Sanctuaire. L'action prend l'accent éclairci ; le paiement revient à une carte claire. Les motifs (auvent, wax, quadrillé, halo, anneau) sont des classes `.mini-*` de `globals.css`, dérivées de la couleur de l'événement.
 
 **Fond du haut de page** (`Event.heroBackground`) : `IMAGE` (défaut) pose la couverture derrière le bandeau de tous les styles, sous un voile à la couleur de l'événement (Billet, Pop), nuit (Soirée) ou clair (Couronne, Diplôme) ; `COLOR` garde l'aplat même si une couverture est importée.
 

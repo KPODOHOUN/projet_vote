@@ -92,7 +92,7 @@ export function LanguageSwitcher({ variant = "default" }: { variant?: "default" 
                 : `min-h-[32px] px-3 rounded-full text-xs font-semibold tracking-wider uppercase transition-colors ${
                     isSelected
                       ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-slate-600 hover:text-foreground"
                   }`
             }
             style={
@@ -104,8 +104,8 @@ export function LanguageSwitcher({ variant = "default" }: { variant?: "default" 
                       boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
                     }
                   : {
-                      color: "var(--event-header-fg, #ffffff)",
-                      opacity: 0.85
+                      // Pas d'opacité : le texte d'en-tête n'est garanti à 4,5:1 qu'à pleine couleur.
+                      color: "var(--event-header-fg, #ffffff)"
                     }
                 : undefined
             }

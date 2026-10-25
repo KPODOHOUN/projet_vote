@@ -77,7 +77,7 @@
   --color-popover: #FFFFFF;
   --color-popover-foreground: var(--color-slate-900);
   --color-muted: var(--color-slate-100);
-  --color-muted-foreground: var(--color-slate-500);
+  --color-muted-foreground: var(--color-slate-600); /* ≥ 4,5:1 sur muted (slate-100), cf. DESIGN.md */
   --color-accent: var(--color-slate-100);
   --color-accent-foreground: var(--color-slate-900);
   --color-destructive: var(--color-error-text); /* #DC2626 : 4,8:1 avec le blanc */
@@ -579,6 +579,21 @@ img {
   }
 }
 
+/* Mouvement réduit : les cartes candidats ne se soulèvent ni ne zooment au survol
+   (Tailwind 4 pose translate/scale en propriétés CSS dédiées). */
+@media (prefers-reduced-motion: reduce) {
+  [data-event-theme] a,
+  [data-event-theme] a * {
+    transition: none !important;
+  }
+  [data-event-theme] a[class*="hover:-translate"]:hover,
+  [data-event-theme] a:hover [class*="group-hover:-translate"],
+  [data-event-theme] a:hover [class*="group-hover:scale"] {
+    translate: none !important;
+    scale: none !important;
+  }
+}
+
 .vp-ease-spring {
   transition-timing-function: cubic-bezier(0.22, 0.7, 0.2, 1);
 }
@@ -671,7 +686,8 @@ img {
   --mini-line: var(--color-slate-900);
   --mini-rule: rgb(15 23 42 / 0.15);
   --mini-wash: var(--event-accent-light, rgb(15 23 42 / 0.05));
-  --mini-accent: var(--event-accent-strong, var(--color-brand-600));
+  /* Texte d'accent : lisible sur tous les fonds clairs teintés (lib/brand.ts, deriveAccentInk). */
+  --mini-accent: var(--event-accent-ink, var(--event-accent-strong, var(--color-brand-600)));
   --mini-photo-bg: color-mix(in srgb, var(--event-accent-strong, var(--color-brand-600)) 10%, white);
   --mini-title-font: var(--font-festival), var(--font-display);
   --mini-title-weight: 300;
@@ -691,7 +707,9 @@ img {
   --mini-title-scale: 1;
 }
 [data-event-theme][data-page-style="soiree"],
-[data-event-theme][data-page-style="lineup"] {
+[data-event-theme][data-page-style="lineup"],
+[data-event-theme][data-page-style="story"],
+[data-event-theme][data-page-style="sanctuaire"] {
   --mini-bg: var(--event-night);
   --mini-ink: #f1f5f9;
   --mini-muted: #a8b3c7;
@@ -743,15 +761,101 @@ img {
   --mini-line: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 40%, transparent);
   --mini-rule: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 18%, transparent);
 }
+[data-event-theme][data-page-style="sanctuaire"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #6d28d9) 12%, #0b0f1c);
+}
+[data-event-theme][data-page-style="marche"] {
+  /* Papier kraft légèrement teinté. */
+  --mini-bg: color-mix(in srgb, var(--event-accent, #15803d) 5%, #f4ecdc);
+  --mini-line: color-mix(in srgb, #5b4630 45%, transparent);
+  --mini-rule: color-mix(in srgb, #5b4630 18%, transparent);
+  --mini-wash: color-mix(in srgb, var(--event-accent, #15803d) 10%, #fffaf0);
+}
+[data-event-theme][data-page-style="menu"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #c2410c) 4%, #faf6ee);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #c2410c) 40%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #c2410c) 18%, transparent);
+}
+[data-event-theme][data-page-style="wax"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #b45309) 6%, #fffaf2);
+  --mini-line: var(--color-slate-900);
+}
+[data-event-theme][data-page-style="campus"] {
+  --mini-bg: #fbfbf8;
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 35%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 16%, transparent);
+  /* Papier quadrillé sur toute la page. */
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--event-accent, #1e3a8a) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--event-accent, #1e3a8a) 9%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+[data-event-theme][data-page-style="badge"] {
+  --mini-bg: #f5f6f8;
+  --mini-line: var(--color-slate-900);
+  /* Grille à points, façon salon professionnel. */
+  background-image: radial-gradient(rgb(15 23 42 / 0.13) 1px, transparent 1.4px);
+  background-size: 18px 18px;
+}
+
+/* Motifs des styles (décoratifs, dérivés de la couleur de l'événement). */
+.mini-awning {
+  background: repeating-linear-gradient(90deg, var(--event-accent-strong) 0 40px, #fffaf0 40px 80px);
+}
+.mini-awning-edge {
+  background:
+    radial-gradient(circle at 20px 0, var(--event-accent-strong) 19.5px, transparent 20px) 0 0 / 80px 20px repeat-x,
+    radial-gradient(circle at 60px 0, #fffaf0 19.5px, transparent 20px) 0 0 / 80px 20px repeat-x;
+}
+.mini-chalk {
+  background: #1f2a24;
+  color: #f8fafc;
+  border: 6px solid #8b6a43;
+}
+.mini-wax {
+  background-color: var(--event-accent-strong);
+  background-image:
+    radial-gradient(circle, #fff7e6 0 17%, transparent 18%),
+    radial-gradient(circle, transparent 0 31%, #0f172a 32% 38%, transparent 39%),
+    linear-gradient(45deg, transparent 0 47%, rgb(255 255 255 / 0.35) 47% 53%, transparent 53%),
+    linear-gradient(-45deg, transparent 0 47%, rgb(255 255 255 / 0.35) 47% 53%, transparent 53%);
+  background-size: 44px 44px;
+}
+.mini-wax-band {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--event-accent-strong) 0 16px,
+    #0f172a 16px 20px,
+    #f5b301 20px 28px,
+    #0f172a 28px 32px
+  );
+}
+.mini-highlight {
+  background: linear-gradient(transparent 52%, color-mix(in srgb, var(--event-accent-bright, #facc15) 55%, transparent) 52% 94%, transparent 94%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.mini-ruled {
+  background-image: linear-gradient(transparent 27px, color-mix(in srgb, var(--event-accent, #1e3a8a) 14%, transparent) 27px 28px);
+  background-size: 100% 28px;
+}
+.mini-halo {
+  background: radial-gradient(ellipse 70% 60% at 50% -5%, color-mix(in srgb, var(--event-accent-bright, #a78bfa) 42%, transparent), transparent 70%);
+}
+.mini-story-ring {
+  background: conic-gradient(from 200deg, var(--event-accent-bright, #a78bfa), #fde68a, var(--event-accent-strong, #6d28d9), var(--event-accent-bright, #a78bfa));
+}
 
 /* Retour au clair dans les zones de paiement et les cartes. */
 [data-event-theme][data-page-style="soiree"] [data-zone="secure-flow"],
-[data-event-theme][data-page-style="lineup"] [data-zone="secure-flow"] {
+[data-event-theme][data-page-style="lineup"] [data-zone="secure-flow"],
+[data-event-theme][data-page-style="story"] [data-zone="secure-flow"],
+[data-event-theme][data-page-style="sanctuaire"] [data-zone="secure-flow"] {
   --color-primary: var(--event-accent-strong);
   --color-primary-foreground: #ffffff;
   --color-ring: var(--event-accent-strong);
   --color-foreground: var(--color-slate-900);
-  --color-muted-foreground: var(--color-slate-500);
+  --color-muted-foreground: var(--color-slate-600);
   --color-border: var(--color-slate-200);
   --color-muted: var(--color-slate-100);
   color-scheme: light;

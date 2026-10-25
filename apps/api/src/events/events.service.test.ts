@@ -119,7 +119,7 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
   assert.equal((await votes.getPublicEventBySlug("style-default")).event.branding.heroBackground, "COLOR");
   await assert.rejects(events.updateEvent(owner(t.id), ev.id, { heroBackground: "VIDEO" }));
 
-  for (const style of ["COURONNE", "MAGAZINE", "POP", "TERROIR", "STADE", "LINEUP", "DIPLOME", "BILLET", "AFFICHE"]) {
+  for (const style of ["COURONNE", "MAGAZINE", "POP", "TERROIR", "STADE", "LINEUP", "DIPLOME", "MARCHE", "MENU", "WAX", "CAMPUS", "BADGE", "STORY", "SANCTUAIRE", "BILLET", "AFFICHE"]) {
     const next = await events.updateEvent(owner(t.id), ev.id, { pageStyle: style });
     assert.equal(next.pageStyle, style);
   }
