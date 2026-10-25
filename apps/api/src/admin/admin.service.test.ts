@@ -196,6 +196,33 @@ test("AdminService.listAuditLogs: scope tenant (owner) + filtre action + paginat
   assert.equal(none.items.length, 0);
 });
 
+test("AdminService.listAuditLogs: même createdAt → pagination sans doublon ni trou", async () => {
+  const tenant = await prisma.tenant.create({ data: { slug: "audit-ties", displayName: "Ties" } });
+  const sameInstant = new Date("2026-10-25T12:00:00.000Z");
+  // Assez de lignes pour que Postgres trie les ex æquo différemment selon la requête (LIMIT vs OFFSET).
+  await prisma.auditLog.createMany({
+    data: Array.from({ length: 60 }, (_, i) => ({
+      tenantId: tenant.id,
+      actorUserId: "u",
+      actorRole: UserRole.ORGANIZER_OWNER,
+      action: "event.created",
+      targetType: "Event",
+      targetId: `t${i}`,
+      createdAt: sameInstant
+    }))
+  });
+  const owner = { userId: "o", tenantId: tenant.id, email: "o@a", role: UserRole.ORGANIZER_OWNER };
+  const seen: string[] = [];
+  let cursor: string | null | undefined;
+  do {
+    const page = await adminService.listAuditLogs(owner, { limit: 7, ...(cursor ? { cursor } : {}) });
+    seen.push(...page.items.map((l) => l.id));
+    cursor = page.nextCursor;
+  } while (cursor);
+  assert.equal(new Set(seen).size, 60, "aucune ligne sautée");
+  assert.equal(seen.length, 60, "aucune ligne en double");
+});
+
 test("AdminService.featureFlags: upsert puis list (round-trip chiffré via secrets)", async () => {
   const tenant = await prisma.tenant.create({ data: { slug: "ff-a", displayName: "FF" } });
   const owner = { userId: "o", tenantId: tenant.id, email: "o@a", role: UserRole.ORGANIZER_OWNER };

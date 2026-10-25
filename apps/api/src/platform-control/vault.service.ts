@@ -64,7 +64,7 @@ export class VaultService {
     const q = listSchema.parse(query);
     const items = await this.prisma.client.vaultEntry.findMany({
       where: q.eventId ? { eventId: q.eventId } : {},
-      orderBy: { occurredAt: "desc" },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       take: q.limit + 1,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       select: {

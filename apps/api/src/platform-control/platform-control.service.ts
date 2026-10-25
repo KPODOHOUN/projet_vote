@@ -254,7 +254,7 @@ export class PlatformControlService {
     };
     const items = await this.prisma.client.vote.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: q.limit + 1,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       select: {

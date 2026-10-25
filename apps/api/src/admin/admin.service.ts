@@ -124,14 +124,14 @@ export class AdminService {
     const items = parsedQuery.cursor
       ? await this.prisma.client.auditLog.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           cursor: { id: parsedQuery.cursor },
           skip: 1,
           take: parsedQuery.limit + 1
         })
       : await this.prisma.client.auditLog.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: parsedQuery.limit + 1
         });
 
@@ -238,14 +238,14 @@ export class AdminService {
     const items = parsedQuery.cursor
       ? await this.prisma.client.user.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           cursor: { id: parsedQuery.cursor },
           skip: 1,
           take: parsedQuery.limit + 1
         })
       : await this.prisma.client.user.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: parsedQuery.limit + 1
         });
 
