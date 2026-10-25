@@ -84,7 +84,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function CandidateProfilePage({ params }: PageProps) {
   const { slug, ref } = await params;
   const locale = await getServerLocale();
-  const isEn = locale === "en";
   const data = await fetchCandidate(slug, ref);
   if (!data) {
     notFound();
@@ -155,7 +154,7 @@ export default async function CandidateProfilePage({ params }: PageProps) {
               eventSlug={event.slug}
               publicRef={candidate.publicRef}
               candidateName={candidate.fullName}
-              isEn={isEn}
+              eventTitle={event.title}
             />
           </div>
         </div>

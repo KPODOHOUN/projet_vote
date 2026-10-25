@@ -1,30 +1,26 @@
 "use client";
 
+import { useI18n } from "../lib/i18n-provider";
 import { CopyCandidateLinkButton } from "./copy-candidate-link-button";
 
 type CandidateShareBarProps = {
   eventSlug: string;
   publicRef: string;
   candidateName: string;
-  isEn?: boolean;
+  eventTitle: string;
 };
 
-export function CandidateShareBar({ eventSlug, publicRef, candidateName, isEn = false }: CandidateShareBarProps) {
+/** Barre de partage du profil, dans le langage de la mini-plateforme (filet, sur-titre). */
+export function CandidateShareBar({ eventSlug, publicRef, candidateName, eventTitle }: CandidateShareBarProps) {
+  const { t } = useI18n();
   return (
-    <div className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-2">
-      <p className="text-sm font-medium text-foreground">
-        {isEn ? "Share this profile" : "Partager ce profil"}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {isEn
-          ? "Send this link so voters land directly on this candidate's page."
-          : "Envoyez ce lien pour que les votants arrivent directement sur la page de ce candidat."}
-      </p>
+    <div className="space-y-3 border-t border-slate-900/15 pt-5">
+      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-600">{t("share.title")}</p>
       <CopyCandidateLinkButton
         eventSlug={eventSlug}
         publicRef={publicRef}
         candidateName={candidateName}
-        isEn={isEn}
+        eventTitle={eventTitle}
         variant="secondary"
         size="sm"
       />
