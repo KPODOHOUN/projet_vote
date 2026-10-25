@@ -66,7 +66,7 @@ function clearDevOtp() {
 
 function CheckEmailContent() {
   const router = useRouter();
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
   const searchParams = useSearchParams();
   const emailFromQuery = searchParams.get("email") ?? "";
@@ -95,7 +95,7 @@ function CheckEmailContent() {
     const trimmedEmail = email.trim();
     const trimmedCode = code.replace(/\D/g, "").slice(0, 6);
     if (!trimmedEmail || trimmedCode.length !== 6) {
-      setError(isEn ? "Enter your email and the 6-digit code." : "Saisissez votre e-mail et le code à 6 chiffres.");
+      setError(t("authpages.1"));
       return;
     }
     setIsVerifying(true);
@@ -112,12 +112,12 @@ function CheckEmailContent() {
       if (result.accessToken) {
         setStoredToken(result.accessToken);
         setSuccess(true);
-        showToast.success(isEn ? "Email confirmed. Welcome!" : "E-mail confirmé. Bienvenue !");
+        showToast.success(t("authpages.2"));
         router.push("/dashboard/start");
         return;
       }
       setSuccess(true);
-      showToast.success(isEn ? "Email confirmed. You can sign in." : "E-mail confirmé. Vous pouvez vous connecter.");
+      showToast.success(t("authpages.3"));
       router.push(authLoginUrl());
     } catch (caught) {
       setError(
@@ -125,9 +125,7 @@ function CheckEmailContent() {
           ? caught.message
           : caught instanceof Error
             ? caught.message
-            : isEn
-              ? "Verification failed."
-              : "La vérification a échoué."
+            : t("authpages.4")
       );
     } finally {
       setIsVerifying(false);
@@ -137,7 +135,7 @@ function CheckEmailContent() {
   async function onResend() {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
-      setError(isEn ? "Enter your email to resend the code." : "Saisissez votre e-mail pour renvoyer le code.");
+      setError(t("authpages.5"));
       return;
     }
     setError("");
@@ -155,22 +153,18 @@ function CheckEmailContent() {
         setDevOtp(result.otpCode);
         setCode(result.otpCode);
         showToast.success(
-          isEn ? "New verification code ready (local/dev)." : "Nouveau code prêt (mode local/dev)."
+          t("authpages.6")
         );
       } else {
         showToast.success(
-          isEn
-            ? "If your account is pending, we sent a new code."
-            : "Si votre compte est en attente, un nouveau code a été envoyé."
+          t("authpages.7")
         );
       }
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : isEn
-            ? "Could not resend the code."
-            : "Impossible de renvoyer le code."
+          : t("authpages.8")
       );
     } finally {
       setIsResending(false);
@@ -181,27 +175,23 @@ function CheckEmailContent() {
     <AuthSimpleLayout contentClassName="max-w-[420px]">
       <Card className="w-full p-6 sm:p-8">
         <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">
-          {isEn ? "Confirm your email" : "Confirmez votre e-mail"}
+          {t("authpages.9")}
         </h1>
         <p className="mb-6 text-muted-foreground">
           {emailFromQuery
             ? isEn
               ? `We sent a 6-digit code to ${emailFromQuery}. Enter it below to activate your account.`
               : `Nous avons envoyé un code à 6 chiffres à ${emailFromQuery}. Saisissez-le ci-dessous pour activer votre compte.`
-            : isEn
-              ? "Enter the 6-digit code we sent by email."
-              : "Saisissez le code à 6 chiffres reçu par e-mail."}
+            : t("authpages.10")}
         </p>
 
         {devOtp ? (
           <div className="mb-4 rounded-xl border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-4 text-sm text-[var(--color-warning-text)]">
             <p className="font-semibold">
-              {isEn ? "Local / development mode" : "Mode local / développement"}
+              {t("authpages.11")}
             </p>
             <p className="mt-1 text-muted-foreground">
-              {isEn
-                ? "No email provider configured — use this code:"
-                : "Aucun envoi e-mail configuré — utilisez ce code :"}
+              {t("authpages.12")}
             </p>
             <p className="mt-2 font-mono text-2xl font-bold tracking-[0.35em] text-foreground">{devOtp}</p>
           </div>
@@ -209,7 +199,7 @@ function CheckEmailContent() {
 
         {success ? (
           <div className="mb-4 rounded-xl border border-[var(--color-success)]/30 bg-emerald-500/10 p-4 text-sm text-[var(--color-success-text)]">
-            {isEn ? "Email confirmed. Redirecting…" : "E-mail confirmé. Redirection…"}
+            {t("authpages.13")}
           </div>
         ) : null}
 
@@ -217,7 +207,7 @@ function CheckEmailContent() {
           {!emailFromQuery ? (
             <Input
               id="email"
-              label={isEn ? "Your email" : "Votre e-mail"}
+              label={t("authpages.14")}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -229,7 +219,7 @@ function CheckEmailContent() {
           )}
           <Input
             id="otp"
-            label={isEn ? "Verification code" : "Code de vérification"}
+            label={t("authpages.15")}
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={6}
@@ -239,18 +229,14 @@ function CheckEmailContent() {
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
             helpText={
               devOtp
-                ? isEn
-                  ? "Pre-filled from local/dev response."
-                  : "Prérempli depuis la réponse locale/dev."
-                : isEn
-                  ? "6 digits from your email."
-                  : "6 chiffres reçus par e-mail."
+                ? t("authpages.16")
+                : t("authpages.17")
             }
             required
           />
           <FormError>{error}</FormError>
           <Button type="submit" loading={isVerifying} className="w-full" disabled={success}>
-            {isEn ? "Confirm email" : "Confirmer l'e-mail"}
+            {t("authpages.18")}
           </Button>
         </form>
 
@@ -262,18 +248,18 @@ function CheckEmailContent() {
           onClick={() => void onResend()}
           disabled={success}
         >
-          {isEn ? "Resend code" : "Renvoyer le code"}
+          {t("authpages.19")}
         </Button>
 
         <p className="mt-8 text-center text-sm text-muted-foreground">
-          {isEn ? "Already confirmed?" : "Déjà confirmé ?"}{" "}
+          {t("authpages.20")}{" "}
           <Link href={authLoginUrl()} className="font-semibold text-primary hover:underline">
-            {isEn ? "Sign in" : "Se connecter"}
+            {t("authpages.21")}
           </Link>
         </p>
         <div className="mt-6 flex flex-col items-center gap-2 text-xs text-muted-foreground">
           <Link href="/" className="text-muted-foreground/60 transition-colors hover:text-foreground">
-            {isEn ? "← Back to SHADOMA" : "← Retour sur SHADOMA"}
+            {t("authpages.22")}
           </Link>
         </div>
       </Card>

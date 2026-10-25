@@ -15,7 +15,7 @@ import { Button, Card, FormError, Input } from "@/components/ui";
 
 function ResetPasswordContent() {
   const router = useRouter();
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
   const searchParams = useSearchParams();
   const emailFromQuery = searchParams.get("email") ?? "";
@@ -37,19 +37,17 @@ function ResetPasswordContent() {
     event.preventDefault();
     if (legacyToken && !emailFromQuery) {
       setError(
-        isEn
-          ? "Link-based reset is no longer supported. Request a new code from the forgot-password page."
-          : "La réinitialisation par lien n'est plus disponible. Demandez un nouveau code depuis la page mot de passe oublié."
+        t("authpages.23")
       );
       return;
     }
     if (!email.trim()) {
-      setError(isEn ? "Email is required." : "L'e-mail est requis.");
+      setError(t("authpages.24"));
       return;
     }
     const trimmedCode = code.replace(/\D/g, "").slice(0, 6);
     if (trimmedCode.length !== 6) {
-      setError(isEn ? "Enter the 6-digit code." : "Saisissez le code à 6 chiffres.");
+      setError(t("authpages.25"));
       return;
     }
     const passwordError = validateStrongPassword(password, isEn);
@@ -58,7 +56,7 @@ function ResetPasswordContent() {
       return;
     }
     if (password !== passwordConfirm) {
-      setError(isEn ? "Passwords do not match." : "Les mots de passe ne correspondent pas.");
+      setError(t("authpages.26"));
       return;
     }
     setError("");
@@ -73,15 +71,13 @@ function ResetPasswordContent() {
           passwordConfirm
         })
       });
-      showToast.success(isEn ? "Password updated." : "Mot de passe mis à jour.");
+      showToast.success(t("authpages.27"));
       router.push(authLoginUrl());
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : isEn
-            ? "Reset failed."
-            : "La réinitialisation a échoué."
+          : t("authpages.28")
       );
     } finally {
       setIsLoading(false);
@@ -92,21 +88,19 @@ function ResetPasswordContent() {
     <AuthSimpleLayout contentClassName="max-w-[420px]">
       <Card className="w-full p-6 sm:p-8">
         <p className="mb-2 text-sm font-semibold text-slate-600">
-          {isEn ? "Step 2 of 2" : "Étape 2 sur 2"}
+          {t("authpages.29")}
         </p>
         <h1 className="mb-2 text-2xl font-bold sm:text-3xl">
-          {isEn ? "Reset password" : "Réinitialiser le mot de passe"}
+          {t("authpages.30")}
         </h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          {isEn
-            ? "Enter the code from your email and choose a new password."
-            : "Saisissez le code reçu par e-mail et choisissez un nouveau mot de passe."}
+          {t("authpages.31")}
         </p>
 
         <form className="space-y-4" onSubmit={onSubmit}>
           <Input
             id="email"
-            label={isEn ? "Email" : "E-mail"}
+            label={t("authpages.32")}
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -115,7 +109,7 @@ function ResetPasswordContent() {
           />
           <Input
             id="otp"
-            label={isEn ? "Reset code" : "Code de réinitialisation"}
+            label={t("authpages.33")}
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={6}
@@ -128,30 +122,28 @@ function ResetPasswordContent() {
           <div className="relative">
             <Input
               id="password"
-              label={isEn ? "New password" : "Nouveau mot de passe"}
+              label={t("authpages.34")}
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="new-password"
               helpText={
-                isEn
-                  ? "At least 10 characters, mixing two kinds (letters, digits, symbols)."
-                  : "Au moins 10 caractères, en combinant deux types (lettres, chiffres, symboles)."
+                t("authpages.35")
               }
             />
             <button
               type="button"
               className="absolute right-3 top-9 text-muted-foreground hover:text-foreground"
               onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? (isEn ? "Hide" : "Masquer") : isEn ? "Show" : "Afficher"}
+              aria-label={showPassword ? (t("authpages.36")) : t("authpages.37")}
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
           <Input
             id="passwordConfirm"
-            label={isEn ? "Confirm password" : "Confirmer le mot de passe"}
+            label={t("authpages.38")}
             type={showPassword ? "text" : "password"}
             value={passwordConfirm}
             onChange={(e) => setPasswordConfirm(e.target.value)}
@@ -160,16 +152,16 @@ function ResetPasswordContent() {
           />
           <FormError>{error}</FormError>
           <Button type="submit" loading={isLoading} className="w-full">
-            {isEn ? "Save new password" : "Enregistrer le nouveau mot de passe"}
+            {t("authpages.39")}
           </Button>
         </form>
         <p className="mt-8 text-center text-sm">
           <Link href="/forgot-password" className="font-semibold text-primary hover:underline">
-            {isEn ? "Request a new code" : "Demander un nouveau code"}
+            {t("authpages.40")}
           </Link>
           {" · "}
           <Link href={authLoginUrl()} className="font-semibold text-primary hover:underline">
-            {isEn ? "Back to sign in" : "Retour à la connexion"}
+            {t("authpages.41")}
           </Link>
         </p>
       </Card>

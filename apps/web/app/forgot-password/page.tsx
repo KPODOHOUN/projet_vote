@@ -18,8 +18,7 @@ type ForgotPasswordResponse = {
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
-  const { locale, t } = useI18n();
-  const isEn = locale === "en";
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -33,16 +32,14 @@ export default function ForgotPasswordPage() {
         method: "POST",
         body: JSON.stringify({ email: email.trim() })
       });
-      showToast.success(isEn ? "Check your inbox for a code." : "Consultez votre boîte mail pour le code.");
+      showToast.success(t("authpages.42"));
       const params = new URLSearchParams({ email: email.trim() });
       router.push(`/reset-password?${params.toString()}`);
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : isEn
-            ? "Request failed."
-            : "La demande a échoué."
+          : t("authpages.43")
       );
     } finally {
       setIsLoading(false);
@@ -53,13 +50,11 @@ export default function ForgotPasswordPage() {
     <AuthSimpleLayout contentClassName="max-w-[420px]">
       <Card className="w-full p-6 sm:p-8">
         <p className="mb-2 text-sm font-semibold text-slate-600">
-          {isEn ? "Step 1 of 2" : "Étape 1 sur 2"}
+          {t("authpages.44")}
         </p>
         <h1 className="mb-2 text-2xl font-bold sm:text-3xl">{t("login.forgot")}</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          {isEn
-            ? "Enter your email and we'll send a 6-digit reset code."
-            : "Entrez votre e-mail et nous vous enverrons un code de réinitialisation à 6 chiffres."}
+          {t("authpages.45")}
         </p>
         <form className="space-y-4" onSubmit={onSubmit}>
           <Input
@@ -73,12 +68,12 @@ export default function ForgotPasswordPage() {
           />
           <FormError>{error}</FormError>
           <Button type="submit" loading={isLoading} className="w-full">
-            {isEn ? "Send reset code" : "Envoyer le code"}
+            {t("authpages.46")}
           </Button>
         </form>
         <p className="mt-8 text-center text-sm">
           <Link href={authLoginUrl()} className="font-semibold text-primary hover:underline">
-            {isEn ? "← Back to sign in" : "← Retour à la connexion"}
+            {t("authpages.47")}
           </Link>
         </p>
       </Card>
