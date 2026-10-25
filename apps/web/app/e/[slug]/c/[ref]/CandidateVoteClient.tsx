@@ -103,7 +103,7 @@ export function CandidateVoteClient({
               <span className="text-base font-bold text-slate-900 tabular-nums">{formatCfa(voteUnitPriceCfa, locale)}</span>
             </div>
 
-            <fieldset className="space-y-2">
+            <fieldset className="min-w-0 space-y-2">
               <legend className="text-sm font-semibold text-slate-900">{t("pay.quantity")}</legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {PRESETS.map((preset) => {

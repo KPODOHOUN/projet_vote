@@ -241,7 +241,7 @@ export default function EventDesignPage() {
           <form id="design-form" className="space-y-8" onSubmit={onSubmit} noValidate>
             <LogoUploadField value={logoUrl} onChange={setLogoUrl} token={getStoredToken() ?? ""} label={t("design.logo")} />
 
-            <fieldset className="space-y-4">
+            <fieldset className="min-w-0 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <legend className="text-sm font-semibold text-slate-900">{t("design.color")}</legend>
                 {logoUrl ? (
@@ -359,7 +359,7 @@ export default function EventDesignPage() {
               </p>
             </div>
 
-            <fieldset className="space-y-3">
+            <fieldset className="min-w-0 space-y-3">
               <legend className="text-sm font-semibold text-slate-900">{t("design.layout")}</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="radiogroup">
                 {EVENT_LAYOUTS.map((opt) => {
