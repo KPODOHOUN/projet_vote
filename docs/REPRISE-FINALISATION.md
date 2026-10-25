@@ -75,5 +75,44 @@ Aucune modification de code. Statut de chaque constat de la section 3.2 du promp
 - **B** commence par le P0 retrait (B3), le lockfile (B8) et les deux tests rouges, puis le reste dans l'ordre du prompt.
 - C à H inchangés.
 
+## Lot B — Intégrité, vérité métier, hygiène (2026-10-25) : terminé
+
+Méthode : TDD (test RED exécuté, puis GREEN) pour chaque changement de logique serveur. Un commit par sujet.
+
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `d68cf03` | Baseline verte : test d'intégration aligné sur la commission ESCROW et les rôles relus en base ; `test:offers` séquentiel | 230/230, 32/32 |
+| `558fe1d` | **P0** : numéro de retrait configurable (GET additif `organizer/payout-destination`, panneau Compte, rappel sous le formulaire de retrait, bouton désactivé sans numéro) | `payouts.service.test.ts` 9/9 |
+| `75c7fca` | B1 billetterie : 503 hors démo avant toute écriture ; UI fermée par défaut (`NEXT_PUBLIC_TICKET_SALES_OPEN`) ; `/t/[ticketId]` en i18n | `tickets.service.test.ts` 3/3 |
+| `24e72ef` | B5 : `MAIL_RESEND_API_KEY` obligatoire en production ; inscription → 503 si l'OTP ne part pas | `config/env.test.ts` 3/3, `auth-otp.offer.test.ts` 3/3 |
+| `f3ba873` | B6 chat : zod 1–500, plafonds journaliers IP/global, 503 sans clé, `GET /chat/status`, widget masqué sans clé | `chat.service.test.ts` 4/4 |
+| `666107a` | B7 en-têtes Next + CSP Report-Only ; `i.pravatar.cc` retiré | `docs/deployment/security-headers.md` |
+| `f2e0e86` | B8 : lockfile versionné, `.env.example`, modèles de déploiement, ADR-012, DESIGN_VISION remplacé, fichiers parasites supprimés | — |
+| `a59749f` | B2 : compteur = quantité payée après SUCCEEDED (plus de « +1 ») ; script `test` web (+ CI) | web `npm test` 4/4 |
+| `a6790e8` | B3 : **transitions de retrait atomiques** (double rejet = double restitution ; rejet ∥ approbation) | `withdrawals.service.test.ts` 7/7 (2 RED avant correctif), stable ×3 |
+| `cb74169` | B4 : admin retraits — paragraphe permanent, confirmation « Marquer payé », motif obligatoire en dialogue, statuts localisés (PAID = « Marqué payé par SHADOMA »), cartes < 768 px ; `ConfirmDialog.confirmDisabled` | typecheck/lint |
+| `4928ab3` | B4 : commission admin (taux effectif, source, bornes depuis les garde-fous, gel) | `offer-settings.service.test.ts` +1, `test:offers` 33/33 |
+| `ca047f9` | B9 : drift nul prouvé sur base vierge (39 migrations, `migrate diff` = 0) → e2e en `migrate deploy` ; B10 : liens legacy retirés de l'accueil admin | — |
+
+### Gates après Lot B
+| Commande | Résultat |
+|---|---|
+| typecheck API / API tests / web | 0 / 0 / 0 erreur |
+| lint API / web | 0 / 0 erreur ; web 43 warnings (= baseline) |
+| `apps/api npm test` | **249/249** |
+| `apps/api test:offers` | **33/33** |
+| `apps/web npm test` | 4/4 |
+| e2e Playwright (`migrate deploy`) | **19/19** (2,2 min) |
+
+### Constats ouverts (Lot B)
+- P2 : les entrées `WalletLedgerEntry` ne sont pas signées et `ADJUSTMENT` sert de crédit (rejet de retrait) ; une réconciliation générique ledger ↔ soldes exige une convention de signe. Pas de changement de schéma fait.
+- P2 : plafonds journaliers du chat en mémoire du processus (multipliés par le nombre d'instances).
+- Hypothèse : `resendOtp` / `forgotPassword` gardent le message anti-énumération en cas d'échec d'envoi (seule l'inscription renvoie 503), pour ne pas révéler l'existence d'un compte.
+- B3 « commission prélevée » côté wallet : l'API wallet ne renvoie pas de total de commission ; la vue n'en affiche aucun (rien de deviné). Ajout additif possible au Lot E.
+
+### Pièges
+- Playwright 1.62 attend `chromium_headless_shell-1234` : `npx playwright install --only-shell chromium` (sinon les 19 specs échouent au lancement du navigateur, sans rien tester).
+- Le hook GateGuard bloque la première écriture de chaque fichier ; la réessayer passe.
+
 ### Prochaine action
-Lot B.
+Lot C (tokens + moteur de thème accessible `lib/brand.ts`).
