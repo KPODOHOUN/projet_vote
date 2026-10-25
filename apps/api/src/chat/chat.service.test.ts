@@ -2,7 +2,7 @@ import test from "node:test";
 import * as assert from "node:assert/strict";
 import { ZodError } from "zod";
 import { env } from "../config/env";
-import { ChatService } from "./chat.service";
+import { CHAT_SYSTEM_PROMPT, ChatService } from "./chat.service";
 
 type FetchCall = { url: string; body: Record<string, unknown> };
 
@@ -69,4 +69,26 @@ test("chat: sans clé, l'assistant est désactivé et refuse en 503", async () =
   } finally {
     env.OPENAI_API_KEY = originalKey;
   }
+});
+
+test("chat: le prompt système ne promet rien que le produit ne fait pas", () => {
+  const forbidden = [
+    /sebpay/i,
+    /automatique/i,
+    /gratuit/i,
+    /en un jour/i,
+    /\d+\s*%/,
+    /\d+\s*h\b/i,
+    /\d+\s*(heures?|jours?|minutes?)/i,
+    /virement instantané/i,
+    /billet/i,
+    /@shadowa\./i,
+    /orange money|mtn|moov/i
+  ];
+  const hits = forbidden.filter((re) => re.test(CHAT_SYSTEM_PROMPT)).map(String);
+  assert.deepEqual(hits, []);
+  // Le flux réel doit être décrit.
+  assert.match(CHAT_SYSTEM_PROMPT, /Mobile Money/);
+  assert.match(CHAT_SYSTEM_PROMPT, /confirm/);
+  assert.match(CHAT_SYSTEM_PROMPT, /valid/);
 });
