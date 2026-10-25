@@ -56,6 +56,9 @@ jobs:
       - name: Lint — apps/web
         run: npm --prefix apps/web run lint
 
+      - name: Unit tests — apps/web (node:test)
+        run: npm --prefix apps/web test
+
   api-tests:
     runs-on: ubuntu-latest
     services:

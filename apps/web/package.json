@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test": "node --import tsx --test lib/*.test.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { displayedVoteCount } from "@/lib/vote-count";
 import { useI18n } from "../../../../../lib/i18n-provider";
 import { publicEventDateLocale } from "../../../../../lib/i18n";
 import { usePublicVotePayment } from "../../use-public-vote-payment";
@@ -37,6 +38,9 @@ export function CandidateVoteClient({
   const dateLocale = publicEventDateLocale(locale);
   const { status, submit, reset } = usePublicVotePayment({ tenantSlug: organizerSlug, eventSlug, isEn });
   const [quantity, setQuantity] = useState(1);
+  // Quantité envoyée au paiement : c'est elle qui compte après SUCCEEDED,
+  // même si le champ quantité est modifié ensuite.
+  const [submittedQuantity, setSubmittedQuantity] = useState<number | null>(null);
   const [voterPhone, setVoterPhone] = useState("");
   // Réseau mobile money. "" = détection automatique (Bénin) côté serveur.
   const [operator, setOperator] = useState("");
@@ -56,6 +60,7 @@ export function CandidateVoteClient({
 
   async function onSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
+    setSubmittedQuantity(quantity);
     await submit({ candidatePublicRef, quantity, voterPhone, operator: operator || undefined });
   }
 
@@ -64,7 +69,7 @@ export function CandidateVoteClient({
       {/* Vote Tally Header */}
       <div className="flex items-center gap-3 bg-primary/5 px-4 py-3 rounded-xl border border-primary/10 w-fit">
         <span className="text-3xl font-black text-primary tracking-tight">
-          {(initialVoteCount + (isDone ? 1 : 0)).toLocaleString(dateLocale)}
+          {displayedVoteCount(initialVoteCount, isDone ? submittedQuantity : null).toLocaleString(dateLocale)}
         </span>
         <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-none">
           {t("pub.totalVotesLabel")}
