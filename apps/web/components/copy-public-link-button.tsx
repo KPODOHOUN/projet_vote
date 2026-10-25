@@ -1,47 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
-import { Button } from "@/components/ui";
+import { ShareSheet } from "./share-sheet";
 import { publicEventUrl } from "../lib/site";
-import { showToast } from "../lib/toast";
-import { trackEvent } from "../lib/analytics";
+import { useI18n } from "../lib/i18n-provider";
 
 type CopyPublicLinkButtonProps = {
   eventSlug: string;
+  /** Titre du concours, pour le message partagé. */
+  eventTitle?: string;
+  /** Conservé pour les appels existants ; la langue vient du contexte i18n. */
   isEn?: boolean;
   variant?: "primary" | "secondary" | "ghost";
   size?: "default" | "sm" | "lg";
   onCopied?: () => void;
 };
 
-export function CopyPublicLinkButton({
-  eventSlug,
-  isEn = false,
-  variant = "secondary",
-  size = "sm",
-  onCopied
-}: CopyPublicLinkButtonProps) {
-  const [copied, setCopied] = useState(false);
+/**
+ * Partage de la page publique d'un concours (organisateur) : ouvre le panneau
+ * de partage (copie du lien, réseaux, partage natif). Nom conservé pour les
+ * imports existants.
+ */
+export function CopyPublicLinkButton({ eventSlug, eventTitle, variant = "secondary", onCopied }: CopyPublicLinkButtonProps) {
+  const { t } = useI18n();
   const url = publicEventUrl(eventSlug);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      showToast.success(isEn ? "Public link copied." : "Lien public copié.");
-      void trackEvent("public_link_copied", { eventSlug });
-      onCopied?.();
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast.error(isEn ? "Could not copy the link." : "Impossible de copier le lien.");
-    }
-  };
-
+  const title = eventTitle ?? url;
   return (
-    <Button type="button" variant={variant} size={size} onClick={() => void onCopy()}>
-      {copied ? <Check className="mr-2 h-4 w-4" aria-hidden="true" /> : <Copy className="mr-2 h-4 w-4" aria-hidden="true" />}
-      {copied ? (isEn ? "Copied" : "Copié") : isEn ? "Copy public link" : "Copier le lien public"}
-    </Button>
+    <ShareSheet
+      url={url}
+      title={title}
+      text={eventTitle ? t("share.eventText", { event: eventTitle, url }) : url}
+      label={t("share.publicButton")}
+      appearance={variant === "primary" ? "solid" : "outline"}
+      onShared={onCopied}
+      analyticsEvent="public_link_copied"
+      analyticsMeta={{ eventSlug }}
+    />
   );
 }

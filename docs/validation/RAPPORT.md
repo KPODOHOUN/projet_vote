@@ -4,24 +4,23 @@ Captures produites par `apps/web/tests/visual/` (projet Playwright séparé, `np
 
 Limite des captures pleine page : un élément `fixed` (modale, barre d'enregistrement collante) s'imprime à l'endroit du premier écran, au milieu de la capture. Ce n'est pas un défaut de la page.
 
-## Mini-plateformes — styles configurables (Affiche, Soirée, Billet)
+## Mini-plateformes — six styles configurables
 
-L'organisateur choisit dans l'éditeur d'apparence : logo, couleur, image de couverture, style de page et police des titres (Festival = Unbounded, Gala = Playfair Display, Classique = Plus Jakarta Sans). Six événements de validation couvrent les trois styles, les trois polices et des cas limites. Les candidats n'ont pas de photo (initiales) : aucune photo de personne n'a été ajoutée aux données de test.
+L'organisateur choisit dans l'éditeur d'apparence : logo, couleur, image de couverture, style de page (Affiche, Soirée, Billet, Couronne, Magazine, Pop) et police des titres (Festival = Unbounded, Gala = Playfair Display, Classique = Plus Jakarta Sans). Six événements de validation, un par style, chacun avec un **logo de démonstration** (monogramme « MC » d'un concours fictif) importé par la vraie route d'import (stockage en base). Les candidats n'ont pas de photo (initiales) : aucune photo de personne n'a été ajoutée aux données de test.
 
-L'image de couverture de « affiche-or » est une photo de concert Wikimedia Commons (« Beach-Please-2022-crowd-stage-lights-night-performance », PinkBeachPlanet, CC BY-SA 4.0), utilisée uniquement pour ces captures. Elle n'est pas dans le dépôt : la spec la lit via `VISUAL_COVER_PATH`.
+Couverture des styles Affiche, Couronne et Magazine : photo de concert Wikimedia Commons (« Beach-Please-2022-crowd-stage-lights-night-performance », PinkBeachPlanet, CC BY-SA 4.0), utilisée uniquement pour ces captures, hors dépôt (`VISUAL_COVER_PATH`, logo : `VISUAL_LOGO_PATH`).
 
 | Événement | Style · police · couleur | Pages regardées | Verdict | Défaut observé → correction |
 |---|---|---|---|---|
-| affiche-or | Affiche · Festival · or, avec couverture | hub 1280 + 390 | conforme après correction | compte à rebours en capitales et coupé, slogan or peu lisible sur la photo, débordement de 2 px à 390, numéros « 01 » cassés sur deux lignes → casse normale, sans retour, pleine largeur sur mobile ; slogan blanc ; numéro non sécable |
-| soiree-or | Soirée · Gala · or | hub 1280 + 390, profil 1280, résultats clos 1280 | conforme après correction | bouton d'action en or foncé (variables du thème posées en ligne) → accent éclairci posé en ligne en Soirée ; carte de paiement claire et opaque |
-| soiree-bleu-nuit | Soirée · Festival · `#1B2A6B` | résultats 1280 | conforme | l'accent bleu nuit est éclairci (≥ 4,5:1 sur le fond nuit) |
+| affiche-or | Affiche · Festival · or, couverture | hub 1280 + 390 | conforme après correction | compte à rebours en capitales et coupé, slogan peu lisible sur la photo, débordement de 2 px à 390, numéros cassés → corrigés |
+| soiree-or | Soirée · Gala · or | hub 1280 + 390, profil 1280, résultats clos 1280 | conforme après correction | bouton en or foncé → accent éclairci posé en ligne |
 | billet-turquoise | Billet · Classique · turquoise | hub 1280, profil 390 | conforme | — |
-| billet-blanc | Billet · Festival · blanc, liste | hub 390 | conforme après correction | bandeau blanc confondu avec le fond, double filet au-dessus de la liste → filet sous le bandeau, un seul filet |
-| affiche-sans-photo | Affiche · Gala · défaut | non regardée | — | captures présentes |
+| couronne-rose | Couronne · Gala · rose, couverture | hub 1280 | conforme | — |
+| magazine-rouge | Magazine · Festival · rouge, couverture | hub 1280 | conforme après correction | titre coupé au milieu des mots dans la demi-colonne → taille calée sur la colonne, coupure aux espaces et tirets |
+| pop-orange | Pop · Festival · orange | hub 1280 + 390 | conforme | — |
+| panneau de partage | profil Affiche, téléphone | 390 | conforme après correction | lien entièrement surligné à l'ouverture → focus sur « Copier » |
 
-Critère « un votant comprend qui il paie et combien » : **oui** dans les trois styles (nom du candidat en titre, prix d'un vote, total au-dessus du bouton « Payer »). Le bouton « Copier le lien » est neutre dans tous les styles (le défaut violet relevé plus tôt n'apparaît plus).
-
-Toutes les captures ont été refaites après ces correctifs ; les pages à 390 px font exactement 390 px de large (aucun défilement horizontal).
+Partage : bouton « Partager » sur le bandeau, le profil et les résultats ; panneau avec le lien copiable, 13 réseaux avec leurs logos officiels (Messenger sur téléphone seulement), e-mail, SMS et « Autres applications » (partage natif). Critère « un votant comprend qui il paie et combien » : **oui** dans les six styles.
 
 ## Application
 

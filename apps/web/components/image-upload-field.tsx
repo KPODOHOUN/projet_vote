@@ -6,7 +6,8 @@ import { useI18n } from "../lib/i18n-provider";
 import { isFileUploadAvailable, uploadCandidatePhoto } from "../lib/upload";
 import { cn } from "../lib/utils";
 
-const MAX_BYTES = 5 * 1024 * 1024;
+// Avant réduction dans le navigateur (lib/image-resize) ; l'API reçoit au plus 5 Mo.
+const MAX_BYTES = 25 * 1024 * 1024;
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/bmp,image/*";
 
 function isImageFile(file: File): boolean {
@@ -32,7 +33,7 @@ export function ImageUploadField({
   preview,
   hint
 }: ImageUploadFieldProps) {
-  // Photos importées uniquement (fichier envoyé à Cloudinary), jamais un lien saisi.
+  // Photos importées uniquement (Cloudinary, ou stockées en base par l'API), jamais un lien saisi.
   const { locale, t } = useI18n();
   const isEn = locale === "en";
   const inputId = useId();
@@ -50,7 +51,7 @@ export function ImageUploadField({
       return;
     }
     if (file.size > MAX_BYTES) {
-      setError(isEn ? "Image must be 5 MB or smaller." : "L'image doit faire 5 Mo maximum.");
+      setError(isEn ? "Image must be 25 MB or smaller." : "L'image doit faire 25 Mo maximum.");
       return;
     }
     setBusy(true);

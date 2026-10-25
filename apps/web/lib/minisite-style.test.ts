@@ -6,6 +6,9 @@ test("style de page : valeurs API → clé CSS, défaut affiche", () => {
   assert.equal(pageStyleOf("AFFICHE"), "affiche");
   assert.equal(pageStyleOf("SOIREE"), "soiree");
   assert.equal(pageStyleOf("BILLET"), "billet");
+  assert.equal(pageStyleOf("COURONNE"), "couronne");
+  assert.equal(pageStyleOf("MAGAZINE"), "magazine");
+  assert.equal(pageStyleOf("POP"), "pop");
   assert.equal(pageStyleOf(undefined), "affiche");
   assert.equal(pageStyleOf("NEON"), "affiche");
 });

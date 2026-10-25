@@ -35,6 +35,9 @@ enum EventPageStyle {
   AFFICHE // photo de couverture en plein écran derrière le titre
   SOIREE  // fond sombre, compte à rebours en grand
   BILLET  // aplat de la couleur de l'événement, infos en billet
+  COURONNE // composition centrée de gala, logo en médaillon, portraits encadrés
+  MAGAZINE // une de magazine : couverture en demi-écran, mosaïque de candidats
+  POP      // aplats vifs, contours encre et ombres franches
 }
 
 // Police des titres de la mini-plateforme.
@@ -1085,4 +1088,19 @@ model AdminApiKey {
   updatedAt   DateTime @updatedAt
 
   @@index([revokedAt])
+}
+
+/// Image importée (logo, couverture, photo de candidat) quand Cloudinary n'est
+/// pas configuré : stockée en base, servie par /uploads/files/{id}.{ext}.
+/// Aucun service de fichiers externe requis.
+model StoredImage {
+  /// 32 caractères hexadécimaux aléatoires (non devinable).
+  id        String   @id
+  tenantId  String?
+  mime      String
+  size      Int
+  bytes     Bytes
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
 }

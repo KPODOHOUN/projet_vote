@@ -44,7 +44,7 @@ const createEventSchema = z.object({
   endsAt: z.string().datetime(),
   // null = effacer (M3) ; absent = ne pas toucher.
   tagline: z.string().min(2).max(200).nullable().optional(),
-  logoUrl: z.string().url().max(500).nullable().optional(),
+  logoUrl: photoUrlSchema.nullable().optional(),
   brandColor: brandColorSchema.nullable().optional(),
   layout: z.nativeEnum(EventLayout).optional(),
   coverUrl: photoUrlSchema.nullable().optional(),
@@ -748,7 +748,7 @@ export class EventsService {
       endsAt: z.string().datetime().optional(),
       // null = effacer (M3) ; absent = ne pas toucher.
       tagline: z.string().min(2).max(200).nullable().optional(),
-      logoUrl: z.string().url().max(500).nullable().optional(),
+      logoUrl: photoUrlSchema.nullable().optional(),
       brandColor: brandColorSchema.nullable().optional(),
       layout: z.nativeEnum(EventLayout).optional(),
       coverUrl: photoUrlSchema.nullable().optional(),

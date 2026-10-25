@@ -54,6 +54,11 @@ En-tête commun : logo, titre en capitales espacées, onglets soulignés. Pied �
 | **Affiche** (défaut) | Couverture importée en plein écran sous un voile encre ; sans couverture, fond encre. Barre : statut, compte à rebours, prix, paiement, bouton. | Photo 4:5, grand numéro dans la police des titres | Fond clair |
 | **Soirée** | Fond nuit `#0E1220`, compte à rebours en trois cases, bande « un vote / paiement / quand la voix compte / résultats ». | Nom et numéro sur le bas de la photo | Fond nuit ; la carte de paiement reste claire et opaque |
 | **Billet** | Aplat de la couleur de l'événement (version lisible), logo en médaillon ; infos dans un billet blanc à talon détachable. | Dossard encre, barre de voix | En-tête sur l'aplat, fond clair |
+| **Couronne** | Composition centrée de gala : logo en médaillon à double anneau, ornement (filets + losange), compte à rebours en cases ; la couverture passe sous un voile clair (option « voile » de la maquette). | Portrait encadré (passe-partout blanc), texte centré | Fond teinté, filets à l'accent |
+| **Magazine** | Une de magazine : couverture sur la moitié de l'écran (sinon aplat + logo), dates en sur-titre, titre très grand, slogan en chapeau. | Mosaïque, le premier candidat en grand, nom sur la photo | Fond blanc |
+| **Pop** | Aplat vif, contours encre 3 px et ombres franches décalées, titres gras quelle que soit la police. | Carte bordée, ombre franche, numéro sur aplat | En-tête sur l'aplat |
+
+Le fond des styles clairs est teinté par la couleur de l'événement (`--mini-bg`). Sur l'Affiche avec couverture, les pages profil et résultats gardent une bande de la photo sous l'en-tête.
 
 Toutes les couleurs des pages `/e/*` passent par les jetons `--mini-*` (`globals.css`) : `--mini-bg`, `--mini-ink`, `--mini-muted`, `--mini-line`, `--mini-rule`, `--mini-wash`, `--mini-accent`. En Soirée, l'accent est `--event-accent-bright` (éclairci jusqu'à 4,5:1 sur le fond nuit, `lib/brand.ts`). Le compte à rebours part de la date de fin (ou d'ouverture) stockée ; il disparaît à l'échéance.
 
@@ -69,6 +74,10 @@ Chargement = `LoadingState` ; vide = une phrase + une action ; erreur = `FormErr
 
 Vouvoiement côté organisateur et admin, tutoiement côté votant. Textes dans `lib/i18n.ts` (FR et EN). On dit ce que le produit ne fait pas (pas de virement automatique, vote compté après confirmation). Pas de « simplifiez », « fluide », « en un clic », « premium », « recommandé »…
 
+## Partage
+
+Un seul composant, `ShareSheet` : bouton « Partager » (plein pour l'action principale, bordé sinon) qui ouvre une feuille (en bas sur téléphone, centrée sur ordinateur) : lien copiable, réseaux avec leurs **logos officiels** (tracés Simple Icons CC0, `lib/brand-icons.ts`, couleur de marque), et « Autres applications » (partage natif du téléphone, qui couvre toutes les applications installées). Instagram, TikTok et Snapchat n'ont pas de lien de partage web : partage natif, sinon copie du lien avec « colle-le dans … ». Jamais d'émoji ni de pictogramme générique à la place d'un logo de marque.
+
 ## Images
 
-Photos, logos et couverture par import de fichier (Cloudinary) uniquement, transformés par `cloudinaryTransform` (`lib/og-image-url.ts`). Sans photo : initiales sur un aplat clair teinté par l'événement. Image de partage : logo ou photo recadré, sinon carte typographique `/e/{slug}/og`.
+Photos, logos et couverture par import de fichier uniquement (jamais un lien saisi) : réduits dans le navigateur (1 600 px, `lib/image-resize.ts`), puis Cloudinary s'il est configuré, sinon stockés en base par l'API (table `StoredImage`), transformés par `cloudinaryTransform` (`lib/og-image-url.ts`). Sans photo : initiales sur un aplat clair teinté par l'événement. Image de partage : logo ou photo recadré, sinon carte typographique `/e/{slug}/og`.

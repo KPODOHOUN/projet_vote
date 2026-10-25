@@ -112,6 +112,18 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
     assert.equal(branding.fontStyle, "GALA");
   }
 
+  for (const style of ["COURONNE", "MAGAZINE", "POP", "BILLET", "AFFICHE"]) {
+    const next = await events.updateEvent(owner(t.id), ev.id, { pageStyle: style });
+    assert.equal(next.pageStyle, style);
+  }
+
+  // Images importées sans Cloudinary : chemin relatif servi par l'API, accepté pour le logo et la couverture.
+  const stored = "/api/v1/uploads/files/0123456789abcdef0123456789abcdef.png";
+  const withStored = await events.updateEvent(owner(t.id), ev.id, { logoUrl: stored, coverUrl: stored });
+  assert.equal(withStored.logoUrl, stored);
+  assert.equal(withStored.coverUrl, stored);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { logoUrl: "javascript:alert(1)" }));
+
   // null efface la couverture ; une valeur hors liste est refusée.
   const cleared = await events.updateEvent(owner(t.id), ev.id, { coverUrl: null });
   assert.equal(cleared.coverUrl, null);

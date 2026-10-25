@@ -11,6 +11,7 @@ import { prisma } from "@votezpro/db";
 export { prisma };
 
 const TABLES = [
+  "StoredImage",
   "Vote",
   "Candidate",
   "Event",

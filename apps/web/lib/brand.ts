@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-export type EventPageStyleValue = "AFFICHE" | "SOIREE" | "BILLET";
+export type EventPageStyleValue = "AFFICHE" | "SOIREE" | "BILLET" | "COURONNE" | "MAGAZINE" | "POP";
 export type EventFontStyleValue = "FESTIVAL" | "GALA" | "CLASSIQUE";
 
 export type EventBranding = {

@@ -102,6 +102,76 @@ function TicketCard({ slug, c, maxVotes }: { slug: string; c: PublicCandidate; m
   );
 }
 
+// Couronne : portrait encadré, texte centré.
+function FramedCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col items-center gap-3 text-center`}>
+      <div className="w-full bg-white p-2 shadow-[0_0_0_1px_var(--mini-line)] transition-transform group-hover:-translate-y-1">
+        <div className="aspect-[4/5] overflow-hidden bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+      </div>
+      {c.number != null ? (
+        <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+      ) : null}
+      <span className="mini-title text-lg leading-tight sm:text-xl">{c.fullName}</span>
+      <span className="-mt-1 text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Magazine : mosaïque, nom posé sur la photo ; la première carte est en grand.
+function MosaicCard({ slug, c, feature }: { slug: string; c: PublicCandidate; feature: boolean }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative block overflow-hidden rounded-md bg-[var(--mini-wash)] ${feature ? "col-span-2 lg:row-span-2" : ""}`}
+    >
+      <div className={`aspect-[4/5] ${feature ? "lg:aspect-auto lg:h-full" : ""}`}>
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size={feature ? "lg" : "sm"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+      </div>
+      {c.number != null ? (
+        <span className="mini-title absolute right-3 top-2 text-[clamp(28px,3vw,44px)] text-white [text-shadow:0_1px_12px_rgb(0_0_0/0.35)] tabular-nums">
+          {pad2(c.number)}
+        </span>
+      ) : null}
+      <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgb(15_23_42/0.86)_55%)] p-4 pt-14 text-white">
+        <span className={`mini-title block leading-tight ${feature ? "text-[clamp(24px,3vw,40px)]" : "text-base sm:text-lg"}`}>{c.fullName}</span>
+        <span className="mt-1 block text-[13px] text-white/80 tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+// Pop : carte à contour encre et ombre franche.
+function PopCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group flex flex-col overflow-hidden rounded-md border-[3px] border-slate-900 bg-white text-slate-900 shadow-[5px_5px_0_0_#0f172a] transition-[transform,box-shadow] duration-150 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[7px_7px_0_0_#0f172a]`}
+    >
+      <div className="relative aspect-[4/5] border-b-[3px] border-slate-900 bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        {c.number != null ? (
+          <span className="mini-title absolute left-0 top-0 border-b-[3px] border-r-[3px] border-slate-900 bg-[var(--event-header-bg)] px-3 py-1.5 text-xl text-[var(--event-header-fg)] tabular-nums">
+            {pad2(c.number)}
+          </span>
+        ) : null}
+      </div>
+      <div className="p-3.5">
+        <span className="block text-base font-extrabold uppercase leading-tight sm:text-lg">{c.fullName}</span>
+        <span className="mt-1 block text-[13px] font-semibold text-slate-600 tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 // Ligne de la maquette (« Vote du public ») : rang si clos, nom, voix.
 function CandidateListRow({ slug, c, rank }: { slug: string; c: PublicCandidate; rank: number | null }) {
   return (
@@ -171,14 +241,22 @@ export function AnimatedCandidatesSection({
 
   const maxVotes = Math.max(0, ...candidates.map((c) => c.voteCount));
   const grid =
-    cardStyle === "soiree"
+    cardStyle === "soiree" || cardStyle === "magazine"
       ? "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4"
-      : "grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-7 lg:grid-cols-4";
-  const card = (c: PublicCandidate) =>
+      : cardStyle === "pop"
+        ? "grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4"
+        : "grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-7 lg:grid-cols-4";
+  const card = (c: PublicCandidate, index: number) =>
     cardStyle === "soiree" ? (
       <NightCard key={c.id} slug={slug} c={c} />
     ) : cardStyle === "billet" ? (
       <TicketCard key={c.id} slug={slug} c={c} maxVotes={maxVotes} />
+    ) : cardStyle === "couronne" ? (
+      <FramedCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "magazine" ? (
+      <MosaicCard key={c.id} slug={slug} c={c} feature={index === 0 && layout === "GRID" && candidates.length > 2} />
+    ) : cardStyle === "pop" ? (
+      <PopCard key={c.id} slug={slug} c={c} />
     ) : (
       <PosterCard key={c.id} slug={slug} c={c} />
     );
@@ -189,7 +267,7 @@ export function AnimatedCandidatesSection({
     return (
       <div className="space-y-14">
         <CandidateSpotlight slug={slug} c={featured} />
-        {rest.length > 0 ? <div className={grid}>{rest.map(card)}</div> : null}
+        {rest.length > 0 ? <div className={grid}>{rest.map((c, i) => card(c, i + 1))}</div> : null}
       </div>
     );
   }

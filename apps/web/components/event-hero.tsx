@@ -1,12 +1,14 @@
 // components/event-hero.tsx — Bandeau de la page des candidats d'une
 // mini-plateforme, dans le style choisi par l'organisateur (Affiche, Soirée,
-// Billet). Toutes les valeurs viennent de l'événement : titre, logo,
+// Billet, Couronne, Magazine, Pop). Toutes les valeurs viennent de l'événement : titre, logo,
 // couverture, dates, prix ; le compte à rebours part de la date stockée.
 
 import type { ReactNode } from "react";
 
 import { PublicEventHeader } from "./public-event-header";
 import { VoteCountdown } from "./vote-countdown";
+import { ShareSheet } from "./share-sheet";
+import { publicEventUrl } from "../lib/site";
 import { translate, translateVars, type Locale, type MessageKey } from "../lib/i18n";
 import { formatCfa, formatEventDate } from "../lib/format";
 import { MOBILE_NETWORKS } from "../lib/mobile-networks";
@@ -80,12 +82,178 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
     />
   );
 
+  const cover = event.branding.coverUrl;
+  const coverSrc = cover ? cloudinaryTransform(cover, "w_1920,c_fill,g_auto,f_auto,q_auto") : null;
+  const shareUrl = publicEventUrl(event.slug);
+  const share = (appearance: "solid" | "outline", className = "") => (
+    <ShareSheet
+      url={shareUrl}
+      title={event.title}
+      text={translateVars(locale, "share.eventText", { event: event.title, url: shareUrl })}
+      label={t9n("share.eventButton")}
+      appearance={appearance}
+      className={className}
+    />
+  );
+  const cta = (className: string) =>
+    showCta ? (
+      <a href="#candidates" className={`inline-flex min-h-12 items-center justify-center px-7 font-bold hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${className}`}>
+        {t9n("hub.cta")}
+      </a>
+    ) : null;
+  const countdownLabel = t9n(phase === "open" ? "countdown.voteEndsIn" : "countdown.voteStartsIn");
+
   const organizedBy = (
     <>
       {t9n("pub.organizedBy")} <span className="font-semibold">{organizer.displayName}</span>
       {dates ? <> · {dates}</> : null}
     </>
   );
+
+  if (style === "couronne") {
+    // Couronne : composition centrée de gala ; la couverture passe sous un voile clair.
+    return (
+      <section className="relative overflow-hidden border-b border-[var(--mini-line)]">
+        {coverSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={coverSrc} alt="" fetchPriority="high" className="absolute inset-0 h-full w-full object-cover" />
+        ) : null}
+        <div aria-hidden="true" className="absolute inset-0 bg-[var(--mini-bg)] opacity-[0.88]" />
+        <div className="relative">{header("page")}</div>
+        <div className={`relative mx-auto flex max-w-4xl flex-col items-center pb-16 pt-8 text-center sm:pb-20 sm:pt-12 ${gutter}`}>
+          {logoUrl ? (
+            <span className="mb-7 rounded-full bg-white p-2 shadow-[0_0_0_1px_var(--mini-line),0_0_0_7px_var(--mini-bg),0_0_0_8px_var(--mini-line)]">
+              <Logo url={logoUrl} className="h-24 w-24 rounded-full object-contain sm:h-28 sm:w-28" />
+            </span>
+          ) : null}
+          {event.branding.tagline ? (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[var(--mini-accent)]">{event.branding.tagline}</p>
+          ) : null}
+          <h1 className="mini-title mini-display mt-4 text-balance">{event.title}</h1>
+          <div aria-hidden="true" className="my-7 flex w-full max-w-xs items-center gap-3 text-[var(--mini-accent)]">
+            <span className="h-px flex-1 bg-current opacity-60" />
+            <span className="h-2 w-2 rotate-45 bg-current" />
+            <span className="h-px flex-1 bg-current opacity-60" />
+          </div>
+          <p className="text-[15px] text-[var(--mini-muted)]">{organizedBy}</p>
+          {countdownTarget ? (
+            <div className="mt-9 w-full max-w-md">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--mini-muted)]">{countdownLabel}</p>
+              <VoteCountdown target={countdownTarget} now={now} variant="cells" />
+            </div>
+          ) : (
+            <p className="mt-8 text-base font-medium"><StatusLine phase={phase} locale={locale} /></p>
+          )}
+          <p className="mt-6 text-sm text-[var(--mini-muted)]">
+            {t9n("hub.oneVote")} · <span className="font-semibold text-[var(--mini-ink)]">{price}</span> · {networks}
+          </p>
+          <div className="mt-7 flex w-full max-w-md flex-col gap-2 sm:flex-row sm:justify-center">
+            {cta("rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)] focus-visible:ring-[var(--color-ring)]")}
+            {share("outline", "rounded-full")}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (style === "magazine") {
+    // Magazine : une de magazine, couverture sur une moitié, titre éditorial sur l'autre.
+    return (
+      <div>
+        <div className="border-b border-[var(--mini-line)]">{header("page")}</div>
+        <section className="grid border-b border-[var(--mini-line)] lg:min-h-[min(86svh,860px)] lg:grid-cols-2">
+          <div className="relative min-h-[48svh] overflow-hidden bg-[var(--event-accent)] lg:min-h-0">
+            {coverSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverSrc} alt="" fetchPriority="high" className="absolute inset-0 h-full w-full object-cover" />
+            ) : logoUrl ? (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="rounded-full bg-white p-3"><Logo url={logoUrl} className="h-36 w-36 rounded-full object-contain sm:h-44 sm:w-44" /></span>
+              </span>
+            ) : null}
+            {coverSrc && logoUrl ? <Logo url={logoUrl} className="absolute left-5 top-5 h-16 w-16 rounded-md bg-white object-contain p-1" /> : null}
+            <span className="absolute bottom-5 left-5 inline-flex items-center rounded-sm bg-white px-3 py-1.5 text-xs font-semibold text-slate-900">
+              <StatusLine phase={phase} locale={locale} />
+            </span>
+          </div>
+          <div className={`flex min-w-0 flex-col justify-between gap-10 py-10 sm:py-14 ${gutter}`}>
+            <div className="min-w-0">
+              {dates ? <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-muted)]">{dates}</p> : null}
+              {/* Demi-colonne : taille calée sur la largeur de la colonne, coupure aux tirets et espaces. */}
+              <h1 className="mini-title mt-6 text-[calc(clamp(40px,5vw,88px)*var(--mini-title-scale))] mini-title-nobreak leading-[0.95]">
+                {event.title}
+              </h1>
+              {event.branding.tagline ? (
+                <p className="mt-6 max-w-md text-xl font-light leading-snug sm:text-2xl">{event.branding.tagline}</p>
+              ) : null}
+              <p className="mt-4 text-sm text-[var(--mini-muted)]">
+                {t9n("pub.organizedBy")} <span className="font-semibold text-[var(--mini-ink)]">{organizer.displayName}</span>
+              </p>
+            </div>
+            <div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-[var(--mini-line)] pt-6">
+                {countdownTarget ? (
+                  <Fact className="col-span-2" label={t9n(phase === "open" ? "countdown.endsIn" : "countdown.startsIn")}>
+                    <span className="mini-title text-[26px] leading-none"><VoteCountdown target={countdownTarget} now={now} variant="inline" /></span>
+                  </Fact>
+                ) : null}
+                <Fact label={t9n("hub.oneVote")}>{price}</Fact>
+                <Fact label={t9n("hub.howTo.payment")}>{networks}</Fact>
+              </dl>
+              <div className="mt-8 flex flex-col gap-2 sm:flex-row">
+                {cta("rounded-md bg-[var(--color-primary)] text-[var(--color-primary-foreground)] focus-visible:ring-[var(--color-ring)]")}
+                {share("outline")}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (style === "pop") {
+    // Pop : aplat vif, contours encre et ombres franches, façon affiche sérigraphiée.
+    const popBox = "rounded-md border-[3px] border-slate-900 bg-white text-slate-900 shadow-[6px_6px_0_0_#0f172a]";
+    return (
+      <div>
+        <div className="border-b-[3px] border-slate-900 bg-[var(--event-header-bg)] text-[var(--event-header-fg)]">
+          {header("accent")}
+          <div className={`pb-14 pt-6 sm:pt-10 ${gutter}`}>
+            <div className="flex flex-wrap items-center gap-4">
+              <Logo url={logoUrl} className="h-20 w-20 rounded-md border-[3px] border-slate-900 bg-white object-contain p-1 shadow-[4px_4px_0_0_#0f172a]" />
+              {event.branding.tagline ? (
+                <span className="inline-block bg-slate-900 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-white">{event.branding.tagline}</span>
+              ) : null}
+            </div>
+            <h1 className="mini-title mini-display-xl mt-6">{event.title}</h1>
+            <p className="mt-5 text-[15px] font-semibold">{organizedBy}</p>
+          </div>
+        </div>
+        <section className={`grid gap-6 pb-4 pt-10 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] ${gutter}`}>
+          <div className={`${popBox} p-6`}>
+            {countdownTarget ? (
+              <>
+                <p className="mb-4 text-xs font-bold uppercase tracking-[0.16em]">{countdownLabel}</p>
+                <VoteCountdown target={countdownTarget} now={now} variant="cells" />
+              </>
+            ) : (
+              <p className="text-lg font-bold"><StatusLine phase={phase} locale={locale} /></p>
+            )}
+            <p className="mt-5 text-sm text-slate-600">{t9n("hub.howTo.countsValue")}</p>
+          </div>
+          <div className={`${popBox} flex flex-col gap-4 p-6`}>
+            <p>
+              <span className="mini-title text-[40px] leading-none tabular-nums">{hasPrice ? price : "—"}</span>{" "}
+              {hasPrice ? <span className="text-sm font-semibold text-slate-600">{t9n("hub.perVote")}</span> : null}
+            </p>
+            <p className="text-sm font-medium">{networks}</p>
+            {cta("rounded-md border-[3px] border-slate-900 bg-[var(--event-header-bg)] text-[var(--event-header-fg)] shadow-[4px_4px_0_0_#0f172a] focus-visible:ring-slate-900")}
+            {share("outline", "border-2 border-slate-900")}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   if (style === "soiree") {
     return (
@@ -116,6 +284,7 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
                 {t9n("hub.cta")}
               </a>
             ) : null}
+            {share("outline", "mt-3 w-full")}
           </div>
         </section>
         <dl className={`mx-[clamp(20px,4vw,56px)] grid grid-cols-2 border-y border-[var(--mini-line)] lg:grid-cols-4`}>
@@ -187,6 +356,7 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
                 {t9n("hub.cta")}
               </a>
             ) : null}
+            {share("outline", "-mt-1 w-full")}
           </div>
         </section>
       </div>
@@ -194,14 +364,13 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
   }
 
   // Affiche : photo de couverture derrière le titre ; sans photo, fond encre.
-  const cover = event.branding.coverUrl;
   return (
     <section className="relative flex min-h-[min(88svh,820px)] flex-col bg-slate-900 text-white">
-      {cover ? (
+      {coverSrc ? (
         // Couverture importée par l'organisateur ; décorative (le titre la décrit).
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={cloudinaryTransform(cover, "w_1920,c_fill,g_auto,f_auto,q_auto")}
+          src={coverSrc}
           alt=""
           fetchPriority="high"
           className="absolute inset-0 h-full w-full object-cover"
@@ -234,13 +403,10 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
             <span className={hasPrice ? "mini-title text-[26px] leading-none" : ""}>{price}</span>
           </Fact>
           <Fact label={t9n("hub.howTo.payment")}>{networks}</Fact>
-          {showCta ? (
-            <div className="col-span-2 lg:col-span-1">
-              <a href="#candidates" className="inline-flex min-h-12 w-full items-center justify-center rounded-md bg-[var(--event-header-bg)] px-7 font-bold text-[var(--event-header-fg)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-                {t9n("hub.cta")}
-              </a>
-            </div>
-          ) : null}
+          <div className="col-span-2 flex flex-col gap-2 sm:flex-row lg:col-span-1 lg:flex-col">
+            {cta("w-full rounded-md bg-[var(--event-header-bg)] text-[var(--event-header-fg)] focus-visible:ring-white focus-visible:ring-offset-slate-900")}
+            {share("outline", "w-full")}
+          </div>
         </dl>
       </div>
     </section>

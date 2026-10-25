@@ -664,7 +664,8 @@ img {
    de titres (data-title-font). Le paiement (secure-flow) reste une carte
    claire et opaque quel que soit le style. */
 [data-event-theme] {
-  --mini-bg: var(--color-slate-50);
+  /* Fond légèrement teinté par la couleur de l'événement. */
+  --mini-bg: color-mix(in srgb, var(--event-accent, #4f46e5) 4%, #f8fafc);
   --mini-ink: var(--color-slate-900);
   --mini-muted: var(--color-slate-600);
   --mini-line: var(--color-slate-900);
@@ -707,6 +708,24 @@ img {
   --color-muted: rgb(255 255 255 / 0.06);
   color-scheme: dark;
 }
+[data-event-theme][data-page-style="couronne"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #4f46e5) 7%, #fdfdfd);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #4f46e5) 45%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #4f46e5) 20%, transparent);
+}
+[data-event-theme][data-page-style="magazine"] {
+  --mini-bg: #ffffff;
+}
+[data-event-theme][data-page-style="pop"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #4f46e5) 16%, #ffffff);
+  --mini-line: var(--color-slate-900);
+  --mini-rule: rgb(15 23 42 / 0.2);
+  --mini-wash: color-mix(in srgb, var(--event-accent, #4f46e5) 22%, #ffffff);
+  /* Pop : titres gras quelle que soit la police choisie. */
+  --mini-title-weight: 800;
+  --mini-title-tracking: 0;
+}
+
 /* Retour au clair dans les zones de paiement et les cartes. */
 [data-event-theme][data-page-style="soiree"] [data-zone="secure-flow"] {
   --color-primary: var(--event-accent-strong);
@@ -729,6 +748,8 @@ img {
   overflow-wrap: anywhere;
   min-width: 0;
 }
+/* Titre dans une colonne étroite : coupure aux espaces et tirets seulement. */
+.mini-title-nobreak { overflow-wrap: normal; }
 /* Taille des grands titres, corrigée selon la largeur de la police. */
 .mini-display { font-size: calc(clamp(44px, 8vw, 128px) * var(--mini-title-scale)); line-height: 0.92; }
 .mini-display-xl { font-size: calc(clamp(52px, 10vw, 152px) * var(--mini-title-scale)); line-height: 0.9; }

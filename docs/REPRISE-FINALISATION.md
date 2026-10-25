@@ -314,3 +314,11 @@ Demande : pages d'événement personnalisables par l'organisateur (logo, brandin
 - Polices : Unbounded et Playfair Display auto-hébergées (OFL), non préchargées.
 - Portes : API 259/259, offres 36/36, web 30/30, e2e 23/23, typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0, build OK. Captures : `docs/validation/RAPPORT.md`.
 - À faire côté dev local : appliquer la migration sur la base de développement (`npx prisma migrate deploy` dans `packages/db`) avant de lancer l'application.
+
+## Suite — six modèles, partage, import sans serveur (2026-10-25)
+
+- Trois styles de plus : `COURONNE`, `MAGAZINE`, `POP` (migration additive `20261025200000_event_page_style_more`). Fond teinté par la couleur de l'événement ; bande de couverture sur les pages profil et résultats en Affiche.
+- Partage : `ShareSheet` remplace les boutons « Copier le lien » (votant et organisateur) ; logos officiels Simple Icons (CC0) dans `lib/brand-icons.ts` ; `lib/share-targets.ts` testé.
+- Import d'images sans Cloudinary dans tous les environnements : stockage en base (`StoredImage`, migration `20261025210000_stored_image`), type vérifié par signature binaire, SVG refusé, servi avec `nosniff` et cache immuable ; réduction à 1 600 px dans le navigateur. Le test « 503 hors développement » est remplacé par les tests du nouveau comportement (demande explicite). `logoUrl` accepte désormais les chemins d'images stockées (test ajouté, RED vu).
+- Portes : API 261/261, offres 36/36, web 36/36, e2e 23/23, typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0.
+- Base de dev locale : appliquer les migrations (`npx prisma migrate deploy` dans `packages/db`).

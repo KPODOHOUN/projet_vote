@@ -1,6 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 
 // Données de validation uniquement (jamais committées dans les seeds) :
@@ -13,31 +12,31 @@ type Palette = {
   name: string;
   color: string | null;
   layout: "GRID" | "LIST" | "SPOTLIGHT";
-  pageStyle: "AFFICHE" | "SOIREE" | "BILLET";
+  pageStyle: "AFFICHE" | "SOIREE" | "BILLET" | "COURONNE" | "MAGAZINE" | "POP";
   fontStyle: "FESTIVAL" | "GALA" | "CLASSIQUE";
   cover?: boolean;
 };
-// Les trois styles de page, chacun avec deux couleurs et des polices différentes,
-// dont des cas limites (bleu nuit en Soirée, blanc en Billet, Affiche sans photo).
+// Les six styles de page, chacun avec une couleur, une police et un logo de
+// démonstration ; couverture là où le style la met en avant.
 const PALETTES: Palette[] = [
   { name: "affiche-or", color: "#D4A017", layout: "GRID", pageStyle: "AFFICHE", fontStyle: "FESTIVAL", cover: true },
-  { name: "affiche-sans-photo", color: null, layout: "GRID", pageStyle: "AFFICHE", fontStyle: "GALA" },
   { name: "soiree-or", color: "#D4A017", layout: "GRID", pageStyle: "SOIREE", fontStyle: "GALA" },
-  { name: "soiree-bleu-nuit", color: "#1B2A6B", layout: "SPOTLIGHT", pageStyle: "SOIREE", fontStyle: "FESTIVAL" },
   { name: "billet-turquoise", color: "#14B8A6", layout: "GRID", pageStyle: "BILLET", fontStyle: "CLASSIQUE" },
-  { name: "billet-blanc", color: "#FFFFFF", layout: "LIST", pageStyle: "BILLET", fontStyle: "FESTIVAL" }
+  { name: "couronne-rose", color: "#DB2777", layout: "GRID", pageStyle: "COURONNE", fontStyle: "GALA", cover: true },
+  { name: "magazine-rouge", color: "#DC2626", layout: "GRID", pageStyle: "MAGAZINE", fontStyle: "FESTIVAL", cover: true },
+  { name: "pop-orange", color: "#F97316", layout: "GRID", pageStyle: "POP", fontStyle: "FESTIVAL" }
 ];
 
-// Image de couverture de validation : fournie hors dépôt (VISUAL_COVER_PATH),
-// déposée là où l'API sert les fichiers importés. Sans elle, Affiche garde son fond encre.
-function coverUrl(): string | null {
-  const source = process.env.VISUAL_COVER_PATH;
-  if (!source || !existsSync(source)) return null;
-  const dir = "../api/.data/uploads";
-  mkdirSync(dir, { recursive: true });
-  const filename = `${randomBytes(16).toString("hex")}.jpg`;
-  copyFileSync(source, `${dir}/${filename}`);
-  return `/api/v1/uploads/files/${filename}`;
+// Logo et couverture de démonstration, fournis hors dépôt (VISUAL_LOGO_PATH,
+// VISUAL_COVER_PATH) et importés par la vraie route d'import (stockage en base).
+async function importImage(request: APIRequestContext, headers: Record<string, string>, path: string | undefined, mimeType: string) {
+  if (!path || !existsSync(path)) return null;
+  const res = await request.post(`${apiBaseUrl}/uploads/image`, {
+    headers,
+    multipart: { file: { name: path.split("/").pop()!, mimeType, buffer: readFileSync(path) } }
+  });
+  expect(res.ok()).toBeTruthy();
+  return ((await res.json()) as { url: string }).url;
 }
 
 async function organizer(request: APIRequestContext, unique: string) {
@@ -85,7 +84,8 @@ async function seedEvent(request: APIRequestContext, headers: Record<string, str
       tagline: "Édition 2026",
       pageStyle: p.pageStyle,
       fontStyle: p.fontStyle,
-      coverUrl: p.cover ? coverUrl() : null
+      logoUrl: await importImage(request, headers, process.env.VISUAL_LOGO_PATH, "image/png"),
+      coverUrl: p.cover ? await importImage(request, headers, process.env.VISUAL_COVER_PATH, "image/jpeg") : null
     }
   });
   const candidates = await prisma.candidate.findMany({ where: { eventId: id }, orderBy: { number: "asc" } });
@@ -107,7 +107,7 @@ async function shoot(page: Page, path: string, width: number, file: string) {
   await page.screenshot({ path: `${OUT}/${width}/${file}.png`, fullPage: true });
 }
 
-test("mini-plateformes : hub, profil, résultats dans les trois styles", async ({ page, request }) => {
+test("mini-plateformes : hub, profil, résultats dans les six styles", async ({ page, request }) => {
   test.setTimeout(300_000);
   const unique = `${Date.now()}`;
   const headers = await organizer(request, unique);
@@ -117,6 +117,15 @@ test("mini-plateformes : hub, profil, résultats dans les trois styles", async (
       await shoot(page, `/e/${slug}`, width, `hub-${p.name}`);
       await shoot(page, `/e/${slug}/c/${firstRef}`, width, `profil-${p.name}`);
       await shoot(page, `/e/${slug}/results`, width, `resultats-${p.name}`);
+    }
+    if (p.name === "affiche-or") {
+      // Panneau de partage ouvert, sur téléphone.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/e/${slug}/c/${firstRef}`);
+      await page.getByRole("button", { name: "Partager ce profil" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: `${OUT}/390/partage.png` });
     }
     if (p.name === "soiree-or") {
       await prisma.event.update({ where: { id }, data: { status: "CLOSED" } });

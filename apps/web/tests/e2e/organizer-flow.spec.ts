@@ -38,7 +38,7 @@ test("parcours express: inscription -> lancement concours en une étape", async 
   await expect(successHeading).toBeVisible();
   await expect(page.getByRole("link", { name: "Personnaliser la page" })).toBeVisible();
 
-  const copyLinkButton = page.getByRole("button", { name: "Copier le lien public" });
+  const copyLinkButton = page.getByRole("button", { name: "Partager la page" });
   if (await copyLinkButton.isVisible()) {
     await expect(copyLinkButton).toBeEnabled();
   }

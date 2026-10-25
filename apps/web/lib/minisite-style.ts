@@ -2,10 +2,17 @@
 // l'organisateur : style de page et police des titres. Fonctions pures,
 // partagées par les pages publiques et l'éditeur d'apparence.
 
-export type PageStyleKey = "affiche" | "soiree" | "billet";
+export type PageStyleKey = "affiche" | "soiree" | "billet" | "couronne" | "magazine" | "pop";
 export type FontStyleKey = "festival" | "gala" | "classique";
 
-const PAGE_STYLES: Record<string, PageStyleKey> = { AFFICHE: "affiche", SOIREE: "soiree", BILLET: "billet" };
+const PAGE_STYLES: Record<string, PageStyleKey> = {
+  AFFICHE: "affiche",
+  SOIREE: "soiree",
+  BILLET: "billet",
+  COURONNE: "couronne",
+  MAGAZINE: "magazine",
+  POP: "pop"
+};
 const FONT_STYLES: Record<string, FontStyleKey> = { FESTIVAL: "festival", GALA: "gala", CLASSIQUE: "classique" };
 
 /** Valeur API → clé CSS (`data-page-style`). Inconnue ou absente : affiche. */

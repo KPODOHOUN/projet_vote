@@ -8,10 +8,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CandidatePhoto } from "../../../../components/candidate-photo";
-import { SITE_NAME } from "../../../../lib/site";
+import { SITE_NAME, publicEventUrl } from "../../../../lib/site";
 import { getServerLocale } from "../../../../lib/locale-server";
+import { ShareSheet } from "../../../../components/share-sheet";
 import { PublicEventShell } from "../../../../components/public-event-shell";
-import { StatusChip } from "../../../../components/ui/primitives";
 import { translate, translateVars, type MessageKey } from "../../../../lib/i18n";
 import { formatCount } from "../../../../lib/format";
 import { getVotePhase } from "../../../../lib/vote-phase";
@@ -124,7 +124,10 @@ export default async function PublicResultsPage({ params }: PageProps) {
           <div className="flex max-w-sm flex-col gap-2.5">
             <h2 className={`m-0 ${accentKicker}`}>{event.title}</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <StatusChip tone={chip.tone} label={chip.label} />
+              <span className="inline-flex items-center gap-2 text-sm font-medium">
+                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${chip.tone === "live" ? "bg-emerald-500" : "bg-slate-400"}`} />
+                {chip.label}
+              </span>
               {!isFinal && hasVotes ? <span className={kicker}>{t9n("results.provisional")}</span> : null}
             </div>
             <p className="text-sm font-light leading-relaxed text-[var(--mini-muted)]">
@@ -133,6 +136,14 @@ export default async function PublicResultsPage({ params }: PageProps) {
             <Link href={`/e/${event.slug}/results`} className={`${kicker} inline-flex min-h-11 items-center hover:opacity-65`}>
               {t9n("results.refresh")}
             </Link>
+            <ShareSheet
+              url={publicEventUrl(event.slug) + "/results"}
+              title={event.title}
+              text={translateVars(locale, "share.resultsText", { event: event.title, url: publicEventUrl(event.slug) + "/results" })}
+              label={t9n("share.resultsButton")}
+              appearance="outline"
+              className="w-fit"
+            />
           </div>
         </section>
 

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { buildEventTheme, type EventBranding } from "../lib/brand";
 import { fontStyleOf, pageStyleOf } from "../lib/minisite-style";
+import { cloudinaryTransform } from "../lib/og-image-url";
 import { PublicEventFooter, PublicEventHeader, type HeaderTone, type MinisitePage } from "./public-event-header";
 
 type PublicEventShellProps = {
@@ -22,7 +23,11 @@ type PublicEventShellProps = {
 
 /** Fond de l'en-tête quand il est posé par la coquille (hors bandeau). */
 export function headerToneFor(branding: EventBranding): HeaderTone {
-  return pageStyleOf(branding.pageStyle) === "billet" ? "accent" : "page";
+  const style = pageStyleOf(branding.pageStyle);
+  if (style === "billet" || style === "pop") return "accent";
+  // Affiche avec couverture : l'en-tête est posé sur une bande de la photo.
+  if (style === "affiche" && branding.coverUrl) return "image";
+  return "page";
 }
 
 /**
@@ -65,7 +70,27 @@ export function PublicEventShell({
       style={style}
     >
       {headerInHero ? null : (
-        <div className={tone === "accent" ? "bg-[var(--event-header-bg)]" : undefined}>
+        <div
+          className={
+            tone === "accent"
+              ? `bg-[var(--event-header-bg)] ${pageStyle === "pop" ? "border-b-[3px] border-slate-900" : ""}`
+              : tone === "image"
+                ? "relative overflow-hidden bg-slate-900 pb-10"
+                : undefined
+          }
+        >
+          {tone === "image" && branding.coverUrl ? (
+            <>
+              {/* Bande de la couverture : l'identité de l'événement reste visible sur chaque page. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={cloudinaryTransform(branding.coverUrl, "w_1920,h_480,c_fill,g_auto,f_auto,q_auto")}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(180deg,rgb(15_23_42/0.7),rgb(15_23_42/0.55))]" />
+            </>
+          ) : null}
           <PublicEventHeader
             eventTitle={eventTitle}
             slug={slug}

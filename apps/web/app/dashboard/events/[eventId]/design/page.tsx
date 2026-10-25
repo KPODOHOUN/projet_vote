@@ -54,7 +54,7 @@ type Saved = {
   fontStyle: EventFontStyleValue;
 };
 
-const PAGE_STYLES: EventPageStyleValue[] = ["AFFICHE", "SOIREE", "BILLET"];
+const PAGE_STYLES: EventPageStyleValue[] = ["AFFICHE", "SOIREE", "BILLET", "COURONNE", "MAGAZINE", "POP"];
 const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: number }> = [
   { id: "FESTIVAL", family: "var(--font-festival)", weight: 300 },
   { id: "GALA", family: "var(--font-gala)", weight: 400 },
@@ -63,6 +63,38 @@ const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: numb
 
 /** Vignette schématique d'un style de page (formes seulement, aucun contenu inventé). */
 function StyleThumb({ style, accent }: { style: EventPageStyleValue; accent: string }) {
+  if (style === "COURONNE") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-md" style={{ background: `color-mix(in srgb, ${accent} 10%, #fdfdfd)` }}>
+        <span className="h-5 w-5 rounded-full bg-white" style={{ boxShadow: `0 0 0 1px ${accent}` }} />
+        <span className="h-1.5 w-14 rounded-sm bg-slate-800" />
+        <span className="flex w-12 items-center gap-1"><span className="h-px flex-1" style={{ background: accent }} /><span className="h-1.5 w-1.5 rotate-45" style={{ background: accent }} /><span className="h-px flex-1" style={{ background: accent }} /></span>
+      </span>
+    );
+  }
+  if (style === "MAGAZINE") {
+    return (
+      <span aria-hidden="true" className="grid h-20 grid-cols-2 overflow-hidden rounded-md border border-slate-200 bg-white">
+        <span style={{ background: accent }} />
+        <span className="flex flex-col justify-center gap-1.5 p-2">
+          <span className="h-2 w-full rounded-sm bg-slate-800" />
+          <span className="h-2 w-3/4 rounded-sm bg-slate-800" />
+          <span className="h-1 w-1/2 rounded-sm bg-slate-300" />
+        </span>
+      </span>
+    );
+  }
+  if (style === "POP") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col justify-end gap-1.5 rounded-md p-2.5" style={{ background: `color-mix(in srgb, ${accent} 30%, #ffffff)` }}>
+        <span className="h-2.5 w-16 rounded-sm bg-slate-900" />
+        <span className="flex gap-1.5">
+          <span className="h-5 w-8 rounded-sm border-2 border-slate-900 bg-white shadow-[2px_2px_0_0_#0f172a]" />
+          <span className="h-5 w-8 rounded-sm border-2 border-slate-900 bg-white shadow-[2px_2px_0_0_#0f172a]" />
+        </span>
+      </span>
+    );
+  }
   if (style === "SOIREE") {
     return (
       <span aria-hidden="true" className="flex h-20 flex-col justify-between rounded-md bg-[#0e1220] p-2.5">
