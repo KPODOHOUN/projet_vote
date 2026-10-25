@@ -16,6 +16,7 @@ import { getVotePhase, type VotePhase } from "../../../lib/vote-phase";
 import { MOBILE_NETWORKS } from "../../../lib/mobile-networks";
 import { PhaseNotice } from "../../../components/phase-notice";
 import { openGraphLocale, publicVoteDescription } from "../../../lib/public-meta";
+import { ogImageUrl } from "../../../lib/og-image-url";
 import { PublicEventShell } from "../../../components/public-event-shell";
 import { AnimatedCandidatesSection } from "../../../components/animated-candidates-section";
 
@@ -49,6 +50,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const title = translateVars(locale, "meta.hub.title", { event: event.title });
   const description = publicVoteDescription(event, locale);
   const url = `/e/${event.slug}`;
+  // Logo recadré si présent, sinon carte typographique générée (/e/{slug}/og).
+  const ogImage = ogImageUrl(event.branding.logoUrl) ?? `${url}/og`;
   return {
     title,
     description,
@@ -60,9 +63,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       siteName: SITE_NAME,
       type: "website",
       locale: openGraphLocale(locale),
-      ...(event.branding.logoUrl ? { images: [{ url: event.branding.logoUrl }] } : {})
+      images: [{ url: ogImage, width: 1200, height: 630, alt: event.title }]
     },
-    twitter: { card: "summary_large_image", title, description }
+    twitter: { card: "summary_large_image", title, description, images: [ogImage] }
   };
 }
 

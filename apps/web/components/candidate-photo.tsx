@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cloudinaryTransform } from "../lib/og-image-url";
 
 function initials(name: string): string {
   return name
@@ -44,10 +45,7 @@ export function CandidatePhoto({
   // Pour les URLs Cloudinary, servir une image dimensionnée + auto format/qualité
   // (insère une transformation dans le chemin /upload/). Autres URLs inchangées.
   const width = size === "lg" ? 640 : 160;
-  const src =
-    photoUrl.includes("res.cloudinary.com") && photoUrl.includes("/upload/")
-      ? photoUrl.replace("/upload/", `/upload/w_${width},c_fill,f_auto,q_auto/`)
-      : photoUrl;
+  const src = cloudinaryTransform(photoUrl, `w_${width},c_fill,g_auto,f_auto,q_auto`);
   // eslint-disable-next-line @next/next/no-img-element
   return <img className={cls} src={src} alt="" loading="lazy" onError={() => setBroken(true)} />;
 }

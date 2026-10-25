@@ -11,6 +11,7 @@ import { getVotePhase } from "../../../../../lib/vote-phase";
 import { formatEventDate } from "../../../../../lib/format";
 import { PhaseNotice } from "../../../../../components/phase-notice";
 import { openGraphLocale, publicVoteDescription } from "../../../../../lib/public-meta";
+import { ogImageUrl } from "../../../../../lib/og-image-url";
 import { PublicEventShell } from "../../../../../components/public-event-shell";
 import { ArrowLeft } from "lucide-react";
 
@@ -63,7 +64,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const title = translateVars(locale, "meta.candidate.title", { name: candidate.fullName, event: event.title });
   const description = publicVoteDescription(event, locale);
   const url = publicCandidatePath(event.slug, candidate.publicRef);
-  const ogImage = candidate.photoUrl ?? event.branding.logoUrl;
+  // Photo du candidat recadrée (g_auto), sinon logo, sinon carte typographique.
+  const ogImage = ogImageUrl(candidate.photoUrl) ?? ogImageUrl(event.branding.logoUrl) ?? `/e/${event.slug}/og`;
   return {
     title,
     description,
@@ -75,9 +77,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       siteName: SITE_NAME,
       type: "website",
       locale: openGraphLocale(locale),
-      ...(ogImage ? { images: [{ url: ogImage }] } : {})
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }]
     },
-    twitter: { card: "summary_large_image", title, description, ...(candidate.photoUrl ? { images: [candidate.photoUrl] } : {}) }
+    twitter: { card: "summary_large_image", title, description, images: [ogImage] }
   };
 }
 
