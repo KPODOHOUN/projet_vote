@@ -1,6 +1,9 @@
-import { HttpException, HttpStatus, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { HttpException, HttpStatus, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { z } from "zod";
 import { env } from "../config/env";
+import { type ChatQuotaStore, createChatQuotaStore } from "./chat-quota";
+
+export const CHAT_QUOTA_STORE = Symbol("CHAT_QUOTA_STORE");
 
 const chatMessageSchema = z.object({
   message: z.string().trim().min(1).max(500)
@@ -33,12 +36,13 @@ Règles :
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
-  // Daily counters live in this process only: with several API instances the
-  // effective cap is multiplied by the instance count. Good enough to bound
-  // cost; move to Redis if the API scales out.
-  private day = "";
-  private globalCount = 0;
-  private readonly perIpCount = new Map<string, number>();
+  // Redis quand API_REDIS_URL est défini (plafond partagé entre instances),
+  // sinon mémoire du processus (plafond multiplié par le nombre d'instances).
+  private readonly quota: ChatQuotaStore;
+
+  constructor(@Optional() @Inject(CHAT_QUOTA_STORE) quota?: ChatQuotaStore) {
+    this.quota = quota ?? createChatQuotaStore();
+  }
 
   isEnabled(): boolean {
     return Boolean(env.OPENAI_API_KEY);
@@ -50,7 +54,7 @@ export class ChatService {
     if (!apiKey) {
       throw new ServiceUnavailableException("L'assistant n'est pas disponible.");
     }
-    this.consumeDailyQuota(ip);
+    await this.consumeDailyQuota(ip);
 
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -88,18 +92,12 @@ export class ChatService {
     }
   }
 
-  private consumeDailyQuota(ip: string): void {
+  private async consumeDailyQuota(ip: string): Promise<void> {
     const today = new Date().toISOString().slice(0, 10);
-    if (today !== this.day) {
-      this.day = today;
-      this.globalCount = 0;
-      this.perIpCount.clear();
-    }
-    const ipCount = this.perIpCount.get(ip) ?? 0;
-    if (ipCount >= env.CHAT_DAILY_LIMIT_PER_IP || this.globalCount >= env.CHAT_DAILY_LIMIT) {
+    const counts = await this.quota.hit(today, ip);
+    if (counts.ip > env.CHAT_DAILY_LIMIT_PER_IP || counts.global > env.CHAT_DAILY_LIMIT) {
+      await this.quota.undo(today, ip);
       throw new HttpException("L'assistant a atteint sa limite pour aujourd'hui. Réessayez demain.", HttpStatus.TOO_MANY_REQUESTS);
     }
-    this.perIpCount.set(ip, ipCount + 1);
-    this.globalCount += 1;
   }
 }

@@ -3,6 +3,7 @@ import * as assert from "node:assert/strict";
 import { ZodError } from "zod";
 import { env } from "../config/env";
 import { CHAT_SYSTEM_PROMPT, ChatService } from "./chat.service";
+import { RedisChatQuotaStore } from "./chat-quota";
 
 type FetchCall = { url: string; body: Record<string, unknown> };
 
@@ -92,3 +93,41 @@ test("chat: le prompt système ne promet rien que le produit ne fait pas", () =>
   assert.match(CHAT_SYSTEM_PROMPT, /confirm/);
   assert.match(CHAT_SYSTEM_PROMPT, /valid/);
 });
+
+test("chat: avec Redis, les plafonds sont partagés entre instances (clé par jour, expiration posée)", withFakeOpenAi(async (calls) => {
+  const counters = new Map<string, number>();
+  const expiries = new Map<string, number>();
+  const fakeRedis = {
+    async incr(key: string) {
+      const next = (counters.get(key) ?? 0) + 1;
+      counters.set(key, next);
+      return next;
+    },
+    async decr(key: string) {
+      const next = (counters.get(key) ?? 0) - 1;
+      counters.set(key, next);
+      return next;
+    },
+    async expire(key: string, seconds: number) {
+      expiries.set(key, seconds);
+      return 1;
+    }
+  };
+  const previous = { perIp: env.CHAT_DAILY_LIMIT_PER_IP, global: env.CHAT_DAILY_LIMIT };
+  env.CHAT_DAILY_LIMIT_PER_IP = 1;
+  env.CHAT_DAILY_LIMIT = 10;
+  try {
+    // Deux instances de l'API, un seul Redis.
+    const a = new ChatService(new RedisChatQuotaStore(fakeRedis));
+    const b = new ChatService(new RedisChatQuotaStore(fakeRedis));
+    await a.chat({ message: "a" }, "5.5.5.5");
+    await assert.rejects(b.chat({ message: "b" }, "5.5.5.5"), (err: unknown) => (err as { getStatus?: () => number }).getStatus?.() === 429);
+    assert.equal(calls.length, 1);
+    const day = new Date().toISOString().slice(0, 10);
+    assert.ok([...counters.keys()].every((k) => k.includes(day)));
+    assert.ok([...expiries.values()].every((s) => s > 0 && s <= 2 * 86_400));
+  } finally {
+    env.CHAT_DAILY_LIMIT_PER_IP = previous.perIp;
+    env.CHAT_DAILY_LIMIT = previous.global;
+  }
+}));
