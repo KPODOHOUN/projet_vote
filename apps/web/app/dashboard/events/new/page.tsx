@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../../lib/api";
 import { getStoredToken } from "../../../../lib/auth";
+import { LogoUploadField } from "../../../../components/logo-upload-field";
 import { useI18n } from "../../../../lib/i18n-provider";
 import { Button, Input, Card } from "@/components/ui";
 import { DashboardBreadcrumb } from "@/components/dashboard-breadcrumb";
@@ -264,10 +265,14 @@ export default function NewEventPage() {
                   );
                 })}
               </div>
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <Input id="tagline" label={isEn ? "Tagline (optional)" : "Slogan (optionnel)"} value={tagline} onChange={(e) => setTagline(e.target.value)} />
-                <Input id="logoUrl" label={isEn ? "Logo URL (optional)" : "URL du logo (optionnel)"} type="url" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-              </div>
+              <Input id="tagline" label={isEn ? "Tagline (optional)" : "Slogan (optionnel)"} value={tagline} onChange={(e) => setTagline(e.target.value)} />
+              {/* Logo importé (fichier), jamais un lien saisi. */}
+              <LogoUploadField
+                value={logoUrl}
+                onChange={setLogoUrl}
+                token={getStoredToken() ?? ""}
+                label={isEn ? "Logo (optional)" : "Logo (optionnel)"}
+              />
               <Input
                 id="brandColor"
                 label={isEn ? "Brand color (optional)" : "Couleur de marque (optionnel)"}

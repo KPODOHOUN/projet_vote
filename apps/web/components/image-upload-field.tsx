@@ -20,9 +20,6 @@ type ImageUploadFieldProps = {
   token: string;
   label: string;
   preview?: ReactNode;
-  /** Affiche le champ URL en repli (défaut : true) */
-  showUrlFallback?: boolean;
-  urlPlaceholder?: string;
 };
 
 export function ImageUploadField({
@@ -30,11 +27,10 @@ export function ImageUploadField({
   onChange,
   token,
   label,
-  preview,
-  showUrlFallback = true,
-  urlPlaceholder
+  preview
 }: ImageUploadFieldProps) {
-  const { locale } = useI18n();
+  // Photos importées uniquement (fichier envoyé à Cloudinary), jamais un lien saisi.
+  const { locale, t } = useI18n();
   const isEn = locale === "en";
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -87,10 +83,6 @@ export function ImageUploadField({
   const pickHint = isEn
     ? "Click to choose a photo or drag and drop"
     : "Cliquez pour choisir une photo ou glissez-déposez";
-  const defaultUrlPlaceholder = canUpload
-    ? (isEn ? "…or paste an image URL" : "…ou collez une URL d'image")
-    : (isEn ? "Paste an image URL (e.g. https://…)" : "Collez l'URL d'une image (ex: https://…)");
-
   return (
     <div className="flex flex-col gap-3">
       <span className="text-sm font-semibold text-foreground">{label}</span>
@@ -142,14 +134,20 @@ export function ImageUploadField({
             </>
           ) : null}
 
-          {showUrlFallback ? (
-            <input
-              type="url"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder={urlPlaceholder ?? defaultUrlPlaceholder}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-            />
+          {!canUpload ? (
+            <p className="text-sm text-slate-600" role="status">
+              {t("upload.unavailable")}
+            </p>
+          ) : null}
+
+          {value && !busy ? (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              {t("upload.remove")}
+            </button>
           ) : null}
 
           {error ? (
