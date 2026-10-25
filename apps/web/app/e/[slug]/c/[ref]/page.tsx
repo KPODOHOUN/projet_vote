@@ -94,7 +94,7 @@ export default async function CandidateProfilePage({ params }: PageProps) {
   const t9n = (key: MessageKey) => translate(locale, key);
 
   return (
-    <PublicEventShell isEn={isEn} eventTitle={event.title} slug={event.slug} branding={event.branding}>
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding}>
       <main className="flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
         <Card surface="glass" className="w-full max-w-5xl overflow-hidden p-0">
         <div className="flex flex-col md:flex-row">

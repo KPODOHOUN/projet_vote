@@ -494,6 +494,10 @@ const messages = {
     "vote.entry.placeholder": "ex : nom-du-concours",
     "vote.entry.demo": "Voir un concours de démonstration",
     "vote.entry.organizerLogin": "Connexion organisateur",
+    "publicEvent.results": "Résultats",
+    "publicEvent.tickets": "Billets",
+    "publicEvent.hostedBy": "Concours hébergé par",
+    "publicEvent.nav": "Navigation du concours",
   },
   en: {
     "lang.switch": "Language",
@@ -981,6 +985,10 @@ const messages = {
     "vote.entry.placeholder": "e.g. contest-name",
     "vote.entry.demo": "See a demo contest",
     "vote.entry.organizerLogin": "Organizer sign in",
+    "publicEvent.results": "Results",
+    "publicEvent.tickets": "Tickets",
+    "publicEvent.hostedBy": "Contest hosted by",
+    "publicEvent.nav": "Contest navigation",
   }
 } as const;
 

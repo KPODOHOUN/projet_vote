@@ -75,7 +75,6 @@ export default async function PublicEventPage({ params }: PageProps) {
 
   return (
     <PublicEventShell
-      isEn={isEn}
       eventTitle={event.title}
       slug={event.slug}
       branding={event.branding}

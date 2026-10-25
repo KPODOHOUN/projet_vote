@@ -40,7 +40,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function PublicTicketsPage({ params }: PageProps) {
   const { slug } = await params;
-  const locale = await getServerLocale();
   const data = await fetchPublicEvent(slug);
   if (!data) {
     notFound();
@@ -50,7 +49,6 @@ export default async function PublicTicketsPage({ params }: PageProps) {
 
   return (
     <PublicEventShell
-      isEn={locale === "en"}
       eventTitle={event.title}
       slug={event.slug}
       branding={event.branding}

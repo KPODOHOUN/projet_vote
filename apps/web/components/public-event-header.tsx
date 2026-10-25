@@ -1,124 +1,104 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
-import { LanguageSwitcher } from "../lib/i18n-provider";
-import { buildEventTheme } from "../lib/brand";
+import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
 import { SITE_NAME } from "../lib/site";
 
 type PublicEventHeaderProps = {
-  isEn?: boolean;
   eventTitle: string;
   logoUrl?: string | null;
-  brandColor?: string | null;
   tagline?: string | null;
   resultsHref?: string | undefined;
+  ticketsHref?: string | undefined;
   homeHref?: string | undefined;
 };
 
-export function PublicEventHeader({
-  isEn = false,
-  eventTitle,
-  logoUrl,
-  brandColor,
-  tagline,
-  resultsHref,
-  homeHref
-}: PublicEventHeaderProps) {
-  const theme = buildEventTheme(brandColor);
+/**
+ * En-tête d'un concours (7.11-b) : aplat --event-header-bg / --event-header-fg
+ * calculés par le moteur de thème (contraste ≥ 4,5:1), filet de 1 px, sans
+ * dégradé ni animation.
+ */
+export function PublicEventHeader({ eventTitle, logoUrl, tagline, resultsHref, ticketsHref, homeHref }: PublicEventHeaderProps) {
+  const { t } = useI18n();
   const [logoBroken, setLogoBroken] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const showLogo = Boolean(logoUrl) && !logoBroken;
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
   const brandingElement = (
-    <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+    <div className="flex min-w-0 items-center gap-3">
       {showLogo ? (
+        // Logo Cloudinary de taille fixe : <img> suffit, next/image n'apporte rien ici.
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={logoUrl!}
           alt=""
-          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl border object-cover shadow-sm"
-          style={{ borderColor: `${theme.headerFg}30` }}
+          width={40}
+          height={40}
+          className="h-10 w-10 shrink-0 rounded-md object-cover"
           onError={() => setLogoBroken(true)}
         />
       ) : (
         <span
-          className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl text-xs font-black shadow-sm"
-          style={{
-            background: `${theme.headerFg}15`,
-            border: `1px solid ${theme.headerFg}20`
-          }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-extrabold"
+          style={{ background: "color-mix(in srgb, var(--event-header-fg) 15%, transparent)" }}
           aria-hidden="true"
         >
           {eventTitle.slice(0, 2).toUpperCase()}
         </span>
       )}
       <div className="min-w-0">
-        <span className="block truncate text-sm font-bold sm:text-base leading-tight">{eventTitle}</span>
-        {tagline && (
-          <span className="block truncate text-[10px] sm:text-xs opacity-75 leading-tight mt-0.5">
-            {tagline}
-          </span>
-        )}
+        <span className="block truncate text-base font-bold leading-tight">{eventTitle}</span>
+        {tagline ? <span className="mt-0.5 block truncate text-xs leading-tight">{tagline}</span> : null}
       </div>
     </div>
   );
 
+  const linkClass =
+    "inline-flex min-h-11 items-center rounded-md px-2 text-sm font-semibold underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current";
+
   return (
     <header
-      className={`sticky top-0 z-40 w-full transition-all duration-300 ${
-        scrolled ? "shadow-lg" : "shadow-sm"
-      }`}
+      className="sticky top-0 z-40 w-full border-b"
       style={{
-        background: theme.headerBg,
-        color: theme.headerFg
+        background: "var(--event-header-bg)",
+        color: "var(--event-header-fg)",
+        borderColor: "color-mix(in srgb, var(--event-header-fg) 20%, transparent)"
       }}
     >
-      <div className="mx-auto flex h-14 sm:h-16 max-w-6xl items-center justify-between gap-3 sm:gap-4 px-3 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         {homeHref ? (
-          <Link href={homeHref} className="min-w-0 transition-opacity hover:opacity-90">
+          <Link href={homeHref} className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current">
             {brandingElement}
           </Link>
         ) : (
           brandingElement
         )}
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <nav className="flex shrink-0 items-center gap-1 sm:gap-2" aria-label={t("publicEvent.nav")}>
+          {ticketsHref ? (
+            <Link href={ticketsHref} className={linkClass}>
+              {t("publicEvent.tickets")}
+            </Link>
+          ) : null}
           {resultsHref ? (
-            <Link
-              href={resultsHref}
-              className="inline-flex items-center rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-bold transition-all hover:scale-105 hover:shadow-md"
-              style={{
-                background: `${theme.headerFg}15`,
-                color: theme.headerFg
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = `${theme.headerFg}25`)}
-              onMouseLeave={(e) => (e.currentTarget.style.background = `${theme.headerFg}15`)}
-            >
-              <span className="mr-1 sm:mr-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-current opacity-70" />
-              <span className="hidden sm:inline">{isEn ? "Live results" : "Classement"}</span>
-              <span className="sm:hidden">{isEn ? "Results" : "Scores"}</span>
+            <Link href={resultsHref} className={linkClass}>
+              {t("publicEvent.results")}
             </Link>
           ) : null}
           <LanguageSwitcher variant="brand-header" />
-        </div>
+        </nav>
       </div>
     </header>
   );
 }
 
-export function PublicEventFooter({ isEn = false }: { isEn?: boolean }) {
+export function PublicEventFooter() {
+  const { t } = useI18n();
   return (
-    <footer className="border-t border-border/40 bg-background/80 py-6 text-center">
-      <p className="text-xs text-muted-foreground">
-        {isEn ? "Powered by" : "Propulsé par"}{" "}
-        <Link href="/" className="font-semibold text-foreground hover:text-primary transition-colors">
+    <footer className="border-t border-border bg-background py-6">
+      <p className="mx-auto max-w-6xl px-4 text-xs text-slate-600 sm:px-6">
+        {t("publicEvent.hostedBy")}{" "}
+        <Link href="/" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
           {SITE_NAME}
         </Link>
       </p>

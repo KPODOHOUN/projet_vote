@@ -80,7 +80,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function PublicResultsPage({ params }: PageProps) {
   const { slug } = await params;
   const locale = await getServerLocale();
-  const isEn = locale === "en";
   const t9n = (key: MessageKey) => translate(locale, key);
   const data = await fetchResults(slug);
   if (!data) {
@@ -134,7 +133,7 @@ export default async function PublicResultsPage({ params }: PageProps) {
   ];
 
   return (
-    <PublicEventShell isEn={isEn} eventTitle={event.title} slug={event.slug} branding={branding}>
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={branding}>
       <main className="flex flex-col items-center gap-8 p-6">
         <section className="flex w-full max-w-5xl flex-col gap-6 rounded-3xl border border-border/40 bg-card/75 backdrop-blur-md p-8 shadow-2xl">
         <header className="flex flex-col gap-4 mb-2 border-b border-border/30 pb-6">
