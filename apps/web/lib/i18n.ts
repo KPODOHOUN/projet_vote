@@ -669,6 +669,12 @@ const messages = {
     "share.whatsapp": "WhatsApp",
     "share.native": "Partager",
     "share.voterText": "Vote pour {name} au concours {event} : {url}",
+    "account.data.title": "Vos données",
+    "account.data.exportDesc": "Téléchargez une archive de vos données de compte (format zip).",
+    "account.data.export": "Télécharger mes données",
+    "account.data.exportFailed": "Le téléchargement a échoué. Réessayez.",
+    "account.data.deleteDesc": "Pour supprimer le compte, écrivez à SHADOMA depuis la page Mentions légales. La suppression n'est faite qu'une fois le portefeuille vidé et les retraits traités.",
+    "account.data.legalLink": "Mentions légales",
   },
   en: {
     "lang.switch": "Language",
@@ -1331,6 +1337,12 @@ const messages = {
     "share.whatsapp": "WhatsApp",
     "share.native": "Share",
     "share.voterText": "Vote for {name} in the {event} contest: {url}",
+    "account.data.title": "Your data",
+    "account.data.exportDesc": "Download an archive of your account data (zip).",
+    "account.data.export": "Download my data",
+    "account.data.exportFailed": "The download failed. Try again.",
+    "account.data.deleteDesc": "To delete the account, write to SHADOMA from the Legal notice page. Deletion is done only once the wallet is empty and withdrawals are processed.",
+    "account.data.legalLink": "Legal notice",
   }
 } as const;
 

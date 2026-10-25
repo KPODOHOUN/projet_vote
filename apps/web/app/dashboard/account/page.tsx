@@ -9,7 +9,7 @@ import { clearAuthStorage, getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
 import {
   getAccount, changePassword, changeEmail, listSessions, revokeOtherSessions, revokeSession,
-  deviceLabel, type Account, type AccountSession
+  deviceLabel, downloadPrivacyExport, type Account, type AccountSession
 } from "../../../lib/account";
 import { Button, Input, StatusChip, EmptyState, LoadingState, ConfirmDialog } from "@/components/ui";
 import { FeexPaySecretPanel } from "../../../components/feexpay-secret-panel";
@@ -44,6 +44,20 @@ export default function DashboardAccountPage() {
   const [emailSuccess, setEmailSuccess] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [hasActivatedEvent, setHasActivatedEvent] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const doExport = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setExportBusy(true);
+    try {
+      await downloadPrivacyExport(token);
+    } catch {
+      showToast.error(t("account.data.exportFailed"));
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   const requireToken = () => {
     const token = getStoredToken();
@@ -246,6 +260,20 @@ export default function DashboardAccountPage() {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section aria-labelledby="account-data" className="space-y-3 border-t border-border pt-6">
+            <h2 id="account-data" className="text-lg font-bold text-slate-900">{t("account.data.title")}</h2>
+            <p className="text-sm text-slate-600">{t("account.data.exportDesc")}</p>
+            <Button type="button" variant="secondary" loading={exportBusy} onClick={() => void doExport()}>
+              {t("account.data.export")}
+            </Button>
+            <p className="text-sm text-slate-600">
+              {t("account.data.deleteDesc")}{" "}
+              <a href="/legal" className="font-semibold text-primary underline underline-offset-4">
+                {t("account.data.legalLink")}
+              </a>
+            </p>
           </section>
         </div>
       )}
