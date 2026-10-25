@@ -154,5 +154,24 @@ Commit `68e1300` (correction : son message dit « 20 presets », il y en a **18*
 
 Bilan sur 21 couleurs : en-tête 12 échecs → 0 ; texte primaire 16 échecs → 0.
 
-### Prochaine action
-Lot D (zone publique et Home).
+
+
+## Lot L — Sens du journal wallet (2026-10-25) : terminé
+
+Décision D6, étendue : `direction` **et** `bucket` (compartiment), car `VOTE_CREDIT` touche la réserve ou le disponible selon le modèle ; sans compartiment, aucune réconciliation par solde n'est possible. ADR : `docs/adr/ADR-021-ledger-direction.md`.
+
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `8938360` | Migration additive `20261025120000_ledger_direction` (enums `LedgerDirection`, `LedgerBucket`, colonnes nullables) + backfill déterministe | base vierge : 40 migrations, `migrate diff` = 0 ; base peuplée avant migration (9 lignes synthétiques, tous les `kind`) : montants intacts, 7 décidées, **2 restent NULL** (un `VOTE_CREDIT` sans `HELD_ALLOCATION` jumelle, un `ADJUSTMENT` hors rejet) |
+| `3558fda` | `appendLedgerEntry` (offers/ledger-entry.ts), `direction`/`bucket` obligatoires au type ; les 5 sites de `WalletService` passent par lui | `ledger-entry.test.ts` 2/2 (**RED vu** : 2 échecs avant), scan source : aucune écriture ailleurs |
+| `6574644` | `LedgerConsistencyService.reconcileWallets()` : soldes stockés ↔ journal signé, `HELD_RELEASE` = transfert, lignes NULL « inconnues » → statut `unverifiable` | 4 scénarios (flux complet vote/réserve/libération/retrait rejeté/payé ; écart ; ligne inconnue ; concurrence) 7/7 stable ×3 ; **RED vu** à la compilation |
+
+Base de dev locale : la table n'existe pas (base non migrée), donc 0 ligne réelle à compter. En production, compter les lignes inconnues après `migrate deploy` :
+`SELECT count(*) FROM "WalletLedgerEntry" WHERE direction IS NULL OR bucket IS NULL;`
+
+Gates : API 253/253, `test:offers` 35/35, typecheck 0, lint API 0.
+
+### Hypothèses
+- H-L1 : `bucket` ajouté en plus de `direction` (D6) ; nécessaire à la réconciliation par compartiment.
+- H-L2 : `HELD_RELEASE` reste une seule ligne (`CREDIT WITHDRAWABLE`, débit implicite de `HELD`) pour ne pas changer les sommes de `EventSettlementService`.
+- H-L3 : la réconciliation n'est pas encore exposée par une route ; F1 l'affiche côté admin.
