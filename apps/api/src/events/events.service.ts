@@ -42,9 +42,10 @@ const createEventSchema = z.object({
   title: z.string().min(3).max(160),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
-  tagline: z.string().min(2).max(200).optional(),
-  logoUrl: z.string().url().max(500).optional(),
-  brandColor: brandColorSchema.optional(),
+  // null = effacer (M3) ; absent = ne pas toucher.
+  tagline: z.string().min(2).max(200).nullable().optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+  brandColor: brandColorSchema.nullable().optional(),
   layout: z.nativeEnum(EventLayout).optional(),
   voteUnitPriceCfa: z.number().int().positive().max(10_000_000).optional()
 });
@@ -739,9 +740,10 @@ export class EventsService {
       title: z.string().min(3).max(160).optional(),
       startsAt: z.string().datetime().optional(),
       endsAt: z.string().datetime().optional(),
-      tagline: z.string().min(2).max(200).optional(),
-      logoUrl: z.string().url().max(500).optional(),
-      brandColor: brandColorSchema.optional(),
+      // null = effacer (M3) ; absent = ne pas toucher.
+      tagline: z.string().min(2).max(200).nullable().optional(),
+      logoUrl: z.string().url().max(500).nullable().optional(),
+      brandColor: brandColorSchema.nullable().optional(),
       layout: z.nativeEnum(EventLayout).optional(),
       voteUnitPriceCfa: z.number().int().positive().max(10_000_000).optional()
     });

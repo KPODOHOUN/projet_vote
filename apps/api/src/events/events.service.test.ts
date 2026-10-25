@@ -154,3 +154,39 @@ test("updateEvent: pose heldBps au moment de l'activation, jamais avant", async 
   const activated = await events.updateEvent(owner(t.id), draft.id, { status: "ACTIVE" });
   assert.equal(activated.heldBps, 5_000);
 });
+
+test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre organisateur ; payload public cohérent", async () => {
+  const t = await tenant("brand-clear");
+  const other = await tenant("brand-other");
+  const created = await events.createEvent(owner(t.id), {
+    slug: "brand-clear-evt",
+    title: "Concours marque",
+    startsAt: future(),
+    endsAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    tagline: "Édition 2026",
+    logoUrl: "https://res.cloudinary.com/demo/image/upload/logo.png",
+    brandColor: "#F59E0B"
+  });
+
+  // Un autre organisateur ne peut ni lire ni effacer.
+  await assert.rejects(
+    events.updateEvent(owner(other.id), created.id, { tagline: null, logoUrl: null, brandColor: null }),
+    /introuvable/
+  );
+  const untouched = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
+  assert.equal(untouched.tagline, "Édition 2026");
+
+  await events.updateEvent(owner(t.id), created.id, { tagline: null, logoUrl: null, brandColor: null });
+  const cleared = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
+  assert.deepEqual([cleared.tagline, cleared.logoUrl, cleared.brandColor], [null, null, null]);
+
+  // Absent ≠ null : un champ non envoyé ne change pas.
+  await events.updateEvent(owner(t.id), created.id, { tagline: "Retour" });
+  const partial = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
+  assert.deepEqual([partial.tagline, partial.logoUrl, partial.brandColor], ["Retour", null, null]);
+
+  const pub = await votes.getPublicEventBySlug("brand-clear-evt");
+  assert.equal(pub.event.branding.tagline, "Retour");
+  assert.equal(pub.event.branding.logoUrl, null);
+  assert.equal(pub.event.branding.brandColor, null);
+});
