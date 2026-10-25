@@ -2,7 +2,17 @@
 // l'organisateur : style de page et police des titres. Fonctions pures,
 // partagées par les pages publiques et l'éditeur d'apparence.
 
-export type PageStyleKey = "affiche" | "soiree" | "billet" | "couronne" | "magazine" | "pop";
+export type PageStyleKey =
+  | "affiche"
+  | "soiree"
+  | "billet"
+  | "couronne"
+  | "magazine"
+  | "pop"
+  | "terroir"
+  | "stade"
+  | "lineup"
+  | "diplome";
 export type FontStyleKey = "festival" | "gala" | "classique";
 
 const PAGE_STYLES: Record<string, PageStyleKey> = {
@@ -11,8 +21,21 @@ const PAGE_STYLES: Record<string, PageStyleKey> = {
   BILLET: "billet",
   COURONNE: "couronne",
   MAGAZINE: "magazine",
-  POP: "pop"
+  POP: "pop",
+  TERROIR: "terroir",
+  STADE: "stade",
+  LINEUP: "lineup",
+  DIPLOME: "diplome"
 };
+
+/**
+ * Image de fond du bandeau : la couverture si l'organisateur en a importé une
+ * et n'a pas choisi « couleur unie ». Null sinon.
+ */
+export function heroImageOf(branding: { coverUrl?: string | null; heroBackground?: string | null }): string | null {
+  if (!branding.coverUrl || branding.heroBackground === "COLOR") return null;
+  return branding.coverUrl;
+}
 const FONT_STYLES: Record<string, FontStyleKey> = { FESTIVAL: "festival", GALA: "gala", CLASSIQUE: "classique" };
 
 /** Valeur API → clé CSS (`data-page-style`). Inconnue ou absente : affiche. */

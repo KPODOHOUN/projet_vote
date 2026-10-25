@@ -38,6 +38,16 @@ enum EventPageStyle {
   COURONNE // composition centrée de gala, logo en médaillon, portraits encadrés
   MAGAZINE // une de magazine : couverture en demi-écran, mosaïque de candidats
   POP      // aplats vifs, contours encre et ombres franches
+  TERROIR  // agronomie, foires, gastronomie : arche, étiquettes
+  STADE    // sport, tournois : bande diagonale, tableau de score, maillots
+  LINEUP   // concerts, talents : affiche de festival, noms en programmation
+  DIPLOME  // écoles, prix : cadre de certificat, sceau, portraits ronds
+}
+
+// Fond des bandeaux : image de couverture (si importée) ou couleur unie.
+enum EventHeroBackground {
+  IMAGE
+  COLOR
 }
 
 // Police des titres de la mini-plateforme.
@@ -360,6 +370,7 @@ model Event {
   coverUrl        String?
   pageStyle       EventPageStyle @default(AFFICHE)
   fontStyle       EventFontStyle @default(FESTIVAL)
+  heroBackground  EventHeroBackground @default(IMAGE)
   // Per-event voting rule: if set, every vote must match this unit price.
   voteUnitPriceCfa Int?
   // Per-event platform commission override, in basis points (1% = 100 bps).

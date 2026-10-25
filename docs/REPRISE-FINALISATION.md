@@ -322,3 +322,10 @@ Demande : pages d'événement personnalisables par l'organisateur (logo, brandin
 - Import d'images sans Cloudinary dans tous les environnements : stockage en base (`StoredImage`, migration `20261025210000_stored_image`), type vérifié par signature binaire, SVG refusé, servi avec `nosniff` et cache immuable ; réduction à 1 600 px dans le navigateur. Le test « 503 hors développement » est remplacé par les tests du nouveau comportement (demande explicite). `logoUrl` accepte désormais les chemins d'images stockées (test ajouté, RED vu).
 - Portes : API 261/261, offres 36/36, web 36/36, e2e 23/23, typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0.
 - Base de dev locale : appliquer les migrations (`npx prisma migrate deploy` dans `packages/db`).
+
+## Suite — dix styles, fond image ou couleur, modèles par type d'événement (2026-10-25)
+
+- Styles `TERROIR`, `STADE`, `LINEUP`, `DIPLOME` et champ `Event.heroBackground` (`IMAGE` par défaut, `COLOR`) — migration additive `20261025220000_event_templates_background`, test d'API (RED vu, puis GREEN).
+- La couverture passe derrière les bandeaux de tous les styles (voile à la couleur de l'événement), sauf choix « couleur unie ».
+- Seize modèles prêts à l'emploi par type d'événement (`lib/event-presets.ts`, testé) dans l'éditeur d'apparence.
+- Portes : API 261/261, offres 36/36, web 39/39, e2e 23/23, typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0.

@@ -57,6 +57,14 @@ En-tête commun : logo, titre en capitales espacées, onglets soulignés. Pied �
 | **Couronne** | Composition centrée de gala : logo en médaillon à double anneau, ornement (filets + losange), compte à rebours en cases ; la couverture passe sous un voile clair (option « voile » de la maquette). | Portrait encadré (passe-partout blanc), texte centré | Fond teinté, filets à l'accent |
 | **Magazine** | Une de magazine : couverture sur la moitié de l'écran (sinon aplat + logo), dates en sur-titre, titre très grand, slogan en chapeau. | Mosaïque, le premier candidat en grand, nom sur la photo | Fond blanc |
 | **Pop** | Aplat vif, contours encre 3 px et ombres franches décalées, titres gras quelle que soit la police. | Carte bordée, ombre franche, numéro sur aplat | En-tête sur l'aplat |
+| **Terroir** | Agronomie, foires, gastronomie : couverture dans une arche, infos en pastilles, fond teinté. | Étiquette suspendue, photo en arche | Fond teinté |
+| **Stade** | Sport, tournois : fond nuit, couverture en biais, bande diagonale à l'accent, compte à rebours en tableau de score. | Maillot : grand numéro, bandeau du nom à l'accent | Fond clair, titres gras |
+| **Line-up** | Concerts, talents : affiche de festival, couverture en bichromie (noir et accent) ; les candidats forment la programmation, en très grand. | Noms en programmation (pas de grille photo) | Fond nuit, comme Soirée |
+| **Diplôme** | Écoles, prix : cadre de certificat à double filet, sceau (logo cerclé en pointillé), ornement. | Portrait rond cerclé | Fond teinté |
+
+**Fond du haut de page** (`Event.heroBackground`) : `IMAGE` (défaut) pose la couverture derrière le bandeau de tous les styles, sous un voile à la couleur de l'événement (Billet, Pop), nuit (Soirée) ou clair (Couronne, Diplôme) ; `COLOR` garde l'aplat même si une couverture est importée.
+
+**Modèles prêts à l'emploi** (`lib/event-presets.ts`) : seize types d'événement (Miss, mode, concert, talents, sport, e-sport, agronomie, gastronomie, école, awards, culture, gospel, danse, humour, cinéma, pitch), chacun réglant style, police et couleur en un clic.
 
 Le fond des styles clairs est teinté par la couleur de l'événement (`--mini-bg`). Sur l'Affiche avec couverture, les pages profil et résultats gardent une bande de la photo sous l'en-tête.
 

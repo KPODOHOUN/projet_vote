@@ -128,7 +128,8 @@ export class VotesService {
           tagline: event.tagline,
           coverUrl: event.coverUrl,
           pageStyle: event.pageStyle,
-          fontStyle: event.fontStyle
+          fontStyle: event.fontStyle,
+          heroBackground: event.heroBackground
         }
       },
       candidates: candidates.map((c) => ({
@@ -183,7 +184,8 @@ export class VotesService {
           tagline: event.tagline,
           coverUrl: event.coverUrl,
           pageStyle: event.pageStyle,
-          fontStyle: event.fontStyle
+          fontStyle: event.fontStyle,
+          heroBackground: event.heroBackground
         }
       },
       candidate: {
@@ -243,6 +245,7 @@ export class VotesService {
         coverUrl: true,
         pageStyle: true,
         fontStyle: true,
+        heroBackground: true,
         tenant: { select: { logoUrl: true, brandColor: true } }
       }
     });
@@ -270,7 +273,8 @@ export class VotesService {
           tagline: event.tagline,
           coverUrl: event.coverUrl,
           pageStyle: event.pageStyle,
-          fontStyle: event.fontStyle
+          fontStyle: event.fontStyle,
+          heroBackground: event.heroBackground
         }
       },
       results: results.map(({ totalAmountCfa: _omitted, ...rest }) => rest),

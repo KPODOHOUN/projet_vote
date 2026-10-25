@@ -12,19 +12,23 @@ type Palette = {
   name: string;
   color: string | null;
   layout: "GRID" | "LIST" | "SPOTLIGHT";
-  pageStyle: "AFFICHE" | "SOIREE" | "BILLET" | "COURONNE" | "MAGAZINE" | "POP";
+  pageStyle: "AFFICHE" | "SOIREE" | "BILLET" | "COURONNE" | "MAGAZINE" | "POP" | "TERROIR" | "STADE" | "LINEUP" | "DIPLOME";
   fontStyle: "FESTIVAL" | "GALA" | "CLASSIQUE";
   cover?: boolean;
 };
-// Les six styles de page, chacun avec une couleur, une police et un logo de
+// Les dix styles de page, chacun avec une couleur, une police et un logo de
 // démonstration ; couverture là où le style la met en avant.
 const PALETTES: Palette[] = [
   { name: "affiche-or", color: "#D4A017", layout: "GRID", pageStyle: "AFFICHE", fontStyle: "FESTIVAL", cover: true },
   { name: "soiree-or", color: "#D4A017", layout: "GRID", pageStyle: "SOIREE", fontStyle: "GALA" },
-  { name: "billet-turquoise", color: "#14B8A6", layout: "GRID", pageStyle: "BILLET", fontStyle: "CLASSIQUE" },
+  { name: "billet-turquoise", color: "#14B8A6", layout: "GRID", pageStyle: "BILLET", fontStyle: "CLASSIQUE", cover: true },
   { name: "couronne-rose", color: "#DB2777", layout: "GRID", pageStyle: "COURONNE", fontStyle: "GALA", cover: true },
   { name: "magazine-rouge", color: "#DC2626", layout: "GRID", pageStyle: "MAGAZINE", fontStyle: "FESTIVAL", cover: true },
-  { name: "pop-orange", color: "#F97316", layout: "GRID", pageStyle: "POP", fontStyle: "FESTIVAL" }
+  { name: "pop-orange", color: "#F97316", layout: "GRID", pageStyle: "POP", fontStyle: "FESTIVAL" },
+  { name: "terroir-vert", color: "#15803D", layout: "GRID", pageStyle: "TERROIR", fontStyle: "CLASSIQUE", cover: true },
+  { name: "stade-rouge", color: "#DC2626", layout: "GRID", pageStyle: "STADE", fontStyle: "FESTIVAL", cover: true },
+  { name: "lineup-violet", color: "#7C3AED", layout: "GRID", pageStyle: "LINEUP", fontStyle: "FESTIVAL", cover: true },
+  { name: "diplome-bleu", color: "#1E3A8A", layout: "GRID", pageStyle: "DIPLOME", fontStyle: "GALA" }
 ];
 
 // Logo et couverture de démonstration, fournis hors dépôt (VISUAL_LOGO_PATH,
@@ -107,7 +111,7 @@ async function shoot(page: Page, path: string, width: number, file: string) {
   await page.screenshot({ path: `${OUT}/${width}/${file}.png`, fullPage: true });
 }
 
-test("mini-plateformes : hub, profil, résultats dans les six styles", async ({ page, request }) => {
+test("mini-plateformes : hub, profil, résultats dans les dix styles", async ({ page, request }) => {
   test.setTimeout(300_000);
   const unique = `${Date.now()}`;
   const headers = await organizer(request, unique);

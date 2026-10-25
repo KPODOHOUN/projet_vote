@@ -690,7 +690,8 @@ img {
   --mini-title-tracking: 0.04em;
   --mini-title-scale: 1;
 }
-[data-event-theme][data-page-style="soiree"] {
+[data-event-theme][data-page-style="soiree"],
+[data-event-theme][data-page-style="lineup"] {
   --mini-bg: var(--event-night);
   --mini-ink: #f1f5f9;
   --mini-muted: #a8b3c7;
@@ -726,8 +727,26 @@ img {
   --mini-title-tracking: 0;
 }
 
+[data-event-theme][data-page-style="terroir"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #15803d) 7%, #fafaf8);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #15803d) 40%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #15803d) 18%, transparent);
+}
+[data-event-theme][data-page-style="stade"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #dc2626) 5%, #f3f4f6);
+  --mini-line: var(--color-slate-900);
+  --mini-title-weight: 800;
+  --mini-title-tracking: 0;
+}
+[data-event-theme][data-page-style="diplome"] {
+  --mini-bg: color-mix(in srgb, var(--event-accent, #1e3a8a) 6%, #f5f6f8);
+  --mini-line: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 40%, transparent);
+  --mini-rule: color-mix(in srgb, var(--event-accent-strong, #1e3a8a) 18%, transparent);
+}
+
 /* Retour au clair dans les zones de paiement et les cartes. */
-[data-event-theme][data-page-style="soiree"] [data-zone="secure-flow"] {
+[data-event-theme][data-page-style="soiree"] [data-zone="secure-flow"],
+[data-event-theme][data-page-style="lineup"] [data-zone="secure-flow"] {
   --color-primary: var(--event-accent-strong);
   --color-primary-foreground: #ffffff;
   --color-ring: var(--event-accent-strong);

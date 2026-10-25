@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { buildEventTheme, type EventBranding } from "../lib/brand";
-import { fontStyleOf, pageStyleOf } from "../lib/minisite-style";
+import { fontStyleOf, heroImageOf, pageStyleOf } from "../lib/minisite-style";
 import { cloudinaryTransform } from "../lib/og-image-url";
 import { PublicEventFooter, PublicEventHeader, type HeaderTone, type MinisitePage } from "./public-event-header";
 
@@ -26,7 +26,7 @@ export function headerToneFor(branding: EventBranding): HeaderTone {
   const style = pageStyleOf(branding.pageStyle);
   if (style === "billet" || style === "pop") return "accent";
   // Affiche avec couverture : l'en-tête est posé sur une bande de la photo.
-  if (style === "affiche" && branding.coverUrl) return "image";
+  if (style === "affiche" && heroImageOf(branding)) return "image";
   return "page";
 }
 
@@ -52,7 +52,7 @@ export function PublicEventShell({
   // posé en ligne car les variables du thème le sont aussi. Le paiement
   // (secure-flow) revient à l'accent foncé via globals.css.
   const style =
-    pageStyle === "soiree"
+    pageStyle === "soiree" || pageStyle === "lineup"
       ? ({
           ...theme.cssVars,
           "--color-primary": theme.accentBright,
@@ -79,12 +79,12 @@ export function PublicEventShell({
                 : undefined
           }
         >
-          {tone === "image" && branding.coverUrl ? (
+          {tone === "image" && heroImageOf(branding) ? (
             <>
               {/* Bande de la couverture : l'identité de l'événement reste visible sur chaque page. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={cloudinaryTransform(branding.coverUrl, "w_1920,h_480,c_fill,g_auto,f_auto,q_auto")}
+                src={cloudinaryTransform(heroImageOf(branding)!, "w_1920,h_480,c_fill,g_auto,f_auto,q_auto")}
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover"
               />

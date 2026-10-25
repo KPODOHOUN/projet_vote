@@ -2,7 +2,18 @@ import type { CSSProperties } from "react";
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-export type EventPageStyleValue = "AFFICHE" | "SOIREE" | "BILLET" | "COURONNE" | "MAGAZINE" | "POP";
+export type EventPageStyleValue =
+  | "AFFICHE"
+  | "SOIREE"
+  | "BILLET"
+  | "COURONNE"
+  | "MAGAZINE"
+  | "POP"
+  | "TERROIR"
+  | "STADE"
+  | "LINEUP"
+  | "DIPLOME";
+export type EventHeroBackgroundValue = "IMAGE" | "COLOR";
 export type EventFontStyleValue = "FESTIVAL" | "GALA" | "CLASSIQUE";
 
 export type EventBranding = {
@@ -13,6 +24,8 @@ export type EventBranding = {
   coverUrl?: string | null;
   pageStyle?: EventPageStyleValue | null;
   fontStyle?: EventFontStyleValue | null;
+  /** Fond des bandeaux : couverture (si importée) ou couleur unie. */
+  heroBackground?: EventHeroBackgroundValue | null;
 };
 
 export function normalizeBrandColor(value: string | null | undefined): string | null {

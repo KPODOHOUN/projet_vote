@@ -20,8 +20,8 @@ export function VoteCountdown({
 }: {
   target: string;
   now: number;
-  /** "inline" : « 6 j 14 h 32 min » ; "cells" : trois cases jours / heures / minutes. */
-  variant: "inline" | "cells";
+  /** "inline" : « 6 j 14 h 32 min » ; "cells" : trois cases ; "board" : tableau de score. */
+  variant: "inline" | "cells" | "board";
 }) {
   const { t } = useI18n();
   const [current, setCurrent] = useState(now);
@@ -40,6 +40,27 @@ export function VoteCountdown({
       <span className="whitespace-nowrap normal-case tabular-nums">
         {t("countdown.short", { d: String(parts.days), h: String(parts.hours), m: String(parts.minutes) })}
       </span>
+    );
+  }
+
+  if (variant === "board") {
+    const units: Array<[number, string]> = [
+      [parts.days, t("countdown.days")],
+      [parts.hours, t("countdown.hours")],
+      [parts.minutes, t("countdown.minutes")]
+    ];
+    return (
+      <div className="inline-flex items-stretch gap-1.5 rounded-sm bg-black p-1.5">
+        {units.map(([value, label], index) => (
+          <div key={label} className="flex items-center gap-1.5">
+            {index > 0 ? <span aria-hidden="true" className="font-mono text-2xl font-bold text-white/40">:</span> : null}
+            <div className="min-w-[3.6rem] rounded-sm bg-neutral-900 px-2.5 py-2 text-center">
+              <span className="block font-mono text-[34px] font-bold leading-none text-[var(--event-accent-bright)] tabular-nums">{pad(value)}</span>
+              <span className="mt-1 block text-[9px] font-semibold uppercase tracking-[0.2em] text-white/60">{label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     );
   }
 

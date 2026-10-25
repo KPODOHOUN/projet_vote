@@ -18,8 +18,10 @@ import {
   extractColorFromImage,
   getBrandPresetsByVibe,
   type EventFontStyleValue,
+  type EventHeroBackgroundValue,
   type EventPageStyleValue
 } from "../../../../../lib/brand";
+import { EVENT_PRESETS } from "../../../../../lib/event-presets";
 import { EVENT_LAYOUTS, type EventLayoutId } from "../../../../../lib/event-layouts";
 import { publicEventPath } from "../../../../../lib/site";
 import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcrumb";
@@ -42,6 +44,7 @@ type EventDetail = {
   coverUrl?: string | null;
   pageStyle?: EventPageStyleValue;
   fontStyle?: EventFontStyleValue;
+  heroBackground?: EventHeroBackgroundValue;
 };
 
 type Saved = {
@@ -52,9 +55,21 @@ type Saved = {
   coverUrl: string;
   pageStyle: EventPageStyleValue;
   fontStyle: EventFontStyleValue;
+  heroBackground: EventHeroBackgroundValue;
 };
 
-const PAGE_STYLES: EventPageStyleValue[] = ["AFFICHE", "SOIREE", "BILLET", "COURONNE", "MAGAZINE", "POP"];
+const PAGE_STYLES: EventPageStyleValue[] = [
+  "AFFICHE",
+  "SOIREE",
+  "BILLET",
+  "COURONNE",
+  "MAGAZINE",
+  "POP",
+  "TERROIR",
+  "STADE",
+  "LINEUP",
+  "DIPLOME"
+];
 const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: number }> = [
   { id: "FESTIVAL", family: "var(--font-festival)", weight: 300 },
   { id: "GALA", family: "var(--font-gala)", weight: 400 },
@@ -63,6 +78,41 @@ const FONT_STYLES: Array<{ id: EventFontStyleValue; family: string; weight: numb
 
 /** Vignette schématique d'un style de page (formes seulement, aucun contenu inventé). */
 function StyleThumb({ style, accent }: { style: EventPageStyleValue; accent: string }) {
+  if (style === "TERROIR") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-end justify-between gap-2 rounded-md p-2.5" style={{ background: `color-mix(in srgb, ${accent} 10%, #fafaf8)` }}>
+        <span className="flex flex-col gap-1.5"><span className="h-2 w-12 rounded-sm bg-slate-800" /><span className="h-1.5 w-8 rounded-full border border-slate-400" /></span>
+        <span className="h-14 w-10 rounded-b-sm rounded-t-full" style={{ background: accent }} />
+      </span>
+    );
+  }
+  if (style === "STADE") {
+    return (
+      <span aria-hidden="true" className="relative flex h-20 flex-col justify-end gap-1.5 overflow-hidden rounded-md bg-slate-950 p-2.5">
+        <span className="absolute inset-y-0 right-5 w-4 -skew-x-12" style={{ background: accent }} />
+        <span className="relative h-2.5 w-14 rounded-sm bg-white" />
+        <span className="relative flex gap-1"><span className="h-3.5 w-5 rounded-sm bg-neutral-800" /><span className="h-3.5 w-5 rounded-sm bg-neutral-800" /><span className="h-3.5 w-5 rounded-sm bg-neutral-800" /></span>
+      </span>
+    );
+  }
+  if (style === "LINEUP") {
+    return (
+      <span aria-hidden="true" className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-md p-2.5" style={{ background: `linear-gradient(180deg, ${accent}, #020617)` }}>
+        <span className="h-2.5 w-16 rounded-sm bg-white" />
+        <span className="flex gap-1"><span className="h-1.5 w-6 rounded-sm bg-white/70" /><span className="h-1.5 w-8 rounded-sm bg-white/70" /><span className="h-1.5 w-5 rounded-sm bg-white/70" /></span>
+      </span>
+    );
+  }
+  if (style === "DIPLOME") {
+    return (
+      <span aria-hidden="true" className="flex h-20 items-center justify-center rounded-md bg-slate-100 p-2">
+        <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-white" style={{ boxShadow: `inset 0 0 0 2px ${accent}, inset 0 0 0 5px #fff, inset 0 0 0 6px ${accent}` }}>
+          <span className="h-4 w-4 rounded-full border border-dashed" style={{ borderColor: accent }} />
+          <span className="h-1.5 w-12 rounded-sm bg-slate-800" />
+        </span>
+      </span>
+    );
+  }
   if (style === "COURONNE") {
     return (
       <span aria-hidden="true" className="flex h-20 flex-col items-center justify-center gap-1.5 rounded-md" style={{ background: `color-mix(in srgb, ${accent} 10%, #fdfdfd)` }}>
@@ -155,6 +205,7 @@ export default function EventDesignPage() {
   const [coverUrl, setCoverUrl] = useState("");
   const [pageStyle, setPageStyle] = useState<EventPageStyleValue>("AFFICHE");
   const [fontStyle, setFontStyle] = useState<EventFontStyleValue>("FESTIVAL");
+  const [heroBackground, setHeroBackground] = useState<EventHeroBackgroundValue>("IMAGE");
   const [saved, setSaved] = useState<Saved | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [previewWidth, setPreviewWidth] = useState<"phone" | "desktop">("phone");
@@ -181,7 +232,8 @@ export default function EventDesignPage() {
     layout,
     coverUrl: coverUrl.trim(),
     pageStyle,
-    fontStyle
+    fontStyle,
+    heroBackground
   };
   const isDirty = saved !== null && JSON.stringify(current) !== JSON.stringify(saved);
   const dirtyRef = useRef(isDirty);
@@ -216,6 +268,7 @@ export default function EventDesignPage() {
       setCoverUrl(found.coverUrl ?? "");
       setPageStyle(found.pageStyle ?? "AFFICHE");
       setFontStyle(found.fontStyle ?? "FESTIVAL");
+      setHeroBackground(found.heroBackground ?? "IMAGE");
       setSaved({
         tagline: (found.tagline ?? "").trim(),
         logoUrl: found.logoUrl ?? "",
@@ -223,7 +276,8 @@ export default function EventDesignPage() {
         layout: found.layout ?? "GRID",
         coverUrl: found.coverUrl ?? "",
         pageStyle: found.pageStyle ?? "AFFICHE",
-        fontStyle: found.fontStyle ?? "FESTIVAL"
+        fontStyle: found.fontStyle ?? "FESTIVAL",
+        heroBackground: found.heroBackground ?? "IMAGE"
       });
     },
     [eventId, t]
@@ -282,6 +336,7 @@ export default function EventDesignPage() {
           layout,
           pageStyle,
           fontStyle,
+          heroBackground,
           coverUrl: coverUrl.trim() || null,
           tagline: trimmedTagline || null,
           logoUrl: logoUrl.trim() || null,
@@ -349,6 +404,37 @@ export default function EventDesignPage() {
           <form id="design-form" className="space-y-8" onSubmit={onSubmit} noValidate>
             <LogoUploadField value={logoUrl} onChange={setLogoUrl} token={getStoredToken() ?? ""} label={t("design.logo")} />
 
+            <section aria-labelledby="presets-title" className="min-w-0 space-y-3">
+              <h2 id="presets-title" className="text-sm font-semibold text-slate-900">{t("design.presets.title")}</h2>
+              <p className="text-xs text-slate-600">{t("design.presets.lead")}</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {EVENT_PRESETS.map((preset) => {
+                  const active = pageStyle === preset.pageStyle && fontStyle === preset.fontStyle && (parsedColor ?? "") === preset.brandColor.toLowerCase();
+                  const name = isEn ? preset.en : preset.fr;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setPageStyle(preset.pageStyle);
+                        setFontStyle(preset.fontStyle);
+                        setBrandColor(preset.brandColor.toLowerCase());
+                        showToast.success(t("design.presets.applied", { name }));
+                      }}
+                      className={`flex min-h-12 min-w-0 items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-slate-900 ring-1 ring-slate-900" : "border-border hover:bg-accent/60"}`}
+                    >
+                      <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full" style={{ background: preset.brandColor }} />
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold text-slate-900">{name}</span>
+                        <span className="block truncate text-xs text-slate-600">{t(`design.style.${preset.pageStyle}` as MessageKey)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             <fieldset className="min-w-0 space-y-3">
               <legend className="text-sm font-semibold text-slate-900">{t("design.style.title")}</legend>
               <p className="text-xs text-slate-600">{t("design.style.lead")}</p>
@@ -392,6 +478,26 @@ export default function EventDesignPage() {
                 </div>
               }
             />
+
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="text-sm font-semibold text-slate-900">{t("design.bg.title")}</legend>
+              <div className="inline-flex flex-wrap gap-1 rounded-md border border-border p-1" role="radiogroup" aria-label={t("design.bg.title")}>
+                {(["IMAGE", "COLOR"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={heroBackground === mode}
+                    disabled={mode === "IMAGE" && !coverUrl}
+                    onClick={() => setHeroBackground(mode)}
+                    className={`min-h-10 rounded-sm px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${heroBackground === mode && (mode === "COLOR" || coverUrl) ? "bg-slate-900 text-white" : "text-slate-900 hover:bg-accent"}`}
+                  >
+                    {t(`design.bg.${mode}` as MessageKey)}
+                  </button>
+                ))}
+              </div>
+              {!coverUrl ? <p className="text-xs text-slate-600">{t("design.bg.needCover")}</p> : null}
+            </fieldset>
 
             <fieldset className="min-w-0 space-y-3">
               <legend className="text-sm font-semibold text-slate-900">{t("design.font.title")}</legend>

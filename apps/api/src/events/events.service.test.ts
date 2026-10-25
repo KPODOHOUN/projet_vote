@@ -112,7 +112,14 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
     assert.equal(branding.fontStyle, "GALA");
   }
 
-  for (const style of ["COURONNE", "MAGAZINE", "POP", "BILLET", "AFFICHE"]) {
+  // Fond des bandeaux : image par défaut, couleur unie au choix ; exposé en public.
+  assert.equal(ev.heroBackground, "IMAGE");
+  const colorBg = await events.updateEvent(owner(t.id), ev.id, { heroBackground: "COLOR" });
+  assert.equal(colorBg.heroBackground, "COLOR");
+  assert.equal((await votes.getPublicEventBySlug("style-default")).event.branding.heroBackground, "COLOR");
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { heroBackground: "VIDEO" }));
+
+  for (const style of ["COURONNE", "MAGAZINE", "POP", "TERROIR", "STADE", "LINEUP", "DIPLOME", "BILLET", "AFFICHE"]) {
     const next = await events.updateEvent(owner(t.id), ev.id, { pageStyle: style });
     assert.equal(next.pageStyle, style);
   }

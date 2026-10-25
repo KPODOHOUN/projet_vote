@@ -13,7 +13,7 @@ import { translate, translateVars, type Locale, type MessageKey } from "../lib/i
 import { formatCfa, formatEventDate } from "../lib/format";
 import { MOBILE_NETWORKS } from "../lib/mobile-networks";
 import { cloudinaryTransform } from "../lib/og-image-url";
-import { pageStyleOf } from "../lib/minisite-style";
+import { heroImageOf, pageStyleOf } from "../lib/minisite-style";
 import type { VotePhase } from "../lib/vote-phase";
 import type { PublicEvent, PublicOrganizer } from "../lib/public-event-fetch";
 
@@ -82,8 +82,18 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
     />
   );
 
-  const cover = event.branding.coverUrl;
+  // Couverture importée, sauf si l'organisateur a choisi « couleur unie » pour le fond.
+  const cover = heroImageOf(event.branding);
   const coverSrc = cover ? cloudinaryTransform(cover, "w_1920,c_fill,g_auto,f_auto,q_auto") : null;
+  /** Couverture posée derrière un bandeau, sous un voile qui garde le texte lisible. */
+  const bandImage = (veil: string) =>
+    coverSrc ? (
+      <>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={coverSrc} alt="" fetchPriority="high" className="absolute inset-0 h-full w-full object-cover" />
+        <div aria-hidden="true" className={`absolute inset-0 ${veil}`} />
+      </>
+    ) : null;
   const shareUrl = publicEventUrl(event.slug);
   const share = (appearance: "solid" | "outline", className = "") => (
     <ShareSheet
@@ -211,14 +221,203 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
     );
   }
 
+  const pill = "rounded-full border border-[var(--mini-line)] bg-white/70 px-4 py-2 text-sm";
+
+  if (style === "terroir") {
+    // Terroir : agronomie, foires, gastronomie. Couverture dans une arche, infos en étiquettes.
+    return (
+      <div>
+        <div className="border-b border-[var(--mini-line)]">{header("page")}</div>
+        <section className={`grid items-center gap-10 py-12 sm:py-16 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] ${gutter}`}>
+          <div className="order-2 min-w-0 lg:order-1">
+            <div className="flex flex-wrap items-center gap-4">
+              <Logo url={logoUrl} className="h-16 w-16 rounded-full bg-white object-contain p-1 shadow-[0_0_0_1px_var(--mini-line)]" />
+              {event.branding.tagline ? (
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">{event.branding.tagline}</p>
+              ) : null}
+            </div>
+            <h1 className="mini-title mini-display-xl mt-6">{event.title}</h1>
+            <p className="mt-5 text-[15px] text-[var(--mini-muted)]">{organizedBy}</p>
+            <ul className="mt-7 flex flex-wrap gap-2" role="list">
+              <li className={pill}><StatusLine phase={phase} locale={locale} /></li>
+              {countdownTarget ? (
+                <li className={pill}>
+                  {t9n(phase === "open" ? "countdown.endsIn" : "countdown.startsIn")}{" "}
+                  <span className="font-semibold"><VoteCountdown target={countdownTarget} now={now} variant="inline" /></span>
+                </li>
+              ) : null}
+              <li className={pill}>{t9n("hub.oneVote")} · <span className="font-semibold">{price}</span></li>
+              <li className={pill}>{networks}</li>
+            </ul>
+            <div className="mt-8 flex flex-col gap-2 sm:flex-row">
+              {cta("rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)] focus-visible:ring-[var(--color-ring)]")}
+              {share("outline", "rounded-full")}
+            </div>
+          </div>
+          <div className="relative order-1 mx-auto aspect-[4/5] w-full max-w-md overflow-hidden rounded-b-md rounded-t-[999px] bg-[var(--event-accent)] lg:order-2">
+            {coverSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverSrc} alt="" fetchPriority="high" className="absolute inset-0 h-full w-full object-cover" />
+            ) : logoUrl ? (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="rounded-full bg-white p-3"><Logo url={logoUrl} className="h-32 w-32 rounded-full object-contain" /></span>
+              </span>
+            ) : null}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (style === "stade") {
+    // Stade : sport, tournois. Fond nuit, couverture en biais, compte à rebours en tableau de score.
+    return (
+      <section className="relative overflow-hidden bg-slate-950 text-white">
+        {coverSrc ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={coverSrc}
+              alt=""
+              fetchPriority="high"
+              className="absolute inset-0 h-full w-full object-cover lg:left-auto lg:w-[60%] lg:[clip-path:polygon(16%_0,100%_0,100%_100%,0_100%)]"
+            />
+            <div aria-hidden="true" className="absolute inset-0 bg-slate-950/75 lg:bg-[linear-gradient(90deg,#020617_0%,#020617_40%,rgb(2_6_23/0.15)_70%)]" />
+          </>
+        ) : null}
+        <div aria-hidden="true" className="absolute inset-y-0 left-[56%] hidden w-16 -skew-x-[14deg] bg-[var(--event-accent)] lg:block" />
+        <div className="relative">{header("image")}</div>
+        <div className={`relative max-w-3xl pb-16 pt-10 sm:pt-14 ${gutter}`}>
+          <div className="flex flex-wrap items-center gap-4">
+            <Logo url={logoUrl} className="h-16 w-16 rounded-sm bg-white object-contain p-1" />
+            {event.branding.tagline ? (
+              <span className="inline-block bg-[var(--event-header-bg)] px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.14em] text-[var(--event-header-fg)]">
+                {event.branding.tagline}
+              </span>
+            ) : null}
+          </div>
+          <h1 className="mini-title mini-display-xl mt-6">{event.title}</h1>
+          <p className="mt-5 text-sm text-white/80">{organizedBy}</p>
+          <div className="mt-8">
+            {countdownTarget ? (
+              <>
+                <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.22em] text-white/70">{countdownLabel}</p>
+                <VoteCountdown target={countdownTarget} now={now} variant="board" />
+              </>
+            ) : (
+              <p className="text-lg font-bold"><StatusLine phase={phase} locale={locale} /></p>
+            )}
+          </div>
+          <p className="mt-6 text-sm text-white/80">
+            {t9n("hub.oneVote")} · <span className="font-bold text-white">{price}</span> · {networks}
+          </p>
+          <div className="mt-7 flex flex-col gap-2 sm:flex-row">
+            {cta("rounded-sm bg-[var(--event-header-bg)] uppercase tracking-[0.06em] text-[var(--event-header-fg)] focus-visible:ring-white focus-visible:ring-offset-slate-950")}
+            {share("outline", "rounded-sm")}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (style === "lineup") {
+    // Line-up : affiche de festival. Couverture en bichromie (noir et couleur de l'événement).
+    return (
+      <section className="relative overflow-hidden bg-slate-950 text-center text-white">
+        {coverSrc ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={coverSrc} alt="" fetchPriority="high" className="absolute inset-0 h-full w-full object-cover grayscale contrast-125" />
+            <div aria-hidden="true" className="absolute inset-0 bg-[var(--event-accent)] mix-blend-multiply" />
+            <div aria-hidden="true" className="absolute inset-0 bg-slate-950/45" />
+          </>
+        ) : (
+          <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(180deg,var(--event-accent),#020617)] opacity-90" />
+        )}
+        <div className="relative text-left">{header("image")}</div>
+        <div className={`relative mx-auto flex max-w-5xl flex-col items-center pb-20 pt-10 sm:pt-16 ${gutter}`}>
+          <Logo url={logoUrl} className="mb-6 h-20 w-20 rounded-full bg-white object-contain p-1" />
+          {dates ? <p className="text-xs font-bold uppercase tracking-[0.32em] text-white/85">{dates}</p> : null}
+          <h1 className="mini-title mini-display-xl mt-5 text-balance">{event.title}</h1>
+          {event.branding.tagline ? <p className="mt-5 text-lg font-medium text-white/90">{event.branding.tagline}</p> : null}
+          {countdownTarget ? (
+            <p className="mt-8 text-sm uppercase tracking-[0.2em] text-white/80">
+              {t9n(phase === "open" ? "countdown.endsIn" : "countdown.startsIn")}{" "}
+              <span className="mini-title ml-1 text-2xl text-white"><VoteCountdown target={countdownTarget} now={now} variant="inline" /></span>
+            </p>
+          ) : (
+            <p className="mt-8 font-semibold"><StatusLine phase={phase} locale={locale} /></p>
+          )}
+          <p className="mt-3 text-sm text-white/75">
+            {t9n("hub.oneVote")} · <span className="font-semibold text-white">{price}</span> · {t9n("pub.organizedBy")} {organizer.displayName}
+          </p>
+          <div className="mt-8 flex w-full max-w-md flex-col gap-2 sm:flex-row sm:justify-center">
+            {cta("rounded-full bg-white text-slate-950 focus-visible:ring-white focus-visible:ring-offset-slate-950")}
+            {share("outline", "rounded-full")}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (style === "diplome") {
+    // Diplôme : écoles, prix. Cadre de certificat, sceau, ornement.
+    return (
+      <div>
+        <div className="border-b border-[var(--mini-line)]">{header("page")}</div>
+        <section className={`relative overflow-hidden py-10 sm:py-14 ${gutter}`}>
+          {bandImage("bg-[var(--mini-bg)] opacity-[0.9]")}
+          <div className="relative mx-auto max-w-5xl bg-white p-2.5 text-slate-900 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_18px_40px_-20px_rgb(15_23_42/0.3)] sm:p-3">
+            <div className="border-2 border-[var(--event-accent-strong)] p-1.5">
+              <div className="flex flex-col items-center border border-[color-mix(in_srgb,var(--event-accent-strong)_45%,transparent)] px-5 py-10 text-center sm:px-12 sm:py-14">
+                {logoUrl ? (
+                  <span className="mb-6 rounded-full border-2 border-dashed border-[var(--event-accent-strong)] p-1.5">
+                    <Logo url={logoUrl} className="h-24 w-24 rounded-full bg-white object-contain" />
+                  </span>
+                ) : null}
+                {event.branding.tagline ? (
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[var(--event-accent-strong)]">{event.branding.tagline}</p>
+                ) : null}
+                <h1 className="mini-title mini-display mt-4 text-balance">{event.title}</h1>
+                <div aria-hidden="true" className="my-6 flex w-full max-w-xs items-center gap-3 text-[var(--event-accent-strong)]">
+                  <span className="h-px flex-1 bg-current opacity-60" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  <span className="h-px flex-1 bg-current opacity-60" />
+                </div>
+                <p className="text-[15px] text-slate-600">{organizedBy}</p>
+                <p className="mt-5 text-sm text-slate-600">
+                  {countdownTarget ? (
+                    <>
+                      {t9n(phase === "open" ? "countdown.endsIn" : "countdown.startsIn")}{" "}
+                      <span className="font-semibold text-slate-900"><VoteCountdown target={countdownTarget} now={now} variant="inline" /></span>
+                      {" · "}
+                    </>
+                  ) : null}
+                  {t9n("hub.oneVote")} · <span className="font-semibold text-slate-900">{price}</span>
+                </p>
+                <div className="mt-7 flex w-full max-w-md flex-col gap-2 sm:flex-row sm:justify-center">
+                  {cta("rounded-md bg-[var(--event-accent-strong)] text-white focus-visible:ring-[var(--event-accent-strong)]")}
+                  {share("outline")}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (style === "pop") {
     // Pop : aplat vif, contours encre et ombres franches, façon affiche sérigraphiée.
     const popBox = "rounded-md border-[3px] border-slate-900 bg-white text-slate-900 shadow-[6px_6px_0_0_#0f172a]";
     return (
       <div>
-        <div className="border-b-[3px] border-slate-900 bg-[var(--event-header-bg)] text-[var(--event-header-fg)]">
+        <div className="relative overflow-hidden border-b-[3px] border-slate-900 bg-[var(--event-header-bg)] text-[var(--event-header-fg)]">
+          {bandImage("bg-[var(--event-header-bg)] opacity-[0.84]")}
           {header("accent")}
-          <div className={`pb-14 pt-6 sm:pt-10 ${gutter}`}>
+          <div className={`relative pb-14 pt-6 sm:pt-10 ${gutter}`}>
             <div className="flex flex-wrap items-center gap-4">
               <Logo url={logoUrl} className="h-20 w-20 rounded-md border-[3px] border-slate-900 bg-white object-contain p-1 shadow-[4px_4px_0_0_#0f172a]" />
               {event.branding.tagline ? (
@@ -258,8 +457,10 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
   if (style === "soiree") {
     return (
       <div>
-        <div className="border-b border-[var(--mini-rule)]">{header("page")}</div>
-        <section className={`grid items-end gap-12 pb-16 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] ${gutter}`}>
+        <div className="relative overflow-hidden">
+        {bandImage("bg-[var(--mini-bg)] opacity-[0.82]")}
+        <div className="relative border-b border-[var(--mini-rule)]">{header("page")}</div>
+        <section className={`relative grid items-end gap-12 pb-16 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] ${gutter}`}>
           <div className="min-w-0">
             <Logo url={logoUrl} className="mb-8 h-20 w-20 rounded-md bg-white object-contain p-1" />
             {event.branding.tagline ? (
@@ -287,6 +488,7 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
             {share("outline", "mt-3 w-full")}
           </div>
         </section>
+        </div>
         <dl className={`mx-[clamp(20px,4vw,56px)] grid grid-cols-2 border-y border-[var(--mini-line)] lg:grid-cols-4`}>
           {[
             [t9n("hub.oneVote"), price],
@@ -310,9 +512,10 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
   if (style === "billet") {
     return (
       <div>
-        <div className="border-b border-[var(--mini-rule)] bg-[var(--event-header-bg)] text-[var(--event-header-fg)]">
+        <div className="relative overflow-hidden border-b border-[var(--mini-rule)] bg-[var(--event-header-bg)] text-[var(--event-header-fg)]">
+          {bandImage("bg-[var(--event-header-bg)] opacity-[0.84]")}
           {header("accent")}
-          <div className={`grid items-start gap-8 pb-28 pt-10 sm:pt-14 md:grid-cols-[minmax(0,1fr)_auto] ${gutter}`}>
+          <div className={`relative grid items-start gap-8 pb-28 pt-10 sm:pt-14 md:grid-cols-[minmax(0,1fr)_auto] ${gutter}`}>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em]">
                 {event.branding.tagline ?? organizer.displayName}

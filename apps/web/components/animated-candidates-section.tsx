@@ -172,6 +172,97 @@ function PopCard({ slug, c }: { slug: string; c: PublicCandidate }) {
   );
 }
 
+// Terroir : étiquette suspendue, photo en arche.
+function TagCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative flex flex-col gap-3 rounded-md border border-[var(--mini-line)] bg-white p-3 pt-7 text-slate-900 transition-transform hover:-translate-y-1`}
+    >
+      <span aria-hidden="true" className="absolute left-1/2 top-2.5 h-3 w-3 -translate-x-1/2 rounded-full border border-[var(--mini-line)] bg-[var(--mini-bg)]" />
+      <div className="aspect-[4/5] overflow-hidden rounded-b-sm rounded-t-[999px] bg-[var(--mini-wash)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+      </div>
+      <div className="flex items-baseline justify-between gap-2 border-t border-dashed border-[var(--mini-line)] pt-3">
+        <span className="min-w-0 text-[15px] font-semibold leading-tight">{c.fullName}</span>
+        {c.number != null ? <span className="shrink-0 text-xs font-semibold text-[var(--mini-accent)] tabular-nums">N° {pad2(c.number)}</span> : null}
+      </div>
+      <span className="-mt-1.5 text-[13px] text-slate-600 tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Stade : maillot, grand numéro, bandeau du nom à la couleur de l'événement.
+function JerseyCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link
+      href={publicCandidatePath(slug, c.publicRef)}
+      className={`${cardLink} group relative block overflow-hidden rounded-sm bg-slate-950 text-white transition-transform hover:-translate-y-1`}
+    >
+      <div className="relative aspect-[4/5]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover opacity-95" />
+        {c.number != null ? (
+          <span className="mini-title absolute left-3 top-1 text-[clamp(44px,5vw,72px)] leading-none text-[var(--event-accent-bright)] [text-shadow:0_2px_16px_rgb(0_0_0/0.45)] tabular-nums">
+            {pad2(c.number)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-0.5 bg-[var(--event-header-bg)] px-3 py-2.5 text-[var(--event-header-fg)] sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
+        <span className="min-w-0 break-words text-sm font-extrabold uppercase leading-tight tracking-[0.04em] sm:text-base">{c.fullName}</span>
+        <span className="shrink-0 text-xs font-bold tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+// Diplôme : portrait rond cerclé, nom centré.
+function MedalCard({ slug, c }: { slug: string; c: PublicCandidate }) {
+  return (
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col items-center gap-3 text-center`}>
+      <div className="w-full max-w-[220px] rounded-full p-1.5 shadow-[0_0_0_2px_var(--event-accent-strong)] transition-transform group-hover:-translate-y-1">
+        <div className="aspect-square overflow-hidden rounded-full bg-[var(--mini-wash)]">
+          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
+        </div>
+      </div>
+      {c.number != null ? (
+        <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">N° {pad2(c.number)}</span>
+      ) : null}
+      <span className="mini-title text-lg leading-tight sm:text-xl">{c.fullName}</span>
+      <span className="-mt-1 text-[13px] text-[var(--mini-muted)] tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
+    </Link>
+  );
+}
+
+// Line-up : les candidats forment la programmation de l'affiche, en grand.
+function LineupList({ slug, candidates }: { slug: string; candidates: PublicCandidate[] }) {
+  return (
+    <ul className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-4 text-center" role="list">
+      {candidates.map((c, index) => (
+        <li key={c.id} className="flex items-baseline gap-3">
+          {index > 0 ? <span aria-hidden="true" className="text-[clamp(20px,3vw,36px)] text-[var(--mini-accent)]">•</span> : null}
+          <Link
+            href={publicCandidatePath(slug, c.publicRef)}
+            className="group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mini-accent)]"
+          >
+            <span className="mini-title text-[calc(clamp(28px,4.4vw,64px)*var(--mini-title-scale))] leading-[1.05] transition-colors group-hover:text-[var(--mini-accent)]">
+              {c.fullName}
+            </span>
+            <span className="ml-2 align-super text-xs font-semibold text-[var(--mini-muted)] tabular-nums">
+              <VotesLine count={c.voteCount} />
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Ligne de la maquette (« Vote du public ») : rang si clos, nom, voix.
 function CandidateListRow({ slug, c, rank }: { slug: string; c: PublicCandidate; rank: number | null }) {
   return (
@@ -225,6 +316,10 @@ export function AnimatedCandidatesSection({
   /** Style de page de l'événement : forme des cartes de la grille. */
   cardStyle?: PageStyleKey;
 }) {
+  if (cardStyle === "lineup" && layout !== "LIST") {
+    return <LineupList slug={slug} candidates={candidates} />;
+  }
+
   if (layout === "LIST") {
     // Rang = position par voix décroissantes, calculé uniquement après clôture.
     const ranks = new Map(
@@ -241,7 +336,7 @@ export function AnimatedCandidatesSection({
 
   const maxVotes = Math.max(0, ...candidates.map((c) => c.voteCount));
   const grid =
-    cardStyle === "soiree" || cardStyle === "magazine"
+    cardStyle === "soiree" || cardStyle === "magazine" || cardStyle === "stade"
       ? "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4"
       : cardStyle === "pop"
         ? "grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4"
@@ -257,6 +352,12 @@ export function AnimatedCandidatesSection({
       <MosaicCard key={c.id} slug={slug} c={c} feature={index === 0 && layout === "GRID" && candidates.length > 2} />
     ) : cardStyle === "pop" ? (
       <PopCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "terroir" ? (
+      <TagCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "stade" ? (
+      <JerseyCard key={c.id} slug={slug} c={c} />
+    ) : cardStyle === "diplome" ? (
+      <MedalCard key={c.id} slug={slug} c={c} />
     ) : (
       <PosterCard key={c.id} slug={slug} c={c} />
     );

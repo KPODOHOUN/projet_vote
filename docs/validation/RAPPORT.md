@@ -4,7 +4,7 @@ Captures produites par `apps/web/tests/visual/` (projet Playwright séparé, `np
 
 Limite des captures pleine page : un élément `fixed` (modale, barre d'enregistrement collante) s'imprime à l'endroit du premier écran, au milieu de la capture. Ce n'est pas un défaut de la page.
 
-## Mini-plateformes — six styles configurables
+## Mini-plateformes — dix styles configurables
 
 L'organisateur choisit dans l'éditeur d'apparence : logo, couleur, image de couverture, style de page (Affiche, Soirée, Billet, Couronne, Magazine, Pop) et police des titres (Festival = Unbounded, Gala = Playfair Display, Classique = Plus Jakarta Sans). Six événements de validation, un par style, chacun avec un **logo de démonstration** (monogramme « MC » d'un concours fictif) importé par la vraie route d'import (stockage en base). Les candidats n'ont pas de photo (initiales) : aucune photo de personne n'a été ajoutée aux données de test.
 
@@ -18,6 +18,11 @@ Couverture des styles Affiche, Couronne et Magazine : photo de concert Wikimedia
 | couronne-rose | Couronne · Gala · rose, couverture | hub 1280 | conforme | — |
 | magazine-rouge | Magazine · Festival · rouge, couverture | hub 1280 | conforme après correction | titre coupé au milieu des mots dans la demi-colonne → taille calée sur la colonne, coupure aux espaces et tirets |
 | pop-orange | Pop · Festival · orange | hub 1280 + 390 | conforme | — |
+| billet-turquoise (fond image) | Billet · Classique · turquoise, couverture en fond | hub 1280 | conforme | voile à la couleur de l'événement, titre lisible |
+| terroir-vert | Terroir · Classique · vert, couverture | hub 1280 | conforme | — |
+| stade-rouge | Stade · Festival · rouge, couverture | hub 1280 + 390 | conforme après correction | noms tronqués dans le bandeau des maillots à 390 → voix sous le nom sur mobile |
+| lineup-violet | Line-up · Festival · violet, couverture bichromie | hub 1280 | conforme | — |
+| diplome-bleu | Diplôme · Gala · bleu | hub 1280 | conforme | — |
 | panneau de partage | profil Affiche, téléphone | 390 | conforme après correction | lien entièrement surligné à l'ouverture → focus sur « Copier » |
 
 Partage : bouton « Partager » sur le bandeau, le profil et les résultats ; panneau avec le lien copiable, 13 réseaux avec leurs logos officiels (Messenger sur téléphone seulement), e-mail, SMS et « Autres applications » (partage natif). Critère « un votant comprend qui il paie et combien » : **oui** dans les six styles.
