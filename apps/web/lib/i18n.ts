@@ -394,7 +394,7 @@ const messages = {
     "pub.rank1": "1er",
     "pub.rank2": "2e",
     "pub.rank3": "3e",
-    "pub.votesCount": "{count} votes",
+    "pub.votesCount": "{count} voix",
     "pub.buyTickets": "Acheter des billets",
     "pub.ticketsTitle": "Billets",
     "pub.ticketSalesClosed": "La vente en ligne n'est pas encore ouverte.",
@@ -662,6 +662,13 @@ const messages = {
     "results.meta": "{count} votes payés et confirmés. Seuls ces votes comptent dans le classement.",
     "upload.unavailable": "L'import de photos n'est pas configuré sur ce serveur. Contactez SHADOMA.",
     "upload.remove": "Retirer la photo",
+    "share.title": "Partager ce profil",
+    "share.copy": "Copier le lien",
+    "share.copied": "Lien copié",
+    "share.copyFailed": "Impossible de copier le lien.",
+    "share.whatsapp": "WhatsApp",
+    "share.native": "Partager",
+    "share.voterText": "Vote pour {name} au concours {event} : {url}",
   },
   en: {
     "lang.switch": "Language",
@@ -1317,6 +1324,13 @@ const messages = {
     "results.meta": "{count} paid and confirmed votes. Only these votes count in the ranking.",
     "upload.unavailable": "Photo import is not configured on this server. Contact SHADOMA.",
     "upload.remove": "Remove the photo",
+    "share.title": "Share this profile",
+    "share.copy": "Copy the link",
+    "share.copied": "Link copied",
+    "share.copyFailed": "Could not copy the link.",
+    "share.whatsapp": "WhatsApp",
+    "share.native": "Share",
+    "share.voterText": "Vote for {name} in the {event} contest: {url}",
   }
 } as const;
 

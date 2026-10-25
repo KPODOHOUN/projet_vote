@@ -14,7 +14,9 @@ export function LegalFooter() {
     pathname?.startsWith("/register") ||
     pathname?.startsWith("/vote") ||
     pathname?.startsWith("/accept-invitation") ||
-    pathname?.startsWith("/admin");
+    pathname?.startsWith("/admin") ||
+    // Les mini-plateformes ont leur propre pied (PublicEventFooter).
+    pathname?.startsWith("/e/");
 
   if (hideOnAppRoutes) {
     return null;

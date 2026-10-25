@@ -651,6 +651,13 @@ img {
   --color-ring: var(--color-brand-600);
 }
 
+/* Dans une mini-plateforme, le paiement garde l'accent lisible de l'événement :
+   une seule couleur d'action sur la page (bouton, quantité, focus). */
+[data-event-theme] [data-zone="secure-flow"] {
+  --color-primary: var(--event-accent-strong, var(--color-brand-600));
+  --color-ring: var(--event-accent-strong, var(--color-brand-600));
+}
+
 /* ── Number counter animation ──────────────────────────────────────────── */
 .vp-number {
   display: inline-block;
