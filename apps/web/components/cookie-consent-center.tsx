@@ -38,8 +38,7 @@ function writeConsentCookie(value: ConsentState) {
 }
 
 export function CookieConsentCenter() {
-  const { locale } = useI18n();
-  const isEn = locale === "en";
+  const { t } = useI18n();
   const [isVisible, setIsVisible] = useState(false);
   const [analytics, setAnalytics] = useState(false);
   const [marketing, setMarketing] = useState(false);
@@ -126,19 +125,17 @@ export function CookieConsentCenter() {
       className="fixed bottom-0 left-0 right-0 z-50 p-3 pointer-events-none sm:p-6"
       role="dialog"
       aria-modal="false"
-      aria-label={isEn ? "Cookie preferences" : "Préférences cookies"}
+      aria-label={t("cookies.label")}
     >
       <div className="mx-auto max-w-4xl pointer-events-auto flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-2xl animate-in slide-in-from-bottom-full duration-500 sm:gap-6 sm:p-6 md:flex-row md:items-center md:justify-between">
         <div className="flex-1 space-y-1.5 sm:space-y-2">
           <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary">
-            {isEn ? "Cookies · privacy" : "Cookies · confidentialité"}
+            {t("cookies.title")}
           </span>
           <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-            {isEn
-              ? "Necessary cookies stay active for security. Choose what you allow beyond that."
-              : "Les cookies nécessaires restent actifs pour la sécurité. Choisissez ce que vous autorisez au-delà."}{" "}
+            {t("cookies.body")}{" "}
             <a className="font-medium text-foreground transition-colors hover:text-primary hover:underline" href="/cookies">
-              {isEn ? "Learn more" : "En savoir plus"}
+              {t("cookies.learnMore")}
             </a>
           </p>
         </div>
@@ -152,9 +149,9 @@ export function CookieConsentCenter() {
                   checked
                   readOnly
                   className="h-4 w-4 rounded border-input bg-background text-primary focus:ring-primary/50"
-                  aria-label={isEn ? "Necessary cookies always on" : "Cookies nécessaires toujours actifs"}
+                  aria-label={t("cookies.necessaryAria")}
                 />
-                <span className="text-xs font-medium text-foreground">{isEn ? "Necessary · always on" : "Nécessaires · toujours actifs"}</span>
+                <span className="text-xs font-medium text-foreground">{t("cookies.necessary")}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -163,7 +160,7 @@ export function CookieConsentCenter() {
                   onChange={(event) => setAnalytics(event.target.checked)}
                   className="h-4 w-4 rounded border-input bg-background text-primary focus:ring-primary/50"
                 />
-                <span className="text-xs font-medium text-foreground">{isEn ? "Analytics" : "Mesure d'audience"}</span>
+                <span className="text-xs font-medium text-foreground">{t("cookies.analytics")}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -172,7 +169,7 @@ export function CookieConsentCenter() {
                   onChange={(event) => setMarketing(event.target.checked)}
                   className="h-4 w-4 rounded border-input bg-background text-primary focus:ring-primary/50"
                 />
-                <span className="text-xs font-medium text-foreground">{isEn ? "Marketing" : "Marketing"}</span>
+                <span className="text-xs font-medium text-foreground">{t("cookies.marketing")}</span>
               </label>
             </div>
           ) : null}
@@ -183,14 +180,14 @@ export function CookieConsentCenter() {
               className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:px-4 sm:text-sm"
               onClick={() => saveConsent(true, true)}
             >
-              {isEn ? "Accept all" : "Tout accepter"}
+              {t("cookies.acceptAll")}
             </button>
             <button
               type="button"
               className="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:px-4 sm:text-sm"
               onClick={() => saveConsent(false, false)}
             >
-              {isEn ? "Reject optional" : "Refuser optionnels"}
+              {t("cookies.rejectOptional")}
             </button>
             {showDetails ? (
               <button
@@ -198,7 +195,7 @@ export function CookieConsentCenter() {
                 className="col-span-2 inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:col-span-1 sm:px-4 sm:text-sm"
                 onClick={() => saveConsent(analytics, marketing)}
               >
-                {isEn ? "Save choices" : "Enregistrer"}
+                {t("cookies.save")}
               </button>
             ) : (
               <button
@@ -206,7 +203,7 @@ export function CookieConsentCenter() {
                 className="col-span-2 inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:col-span-1 sm:px-4 sm:text-sm"
                 onClick={() => setShowDetails(true)}
               >
-                {isEn ? "Customize" : "Personnaliser"}
+                {t("cookies.customize")}
               </button>
             )}
           </div>

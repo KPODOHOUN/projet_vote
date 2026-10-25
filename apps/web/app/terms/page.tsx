@@ -25,8 +25,8 @@ export default function TermsPage() {
           <h2 className="text-2xl font-bold tracking-tight text-foreground mb-4">{isEn ? "Responsibilities" : "Responsabilités"}</h2>
           <p className="text-muted-foreground leading-relaxed">
             {isEn
-              ? "The organizer remains responsible for event content, campaign legality, and local law compliance. SHADOMA Votes ensures reasonable availability and operational security."
-              : "L'organisateur reste responsable du contenu de ses évènements, de la légalité des campagnes et du respect des règles locales. SHADOMA Votes assure la disponibilité raisonnable et la sécurité opérationnelle du service."}
+              ? "The organizer remains responsible for event content, campaign legality, and local law compliance. SHADOMA Votes makes reasonable efforts to keep the service available, without guaranteeing uninterrupted access."
+              : "L'organisateur reste responsable du contenu de ses évènements, de la légalité des campagnes et du respect des règles locales. SHADOMA Votes fait des efforts raisonnables pour maintenir le service disponible, sans garantir un accès ininterrompu."}
           </p>
         </section>
 
@@ -34,8 +34,26 @@ export default function TermsPage() {
           <h2 className="text-2xl font-bold tracking-tight text-foreground mb-4">{isEn ? "Payments" : "Paiements"}</h2>
           <p className="text-muted-foreground leading-relaxed">
             {isEn
-              ? "Payments are processed through certified Mobile Money partners. Each transaction is logged and verified before your event is updated."
-              : "Les paiements passent par des partenaires Mobile Money certifiés. Chaque transaction est enregistrée et vérifiée avant la mise à jour de votre évènement."}
+              ? "Voters pay with Mobile Money through a payment provider. A vote counts only once the provider has confirmed the payment to SHADOMA Votes. Each transaction is recorded."
+              : "Les votants paient par Mobile Money via un prestataire de paiement. Une voix ne compte qu'une fois le paiement confirmé à SHADOMA Votes par ce prestataire. Chaque transaction est enregistrée."}
+          </p>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground mb-4">{isEn ? "Confirmed votes" : "Votes confirmés"}</h2>
+          <p className="text-muted-foreground leading-relaxed">
+            {isEn
+              ? "A confirmed vote is final. It is not credited back automatically, including when a contest is closed or cancelled. Any request about a payment goes to the contest organizer."
+              : "Un vote confirmé est définitif. Il n'est pas recrédité automatiquement, y compris si le concours est clôturé ou annulé. Toute demande sur un paiement s'adresse à l'organisateur du concours."}
+          </p>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground mb-4">{isEn ? "Organizer funds and withdrawals" : "Fonds de l'organisateur et retraits"}</h2>
+          <p className="text-muted-foreground leading-relaxed">
+            {isEn
+              ? "The commission rate is shown to the organizer before the event is activated and does not change afterwards. Withdrawals are requested by the organizer and processed by hand by SHADOMA after approval; there is no automatic transfer."
+              : "Le taux de commission est indiqué à l'organisateur avant l'activation de l'événement et ne change plus ensuite. Les retraits sont demandés par l'organisateur et traités à la main par SHADOMA après validation ; il n'y a pas de virement automatique."}
           </p>
         </section>
 
