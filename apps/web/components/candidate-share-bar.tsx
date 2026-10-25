@@ -14,8 +14,8 @@ type CandidateShareBarProps = {
 export function CandidateShareBar({ eventSlug, publicRef, candidateName, eventTitle }: CandidateShareBarProps) {
   const { t } = useI18n();
   return (
-    <div className="space-y-3 border-t border-slate-900/15 pt-5">
-      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-600">{t("share.title")}</p>
+    <div className="space-y-3 border-t border-[var(--mini-rule)] pt-5">
+      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--mini-muted)]">{t("share.title")}</p>
       <CopyCandidateLinkButton
         eventSlug={eventSlug}
         publicRef={publicRef}

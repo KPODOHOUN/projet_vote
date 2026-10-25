@@ -33,8 +33,11 @@ export function CandidatePhoto({
   if (!photoUrl || broken) {
     return (
       <span
-        className={`flex items-center justify-center text-lg font-light uppercase tracking-[0.24em] text-slate-900 ${cls}`}
-        style={{ background: "color-mix(in srgb, var(--event-accent-strong, var(--color-brand-600)) 10%, white)" }}
+        className={`flex items-center justify-center text-lg font-light uppercase tracking-[0.24em] text-[var(--mini-ink,var(--color-slate-900))] ${cls}`}
+        style={{
+          background:
+            "var(--mini-photo-bg, color-mix(in srgb, var(--event-accent-strong, var(--color-brand-600)) 10%, white))"
+        }}
         data-placeholder="true"
         aria-hidden="true"
       >

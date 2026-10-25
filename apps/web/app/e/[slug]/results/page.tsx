@@ -79,8 +79,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 // Disposition d'après la maquette « 3 · Résultats » (filets, titres légers en
 // capitales), avec les composants et polices de la plateforme.
-const kicker = "text-[11px] font-medium uppercase tracking-[0.24em] text-slate-600";
-const accentKicker = "text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--event-accent-strong)]";
+const kicker = "text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--mini-muted)]";
+const accentKicker = "text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]";
 const gutter = "px-[clamp(20px,4vw,56px)]";
 
 export default async function PublicResultsPage({ params }: PageProps) {
@@ -117,8 +117,8 @@ export default async function PublicResultsPage({ params }: PageProps) {
   return (
     <PublicEventShell eventTitle={event.title} slug={event.slug} branding={branding} active="results">
       <main>
-        <section className={`mx-[clamp(20px,4vw,56px)] flex flex-wrap items-end justify-between gap-8 border-b border-slate-900 pb-14 pt-16 sm:pt-20`}>
-          <h1 className="m-0 font-display text-[clamp(48px,9vw,144px)] font-light uppercase leading-[0.9] tracking-[0.04em]">
+        <section className={`mx-[clamp(20px,4vw,56px)] flex flex-wrap items-end justify-between gap-8 border-b border-[var(--mini-line)] pb-14 pt-16 sm:pt-20`}>
+          <h1 className="mini-title mini-display-xl m-0">
             {t9n("results.title")}
           </h1>
           <div className="flex max-w-sm flex-col gap-2.5">
@@ -127,10 +127,10 @@ export default async function PublicResultsPage({ params }: PageProps) {
               <StatusChip tone={chip.tone} label={chip.label} />
               {!isFinal && hasVotes ? <span className={kicker}>{t9n("results.provisional")}</span> : null}
             </div>
-            <p className="text-sm font-light leading-relaxed text-slate-600">
+            <p className="text-sm font-light leading-relaxed text-[var(--mini-muted)]">
               {translateVars(locale, "results.meta", { count: formatCount(totals.votes, locale) })}
             </p>
-            <Link href={`/e/${event.slug}/results`} className={`${kicker} inline-flex min-h-11 items-center text-slate-900 hover:opacity-65`}>
+            <Link href={`/e/${event.slug}/results`} className={`${kicker} inline-flex min-h-11 items-center hover:opacity-65`}>
               {t9n("results.refresh")}
             </Link>
           </div>
@@ -138,32 +138,32 @@ export default async function PublicResultsPage({ params }: PageProps) {
 
         {ranked.length === 0 || !hasVotes ? (
           <section className={`${gutter} flex flex-col items-start gap-6 py-24 sm:py-32`}>
-            <p className="m-0 max-w-4xl font-display text-[clamp(28px,4vw,56px)] font-light leading-tight">
+            <p className="mini-title m-0 max-w-4xl text-[calc(clamp(28px,4vw,56px)*var(--mini-title-scale))] leading-tight">
               {ranked.length === 0 ? t9n("hub.noCandidates") : t9n("results.noVotes")}
             </p>
             {phase === "open" ? (
               <Link
                 href={`/e/${event.slug}`}
-                className="inline-flex min-h-11 items-center border-b border-[var(--event-accent-strong)] pb-1.5 text-[11px] font-medium uppercase tracking-[0.22em] hover:opacity-65"
+                className="inline-flex min-h-11 items-center border-b border-[var(--mini-accent)] pb-1.5 text-[11px] font-medium uppercase tracking-[0.22em] hover:opacity-65"
               >
                 {t9n("results.voteBeforeClose")}
               </Link>
             ) : null}
-            <p className="text-xs text-slate-600">{t9n("pub.paidOnlyNote")}</p>
+            <p className="text-xs text-[var(--mini-muted)]">{t9n("pub.paidOnlyNote")}</p>
           </section>
         ) : (
           <div className={gutter}>
             {winner ? (
               <section className="flex flex-wrap gap-[clamp(32px,5vw,80px)] py-16 sm:py-[72px]">
-                <div className="relative aspect-[4/5] min-w-0 flex-[1_1_320px] overflow-hidden rounded-md bg-slate-900/5 sm:max-h-[720px]">
+                <div className="relative aspect-[4/5] min-w-0 flex-[1_1_320px] overflow-hidden rounded-md bg-[var(--mini-wash)] sm:max-h-[720px]">
                   <CandidatePhoto photoUrl={winner.photoUrl} fullName={winner.fullName} size="lg" className="absolute inset-0 h-full w-full object-cover" />
                 </div>
                 <div className="flex min-w-0 flex-[1_1_320px] flex-col justify-end gap-5">
                   <span className={accentKicker}>{t9n("results.winner")}</span>
-                  <h2 className="m-0 break-words font-display text-[clamp(44px,6.5vw,100px)] font-light uppercase leading-[0.92] tracking-[0.04em]">
+                  <h2 className="mini-title mini-h1 m-0">
                     {winner.fullName}
                   </h2>
-                  <span className="text-[15px] font-light text-slate-600">
+                  <span className="text-[15px] font-light text-[var(--mini-muted)]">
                     {[numberLabel(winner.number), votesLabel(winner.voteCount)].filter(Boolean).join(" · ")}
                   </span>
                 </div>
@@ -171,15 +171,15 @@ export default async function PublicResultsPage({ params }: PageProps) {
             ) : null}
 
             {podium.length > 0 ? (
-              <section className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-7 gap-y-10 border-t border-slate-900 pt-14">
+              <section className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-7 gap-y-10 border-t border-[var(--mini-line)] pt-14">
                 {podium.map((row, index) => (
                   <div key={row.candidateId} className="flex flex-col gap-4">
-                    <div className="aspect-[4/5] overflow-hidden rounded-md bg-slate-900/5">
+                    <div className="aspect-[4/5] overflow-hidden rounded-md bg-[var(--mini-wash)]">
                       <CandidatePhoto photoUrl={row.photoUrl} fullName={row.fullName} size="lg" className="h-full w-full object-cover" />
                     </div>
                     <span className={kicker}>{translateVars(locale, "results.place", { rank: index + 2 })}</span>
                     <span className="text-xl font-medium uppercase tracking-[0.06em]">{row.fullName}</span>
-                    <span className="-mt-1.5 text-[13px] font-light text-slate-600">
+                    <span className="-mt-1.5 text-[13px] font-light text-[var(--mini-muted)]">
                       {[numberLabel(row.number), votesLabel(row.voteCount)].filter(Boolean).join(" · ")}
                     </span>
                   </div>
@@ -189,26 +189,26 @@ export default async function PublicResultsPage({ params }: PageProps) {
 
             <section className="py-20 sm:py-[120px]">
               <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-                <h2 className="m-0 font-display text-[clamp(28px,3.4vw,48px)] font-light uppercase tracking-[0.04em]">
+                <h2 className="mini-title mini-h2 m-0">
                   {t9n("results.publicVote")}
                 </h2>
                 <span className={kicker}>{t9n("results.share")}</span>
               </div>
-              <ol className="border-t border-slate-900">
+              <ol className="border-t border-[var(--mini-line)]">
                 {ranked.map((row, index) => {
                   const width = maxVotes > 0 ? Math.round((row.voteCount / maxVotes) * 100) : 0;
                   return (
-                    <li key={row.candidateId} className="grid grid-cols-[40px_minmax(0,1fr)_64px] items-center gap-4 border-b border-slate-900/15 py-4 sm:grid-cols-[48px_minmax(0,1fr)_80px] sm:gap-5">
-                      <span className="text-[13px] text-slate-600 tabular-nums">{String(index + 1).padStart(2, "0")}</span>
+                    <li key={row.candidateId} className="grid grid-cols-[40px_minmax(0,1fr)_64px] items-center gap-4 border-b border-[var(--mini-rule)] py-4 sm:grid-cols-[48px_minmax(0,1fr)_80px] sm:gap-5">
+                      <span className="text-[13px] text-[var(--mini-muted)] tabular-nums">{String(index + 1).padStart(2, "0")}</span>
                       <div className="flex min-w-0 flex-col gap-2.5">
                         <span className="truncate text-sm font-medium uppercase tracking-[0.06em]">
                           {row.fullName}
-                          <span className="ml-2 font-light normal-case tracking-normal text-slate-600">{votesLabel(row.voteCount)}</span>
+                          <span className="ml-2 font-light normal-case tracking-normal text-[var(--mini-muted)]">{votesLabel(row.voteCount)}</span>
                         </span>
-                        <div className="h-0.5 bg-slate-900/5" aria-hidden="true">
+                        <div className="h-0.5 bg-[var(--mini-rule)]" aria-hidden="true">
                           <div
                             className="h-0.5"
-                            style={{ width: `${width}%`, background: index === 0 ? "var(--event-accent-strong)" : "var(--color-slate-900, #0f172a)" }}
+                            style={{ width: `${width}%`, background: index === 0 ? "var(--mini-accent)" : "var(--mini-ink)" }}
                           />
                         </div>
                       </div>
@@ -217,7 +217,7 @@ export default async function PublicResultsPage({ params }: PageProps) {
                   );
                 })}
               </ol>
-              <p className="mt-6 text-xs text-slate-600">{t9n("pub.paidOnlyNote")}</p>
+              <p className="mt-6 text-xs text-[var(--mini-muted)]">{t9n("pub.paidOnlyNote")}</p>
             </section>
           </div>
         )}

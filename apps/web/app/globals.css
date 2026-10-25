@@ -658,6 +658,84 @@ img {
   --color-ring: var(--event-accent-strong, var(--color-brand-600));
 }
 
+/* ── Habillage des mini-plateformes (choisi par l'organisateur) ─────────── */
+/* Jetons --mini-* : la page lit l'encre, le texte d'appui, les filets et
+   l'accent ici, jamais en dur. Trois styles (data-page-style) et trois polices
+   de titres (data-title-font). Le paiement (secure-flow) reste une carte
+   claire et opaque quel que soit le style. */
+[data-event-theme] {
+  --mini-bg: var(--color-slate-50);
+  --mini-ink: var(--color-slate-900);
+  --mini-muted: var(--color-slate-600);
+  --mini-line: var(--color-slate-900);
+  --mini-rule: rgb(15 23 42 / 0.15);
+  --mini-wash: var(--event-accent-light, rgb(15 23 42 / 0.05));
+  --mini-accent: var(--event-accent-strong, var(--color-brand-600));
+  --mini-photo-bg: color-mix(in srgb, var(--event-accent-strong, var(--color-brand-600)) 10%, white);
+  --mini-title-font: var(--font-festival), var(--font-display);
+  --mini-title-weight: 300;
+  --mini-title-tracking: 0.01em;
+  --mini-title-scale: 0.8;
+}
+[data-event-theme][data-title-font="gala"] {
+  --mini-title-font: var(--font-gala), Georgia, serif;
+  --mini-title-weight: 400;
+  --mini-title-tracking: 0.02em;
+  --mini-title-scale: 1;
+}
+[data-event-theme][data-title-font="classique"] {
+  --mini-title-font: var(--font-display);
+  --mini-title-weight: 300;
+  --mini-title-tracking: 0.04em;
+  --mini-title-scale: 1;
+}
+[data-event-theme][data-page-style="soiree"] {
+  --mini-bg: var(--event-night);
+  --mini-ink: #f1f5f9;
+  --mini-muted: #a8b3c7;
+  --mini-line: color-mix(in srgb, var(--event-accent-bright) 45%, transparent);
+  --mini-rule: rgb(255 255 255 / 0.12);
+  --mini-wash: color-mix(in srgb, var(--event-accent-bright) 12%, #1a1f33);
+  --mini-accent: var(--event-accent-bright);
+  --mini-photo-bg: color-mix(in srgb, var(--event-accent-bright) 16%, #1a1f33);
+  --color-primary: var(--event-accent-bright);
+  --color-primary-foreground: var(--event-on-bright);
+  --color-ring: var(--event-accent-bright);
+  --color-foreground: #f1f5f9;
+  --color-muted-foreground: #a8b3c7;
+  --color-border: rgb(255 255 255 / 0.14);
+  --color-muted: rgb(255 255 255 / 0.06);
+  color-scheme: dark;
+}
+/* Retour au clair dans les zones de paiement et les cartes. */
+[data-event-theme][data-page-style="soiree"] [data-zone="secure-flow"] {
+  --color-primary: var(--event-accent-strong);
+  --color-primary-foreground: #ffffff;
+  --color-ring: var(--event-accent-strong);
+  --color-foreground: var(--color-slate-900);
+  --color-muted-foreground: var(--color-slate-500);
+  --color-border: var(--color-slate-200);
+  --color-muted: var(--color-slate-100);
+  color-scheme: light;
+  background: #ffffff;
+  color: var(--color-slate-900);
+}
+.mini-title {
+  font-family: var(--mini-title-font);
+  font-weight: var(--mini-title-weight);
+  letter-spacing: var(--mini-title-tracking);
+  font-style: normal;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+/* Taille des grands titres, corrigée selon la largeur de la police. */
+.mini-display { font-size: calc(clamp(44px, 8vw, 128px) * var(--mini-title-scale)); line-height: 0.92; }
+.mini-display-xl { font-size: calc(clamp(52px, 10vw, 152px) * var(--mini-title-scale)); line-height: 0.9; }
+.mini-h1 { font-size: calc(clamp(40px, 6vw, 96px) * var(--mini-title-scale)); line-height: 0.94; }
+.mini-h2 { font-size: calc(clamp(28px, 3.4vw, 48px) * var(--mini-title-scale)); line-height: 1; }
+.mini-footer-title { font-size: calc(clamp(32px, 6vw, 88px) * var(--mini-title-scale)); line-height: 0.92; }
+
 /* ── Number counter animation ──────────────────────────────────────────── */
 .vp-number {
   display: inline-block;

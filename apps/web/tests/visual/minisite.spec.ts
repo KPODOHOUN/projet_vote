@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 
 // Données de validation uniquement (jamais committées dans les seeds) :
@@ -8,14 +9,36 @@ const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DAT
 const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3011/api/v1";
 const OUT = "../../docs/validation";
 
-type Palette = { name: string; color: string | null; layout: "GRID" | "LIST" | "SPOTLIGHT" };
+type Palette = {
+  name: string;
+  color: string | null;
+  layout: "GRID" | "LIST" | "SPOTLIGHT";
+  pageStyle: "AFFICHE" | "SOIREE" | "BILLET";
+  fontStyle: "FESTIVAL" | "GALA" | "CLASSIQUE";
+  cover?: boolean;
+};
+// Les trois styles de page, chacun avec deux couleurs et des polices différentes,
+// dont des cas limites (bleu nuit en Soirée, blanc en Billet, Affiche sans photo).
 const PALETTES: Palette[] = [
-  { name: "defaut", color: null, layout: "GRID" },
-  { name: "or", color: "#F59E0B", layout: "LIST" },
-  { name: "sombre", color: "#0F172A", layout: "SPOTLIGHT" },
-  { name: "turquoise", color: "#14B8A6", layout: "GRID" },
-  { name: "blanc", color: "#FFFFFF", layout: "GRID" }
+  { name: "affiche-or", color: "#D4A017", layout: "GRID", pageStyle: "AFFICHE", fontStyle: "FESTIVAL", cover: true },
+  { name: "affiche-sans-photo", color: null, layout: "GRID", pageStyle: "AFFICHE", fontStyle: "GALA" },
+  { name: "soiree-or", color: "#D4A017", layout: "GRID", pageStyle: "SOIREE", fontStyle: "GALA" },
+  { name: "soiree-bleu-nuit", color: "#1B2A6B", layout: "SPOTLIGHT", pageStyle: "SOIREE", fontStyle: "FESTIVAL" },
+  { name: "billet-turquoise", color: "#14B8A6", layout: "GRID", pageStyle: "BILLET", fontStyle: "CLASSIQUE" },
+  { name: "billet-blanc", color: "#FFFFFF", layout: "LIST", pageStyle: "BILLET", fontStyle: "FESTIVAL" }
 ];
+
+// Image de couverture de validation : fournie hors dépôt (VISUAL_COVER_PATH),
+// déposée là où l'API sert les fichiers importés. Sans elle, Affiche garde son fond encre.
+function coverUrl(): string | null {
+  const source = process.env.VISUAL_COVER_PATH;
+  if (!source || !existsSync(source)) return null;
+  const dir = "../api/.data/uploads";
+  mkdirSync(dir, { recursive: true });
+  const filename = `${randomBytes(16).toString("hex")}.jpg`;
+  copyFileSync(source, `${dir}/${filename}`);
+  return `/api/v1/uploads/files/${filename}`;
+}
 
 async function organizer(request: APIRequestContext, unique: string) {
   const res = await request.post(`${apiBaseUrl}/auth/register`, {
@@ -55,7 +78,15 @@ async function seedEvent(request: APIRequestContext, headers: Record<string, str
   // Activation et votes payés posés directement en base : le parcours PSP n'est pas l'objet de la capture.
   const event = await prisma.event.update({
     where: { id },
-    data: { status: "ACTIVE", brandColor: p.color, layout: p.layout, tagline: "Édition 2026" }
+    data: {
+      status: "ACTIVE",
+      brandColor: p.color,
+      layout: p.layout,
+      tagline: "Édition 2026",
+      pageStyle: p.pageStyle,
+      fontStyle: p.fontStyle,
+      coverUrl: p.cover ? coverUrl() : null
+    }
   });
   const candidates = await prisma.candidate.findMany({ where: { eventId: id }, orderBy: { number: "asc" } });
   const counts = [42, 31, 18, 9, 4, 0];
@@ -76,7 +107,7 @@ async function shoot(page: Page, path: string, width: number, file: string) {
   await page.screenshot({ path: `${OUT}/${width}/${file}.png`, fullPage: true });
 }
 
-test("mini-plateformes : hub, profil, résultats sur cinq palettes", async ({ page, request }) => {
+test("mini-plateformes : hub, profil, résultats dans les trois styles", async ({ page, request }) => {
   test.setTimeout(300_000);
   const unique = `${Date.now()}`;
   const headers = await organizer(request, unique);
@@ -87,7 +118,7 @@ test("mini-plateformes : hub, profil, résultats sur cinq palettes", async ({ pa
       await shoot(page, `/e/${slug}/c/${firstRef}`, width, `profil-${p.name}`);
       await shoot(page, `/e/${slug}/results`, width, `resultats-${p.name}`);
     }
-    if (p.name === "defaut") {
+    if (p.name === "soiree-or") {
       await prisma.event.update({ where: { id }, data: { status: "CLOSED" } });
       for (const width of [390, 1280]) await shoot(page, `/e/${slug}/results`, width, "resultats-clos");
     }

@@ -2,10 +2,17 @@ import type { CSSProperties } from "react";
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
+export type EventPageStyleValue = "AFFICHE" | "SOIREE" | "BILLET";
+export type EventFontStyleValue = "FESTIVAL" | "GALA" | "CLASSIQUE";
+
 export type EventBranding = {
   logoUrl: string | null;
   brandColor: string | null;
   tagline: string | null;
+  /** Personnalisation de la mini-plateforme (absente des anciennes réponses). */
+  coverUrl?: string | null;
+  pageStyle?: EventPageStyleValue | null;
+  fontStyle?: EventFontStyleValue | null;
 };
 
 export function normalizeBrandColor(value: string | null | undefined): string | null {
@@ -45,6 +52,8 @@ export const DEFAULT_BRAND_COLOR = "#4f46e5";
 const INK = "#0f172a";
 const WHITE = "#ffffff";
 const MIN_TEXT_CONTRAST = 4.5;
+/** Fond du style « Soirée ». */
+export const NIGHT_GROUND = "#0e1220";
 
 /** Rapport de contraste WCAG 2.x entre deux couleurs. */
 export function contrastRatio(a: string, b: string): number {
@@ -113,6 +122,20 @@ export function deriveAccentStrong(accent: string): string {
   return hslToHex(h, s, 8);
 }
 
+/**
+ * Version de la couleur lisible sur le fond nuit (style « Soirée ») : on
+ * éclaircit (teinte et saturation conservées) jusqu'à 4,5:1.
+ */
+export function deriveAccentBright(accent: string): string {
+  if (contrastRatio(accent, NIGHT_GROUND) >= MIN_TEXT_CONTRAST) return accent;
+  const { h, s, l } = hexToHsl(accent);
+  for (let lightness = Math.ceil(l); lightness <= 96; lightness += 1) {
+    const candidate = hslToHex(h, s, lightness);
+    if (contrastRatio(candidate, NIGHT_GROUND) >= MIN_TEXT_CONTRAST) return candidate;
+  }
+  return hslToHex(h, s, 96);
+}
+
 export type EventTheme = {
   /** Couleur choisie par l'organisateur : décor et aplats sans texte. */
   accent: string;
@@ -120,6 +143,10 @@ export type EventTheme = {
   accentStrong: string;
   headerBg: string;
   headerFg: string;
+  /** Texte, liens, boutons sur le fond nuit (≥ 4,5:1). */
+  accentBright: string;
+  /** Texte posé sur un aplat `accentBright`. */
+  onBright: string;
   cssVars: CSSProperties;
 };
 
@@ -134,12 +161,20 @@ export function buildEventTheme(brandColor: string | null | undefined): EventThe
   const onAccent = onBest(accent);
   const headerBg = onAccent.ratio >= MIN_TEXT_CONTRAST ? accent : accentStrong;
   const headerFg = onAccent.ratio >= MIN_TEXT_CONTRAST ? onAccent.color : WHITE;
+  const accentBright = deriveAccentBright(accent);
+  const onBright =
+    contrastRatio(WHITE, accentBright) >= contrastRatio(NIGHT_GROUND, accentBright) ? WHITE : NIGHT_GROUND;
   return {
     accent,
     accentStrong,
     headerBg,
     headerFg,
+    accentBright,
+    onBright,
     cssVars: {
+      "--event-accent-bright": accentBright,
+      "--event-on-bright": onBright,
+      "--event-night": NIGHT_GROUND,
       "--event-accent": accent,
       "--event-accent-strong": accentStrong,
       "--event-on-strong": WHITE,

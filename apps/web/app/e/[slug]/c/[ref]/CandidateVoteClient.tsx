@@ -74,8 +74,8 @@ export function CandidateVoteClient({
   }
 
   const tally = (
-    <p className="text-sm text-slate-600">
-      <span className="text-2xl font-extrabold text-slate-900 tabular-nums">
+    <p className="text-sm text-[var(--mini-muted,var(--color-slate-600))]">
+      <span className="text-2xl font-extrabold text-[var(--mini-ink,var(--color-slate-900))] tabular-nums">
         {formatCount(displayedVoteCount(initialVoteCount, isDone ? submittedQuantity : null), locale)}
       </span>{" "}
       {t("pay.votesSoFar")}
@@ -193,7 +193,7 @@ export function CandidateVoteClient({
           <Button type="submit" size="lg" loading={isSubmitting} disabled={!canSubmit} className="h-12 w-full text-base font-bold">
             {isSubmitting ? t("pay.processing") : t("pay.submit", { total: formatCfa(amountCfa, locale) })}
           </Button>
-          <p className="text-sm text-slate-600">{t("pay.note")}</p>
+          <p className="text-sm text-[var(--mini-muted,var(--color-slate-600))]">{t("pay.note")}</p>
         </form>
       ) : (
         <section data-zone="secure-flow" className="space-y-4 rounded-md border border-border bg-background p-4 sm:p-5" aria-live="polite">

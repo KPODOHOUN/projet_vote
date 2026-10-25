@@ -92,7 +92,7 @@ export function TicketsClient({ slug }: { slug: string }) {
         <FormError>{error instanceof Error ? error.message : t("pub.loadError")}</FormError>
       ) : (
         <>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-extrabold tracking-tight text-[var(--mini-ink)]">
             {TICKET_SALES_OPEN ? t("pub.buyTickets") : t("pub.ticketsTitle")}
           </h1>
 
@@ -132,7 +132,7 @@ export function TicketsClient({ slug }: { slug: string }) {
                             <p className="text-lg font-extrabold">{tt.name}</p>
                             {tt.description && <p className="mt-0.5 text-sm text-muted-foreground">{tt.description}</p>}
                           </div>
-                          <p className="whitespace-nowrap text-xl font-extrabold text-slate-900 tabular-nums">
+                          <p className="whitespace-nowrap text-xl font-extrabold text-[var(--mini-ink)] tabular-nums">
                             {formatCfa(tt.priceCfa, locale)}
                           </p>
                         </div>

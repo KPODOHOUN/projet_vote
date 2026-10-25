@@ -5,7 +5,7 @@ Source de vérité du design. Les tokens vivent dans `apps/web/app/globals.css` 
 ## Principes
 
 1. **Encaissement d'abord.** Sur chaque écran, on sait en cinq secondes qui paie qui, combien, et ce qui n'est pas encore compté.
-2. **Une seule structure, plusieurs couleurs.** Les mini-plateformes ne varient que par le titre, le logo et la couleur de l'événement. La structure est commune (maquette `3 · Résultats-html.zip`).
+2. **Une seule structure, un habillage choisi par l'organisateur.** Les mini-plateformes gardent la structure de la maquette `3 · Résultats-html.zip` ; l'organisateur choisit, dans l'éditeur d'apparence, le logo, la couleur, l'image de couverture, le style de page et la police des titres.
 3. **Composants existants seulement.** `Button`, `Card`, `Input`, `Select`, `StatusChip`, `FormError`, `LoadingState`, `ConfirmDialog`, `PublicEventShell`, `CandidatePhoto`… On adapte, on ne recrée pas.
 4. **Rien d'inventé.** Pas de chiffre, de témoignage, de logo ou d'opérateur qui ne vienne pas des données.
 
@@ -23,9 +23,10 @@ Dans une mini-plateforme, `--color-primary` = `--event-accent-strong` (moteur `l
 
 ## Typographie
 
-- **Plus Jakarta Sans** (`font-display`) : titres. **Inter** (`font-body`) : texte. **JetBrains Mono** : références de transaction.
+- **Plus Jakarta Sans** (`font-display`) : titres de l'application. **Inter** (`font-body`) : texte. **JetBrains Mono** : références de transaction.
+- Titres des mini-plateformes, au choix de l'organisateur : **Unbounded** (`--font-festival`, défaut), **Playfair Display** (`--font-gala`), **Plus Jakarta Sans** (« Classique »). Fichiers auto-hébergés (OFL), non préchargés. Classes `mini-title` + `mini-display-xl` / `mini-h1` / `mini-h2` : la taille est corrigée par `--mini-title-scale` (Unbounded est large).
 - Titres en romain, jamais d'italique. Un H1 par page.
-- Mini-plateformes : titres `font-light uppercase tracking-[0.04em]` en grand (`clamp`), sur-titres `text-[11px] uppercase tracking-[0.24em]`, navigation `text-[11px] uppercase tracking-[0.22em]`.
+- Mini-plateformes : titres `mini-title` en capitales, sur-titres `text-[11px] uppercase tracking-[0.24em]`, navigation `text-[11px] uppercase tracking-[0.22em]`.
 - Dashboard et admin : titres `text-3xl font-extrabold tracking-tight`, sur-titres en casse normale `text-sm font-semibold text-slate-600`.
 - Montants et compteurs en `tabular-nums`, formatés par `lib/format.ts` (`formatCfa`, `formatCount`, `formatEventDate`) dans la locale de la page.
 
@@ -44,7 +45,17 @@ Dans une mini-plateforme, `--color-primary` = `--event-accent-strong` (moteur `l
 | Profil | Photo 4:5 à gauche (collante sur desktop), nom en très grand, carte de paiement opaque `data-zone="secure-flow"` |
 | Résultats | « Résultats » en très grand ; vainqueur nommé seulement après clôture ; places 2–4 ; « Vote du public » en lignes avec part des voix validées ; aucun montant |
 
-En-tête commun : titre en capitales espacées, onglets soulignés par l'accent. Pied à fond encre avec le titre en grand. La phase de vote (`lib/vote-phase.ts`) décide si le formulaire de paiement s'affiche.
+En-tête commun : logo, titre en capitales espacées, onglets soulignés. Pied à fond encre avec le titre en grand. La phase de vote (`lib/vote-phase.ts`) décide si le formulaire de paiement s'affiche.
+
+### Styles de page (`Event.pageStyle`, `data-page-style`)
+
+| Style | Bandeau de la page des candidats | Cartes | Profil et résultats |
+|---|---|---|---|
+| **Affiche** (défaut) | Couverture importée en plein écran sous un voile encre ; sans couverture, fond encre. Barre : statut, compte à rebours, prix, paiement, bouton. | Photo 4:5, grand numéro dans la police des titres | Fond clair |
+| **Soirée** | Fond nuit `#0E1220`, compte à rebours en trois cases, bande « un vote / paiement / quand la voix compte / résultats ». | Nom et numéro sur le bas de la photo | Fond nuit ; la carte de paiement reste claire et opaque |
+| **Billet** | Aplat de la couleur de l'événement (version lisible), logo en médaillon ; infos dans un billet blanc à talon détachable. | Dossard encre, barre de voix | En-tête sur l'aplat, fond clair |
+
+Toutes les couleurs des pages `/e/*` passent par les jetons `--mini-*` (`globals.css`) : `--mini-bg`, `--mini-ink`, `--mini-muted`, `--mini-line`, `--mini-rule`, `--mini-wash`, `--mini-accent`. En Soirée, l'accent est `--event-accent-bright` (éclairci jusqu'à 4,5:1 sur le fond nuit, `lib/brand.ts`). Le compte à rebours part de la date de fin (ou d'ouverture) stockée ; il disparaît à l'échéance.
 
 ## Mouvement
 
@@ -60,4 +71,4 @@ Vouvoiement côté organisateur et admin, tutoiement côté votant. Textes dans 
 
 ## Images
 
-Photos et logos par import de fichier (Cloudinary) uniquement, transformés par `cloudinaryTransform` (`lib/og-image-url.ts`). Sans photo : initiales sur un aplat clair teinté par l'événement. Image de partage : logo ou photo recadré, sinon carte typographique `/e/{slug}/og`.
+Photos, logos et couverture par import de fichier (Cloudinary) uniquement, transformés par `cloudinaryTransform` (`lib/og-image-url.ts`). Sans photo : initiales sur un aplat clair teinté par l'événement. Image de partage : logo ou photo recadré, sinon carte typographique `/e/{slug}/og`.

@@ -4,19 +4,24 @@ Captures produites par `apps/web/tests/visual/` (projet Playwright séparé, `np
 
 Limite des captures pleine page : un élément `fixed` (modale, barre d'enregistrement collante) s'imprime à l'endroit du premier écran, au milieu de la capture. Ce n'est pas un défaut de la page.
 
-## Mini-plateformes (5 palettes : défaut, or, sombre `#0F172A`, turquoise, blanc saisi)
+## Mini-plateformes — styles configurables (Affiche, Soirée, Billet)
 
-| Page | 390 | 1280 | Verdict | Défaut observé → correction |
+L'organisateur choisit dans l'éditeur d'apparence : logo, couleur, image de couverture, style de page et police des titres (Festival = Unbounded, Gala = Playfair Display, Classique = Plus Jakarta Sans). Six événements de validation couvrent les trois styles, les trois polices et des cas limites. Les candidats n'ont pas de photo (initiales) : aucune photo de personne n'a été ajoutée aux données de test.
+
+L'image de couverture de « affiche-or » est une photo de concert Wikimedia Commons (« Beach-Please-2022-crowd-stage-lights-night-performance », PinkBeachPlanet, CC BY-SA 4.0), utilisée uniquement pour ces captures. Elle n'est pas dans le dépôt : la spec la lit via `VISUAL_COVER_PATH`.
+
+| Événement | Style · police · couleur | Pages regardées | Verdict | Défaut observé → correction |
 |---|---|---|---|---|
-| Hub défaut | regardée | — | conforme après correction | « 1 votes » alors que les résultats comptaient 42 → l'API comptait des lignes, pas les voix (`a28c913`) ; « voix » invariable ; double pied de page → pied du site masqué sur `/e/*` |
-| Hub sombre | — | regardée | conforme | — |
-| Profil or | regardée | — | conforme après correction | quantité sélectionnée en indigo, bouton « Payer » en or → une seule couleur d'action (`ee66bfb`) |
-| Profil turquoise | regardée | — | conforme après correction | bouton « Copier le lien » teinté violet → bouton neutre bordé (`8907a1e`) |
-| Résultats or (en cours) | regardée | — | conforme | classement provisoire, aucun vainqueur nommé |
-| Résultats clos | — | regardée | conforme | vainqueur, places 2–4, part des voix ; aucun montant |
-| Autres palettes | non regardée | non regardée | — | captures présentes dans `390/` et `1280/` |
+| affiche-or | Affiche · Festival · or, avec couverture | hub 1280 + 390 | conforme après correction | compte à rebours en capitales et coupé, slogan or peu lisible sur la photo, débordement de 2 px à 390, numéros « 01 » cassés sur deux lignes → casse normale, sans retour, pleine largeur sur mobile ; slogan blanc ; numéro non sécable |
+| soiree-or | Soirée · Gala · or | hub 1280 + 390, profil 1280, résultats clos 1280 | conforme après correction | bouton d'action en or foncé (variables du thème posées en ligne) → accent éclairci posé en ligne en Soirée ; carte de paiement claire et opaque |
+| soiree-bleu-nuit | Soirée · Festival · `#1B2A6B` | résultats 1280 | conforme | l'accent bleu nuit est éclairci (≥ 4,5:1 sur le fond nuit) |
+| billet-turquoise | Billet · Classique · turquoise | hub 1280, profil 390 | conforme | — |
+| billet-blanc | Billet · Festival · blanc, liste | hub 390 | conforme après correction | bandeau blanc confondu avec le fond, double filet au-dessus de la liste → filet sous le bandeau, un seul filet |
+| affiche-sans-photo | Affiche · Gala · défaut | non regardée | — | captures présentes |
 
-Critère « un votant comprend qui il paie et combien » : **oui** à 390 px (nom du candidat en titre, prix d'un vote, total en grand au-dessus du bouton « Payer {total} »).
+Critère « un votant comprend qui il paie et combien » : **oui** dans les trois styles (nom du candidat en titre, prix d'un vote, total au-dessus du bouton « Payer »). Le bouton « Copier le lien » est neutre dans tous les styles (le défaut violet relevé plus tôt n'apparaît plus).
+
+Toutes les captures ont été refaites après ces correctifs ; les pages à 390 px font exactement 390 px de large (aucun défilement horizontal).
 
 ## Application
 

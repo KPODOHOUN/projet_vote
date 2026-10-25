@@ -9,6 +9,7 @@ import {
   dominantColorFromPixels,
   hexToRgb,
   normalizeBrandColor,
+  NIGHT_GROUND,
 } from "./brand";
 
 const WHITE = "#ffffff";
@@ -127,4 +128,20 @@ test("extraction : pixels transparents, noirs et gris ignorés ; la saturation d
   );
   const { r, g, b } = hexToRgb(hex!)!;
   assert.ok(g > r && g > b, `vert attendu, reçu ${hex}`);
+});
+
+test("thème soirée: l'accent clair atteint 4,5:1 sur le fond nuit, pour tout l'échantillon", () => {
+  for (const color of SAMPLE) {
+    const theme = buildEventTheme(color);
+    assert.ok(
+      contrastRatio(theme.accentBright, NIGHT_GROUND) >= 4.5,
+      `${color} → ${theme.accentBright} sur ${NIGHT_GROUND}`
+    );
+    // Texte posé sur un bouton à l'accent clair : lisible lui aussi.
+    assert.ok(contrastRatio(theme.onBright, theme.accentBright) >= 4.5, `${color} bouton`);
+  }
+});
+
+test("thème soirée: une couleur déjà claire n'est pas modifiée", () => {
+  assert.equal(buildEventTheme("#fde047").accentBright, "#fde047");
 });

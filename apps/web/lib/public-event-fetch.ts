@@ -5,6 +5,7 @@
 // (…/results, …/candidate/:ref) et conservent leurs fetchs locaux.
 
 import { getApiBaseUrl } from "@/lib/api-base-url";
+import type { EventBranding } from "@/lib/brand";
 
 export type PublicCandidate = {
   id: string;
@@ -23,7 +24,7 @@ export type PublicEvent = {
   endsAt: string;
   voteUnitPriceCfa: number | null;
   layout?: "GRID" | "LIST" | "SPOTLIGHT" | null;
-  branding: { logoUrl: string | null; brandColor: string | null; tagline: string | null };
+  branding: EventBranding;
 };
 
 export type PublicOrganizer = { displayName: string; slug: string };

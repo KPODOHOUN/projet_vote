@@ -302,3 +302,15 @@ Branche `chore/finalisation-shadoma`, 66 commits depuis `main` @ `6d2bda5`, **ja
 - Cloudinary configuré (sinon l'import de photos est indisponible, message affiché) ; CSP passée en bloquant après 7 jours sans violation.
 - **Adresse de contact réelle sur la page Mentions légales** (aucune aujourd'hui).
 - CGU et confidentialité relues par une personne compétente ; logo SHADOMA définitif ; runbook du virement manuel.
+
+
+## Suite — mini-plateformes configurables (2026-10-25)
+
+Demande : pages d'événement personnalisables par l'organisateur (logo, branding), trois pistes de design reprises, police plus festive.
+
+- Données (additif) : `Event.coverUrl`, `Event.pageStyle` (`AFFICHE` par défaut, `SOIREE`, `BILLET`), `Event.fontStyle` (`FESTIVAL` par défaut, `GALA`, `CLASSIQUE`) — migration `20261025180000_event_page_style`, validés à la création et à la modification, exposés dans le `branding` des trois réponses publiques. Test d'intégration ajouté (RED vu à la compilation, puis GREEN).
+- Éditeur d'apparence : choix du style (vignettes), import de la couverture, choix de la police avec aperçu du titre.
+- Pages `/e/*` : bandeau par style (`components/event-hero.tsx`), compte à rebours depuis la date stockée (`components/vote-countdown.tsx`, `lib/minisite-style.ts` testé), cartes par style, jetons `--mini-*` dans `globals.css`, accent éclairci pour la Soirée (`deriveAccentBright`, testé sur 500+ couleurs). La carte de paiement reste claire et opaque dans tous les styles ; payloads de vote et de paiement inchangés.
+- Polices : Unbounded et Playfair Display auto-hébergées (OFL), non préchargées.
+- Portes : API 259/259, offres 36/36, web 30/30, e2e 23/23, typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0, build OK. Captures : `docs/validation/RAPPORT.md`.
+- À faire côté dev local : appliquer la migration sur la base de développement (`npx prisma migrate deploy` dans `packages/db`) avant de lancer l'application.

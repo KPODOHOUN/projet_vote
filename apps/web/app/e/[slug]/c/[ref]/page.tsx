@@ -100,7 +100,7 @@ export default async function CandidateProfilePage({ params }: PageProps) {
     <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates">
       {/* Disposition du bloc « vainqueur » de la maquette : photo à gauche, nom en très grand à droite. */}
       <main className="flex flex-wrap gap-[clamp(32px,5vw,80px)] px-[clamp(20px,4vw,56px)] py-10 sm:py-16">
-        <div className="relative aspect-[4/5] max-h-[42dvh] min-w-0 flex-[1_1_300px] overflow-hidden rounded-md bg-slate-900/5 md:sticky md:top-6 md:max-h-[720px] md:self-start">
+        <div className="relative aspect-[4/5] max-h-[42dvh] min-w-0 flex-[1_1_300px] overflow-hidden rounded-md bg-[var(--mini-wash)] md:sticky md:top-6 md:max-h-[720px] md:self-start">
           <CandidatePhoto
             photoUrl={candidate.photoUrl}
             fullName={candidate.fullName}
@@ -110,24 +110,24 @@ export default async function CandidateProfilePage({ params }: PageProps) {
         </div>
 
         <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-6">
-          <div className="flex flex-col gap-4 border-b border-slate-900 pb-8">
+          <div className="flex flex-col gap-4 border-b border-[var(--mini-line)] pb-8">
             <Link
               href={`/e/${event.slug}`}
-              className="inline-flex min-h-11 w-fit items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.22em] text-slate-900 hover:opacity-65"
+              className="inline-flex min-h-11 w-fit items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.22em] hover:opacity-65"
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
               {t9n("profile.back")}
             </Link>
             {candidate.number != null ? (
-              <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--event-accent-strong)]">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]">
                 {translateVars(locale, "pub.candidateNumber", { number: candidate.number })}
               </span>
             ) : null}
-            <h1 className="m-0 break-words font-display text-[clamp(40px,6vw,96px)] font-light uppercase leading-[0.92] tracking-[0.04em]">
+            <h1 className="mini-title mini-h1 m-0">
               {candidate.fullName}
             </h1>
-            <p className="text-[15px] font-light text-slate-600">
-              {t9n("pub.organizedBy")} <span className="font-medium text-slate-900">{organizer.displayName}</span>
+            <p className="text-[15px] font-light text-[var(--mini-muted)]">
+              {t9n("pub.organizedBy")} <span className="font-medium text-[var(--mini-ink)]">{organizer.displayName}</span>
             </p>
           </div>
 

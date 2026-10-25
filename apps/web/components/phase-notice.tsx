@@ -31,7 +31,7 @@ export function PhaseNotice({
   return (
     <div
       role="status"
-      className="rounded-md border border-[var(--color-info)]/30 bg-[var(--color-info)]/10 px-4 py-3 text-sm text-[var(--color-info-text)]"
+      className="rounded-md border border-[var(--mini-line,var(--color-border))] bg-[var(--mini-wash,var(--color-muted))] px-4 py-3 text-sm text-[var(--mini-ink,var(--color-foreground))]"
     >
       <p>
         {message}
