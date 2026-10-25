@@ -88,6 +88,11 @@ export class AdminOffersController {
     return this.eventStats.getEventStats(eventId);
   }
 
+  @Get("events/:eventId/commission")
+  getEventCommission(@Param("eventId") eventId: string) {
+    return this.offerSettings.describeEscrowCommission(eventId);
+  }
+
   @Put("events/:eventId/commission")
   setEventCommission(
     @CurrentUser() user: AuthUser,

@@ -110,3 +110,34 @@ test("computeEscrowVoteCommissionCfaFromBps: floor sur montant × bps / 10000", 
   assert.equal(offerSettings.computeEscrowVoteCommissionCfaFromBps(1_000, 0), 0);
   assert.equal(offerSettings.computeEscrowVoteCommissionCfaFromBps(333, 800), 26);
 });
+
+test("describeEscrowCommission: taux effectif, source, bornes et gel", async () => {
+  await enablePerVoteCommission(800);
+  const suffix = Date.now().toString(36);
+  const tenant = await prisma.client.tenant.create({
+    data: { slug: `commis-desc-${suffix}`, displayName: "Describe", commissionBps: 600 }
+  });
+  const draft = await prisma.client.event.create({
+    data: { tenantId: tenant.id, title: "Draft", slug: `ev-desc-d-${suffix}`, startsAt: new Date(), endsAt: new Date(Date.now() + 86_400_000) }
+  });
+  const fromTenant = await offerSettings.describeEscrowCommission(draft.id);
+  assert.deepEqual(
+    { effectiveBps: fromTenant.effectiveBps, source: fromTenant.source, frozen: fromTenant.frozen },
+    { effectiveBps: 600, source: "tenant", frozen: false }
+  );
+  assert.equal(fromTenant.floorBps, 400);
+  assert.equal(fromTenant.ceilingBps, 1_200);
+  assert.equal(fromTenant.defaultBps, 800);
+
+  const active = await prisma.client.event.create({
+    data: {
+      tenantId: tenant.id, title: "Active", slug: `ev-desc-a-${suffix}`, status: "ACTIVE", commissionBps: 900,
+      startsAt: new Date(), endsAt: new Date(Date.now() + 86_400_000)
+    }
+  });
+  const fromEvent = await offerSettings.describeEscrowCommission(active.id);
+  assert.deepEqual(
+    { effectiveBps: fromEvent.effectiveBps, source: fromEvent.source, frozen: fromEvent.frozen },
+    { effectiveBps: 900, source: "event", frozen: true }
+  );
+});
