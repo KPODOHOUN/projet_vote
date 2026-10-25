@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import { displayedVoteCount } from "@/lib/vote-count";
 import { useI18n } from "../../../../../lib/i18n-provider";
-import { publicEventDateLocale } from "../../../../../lib/i18n";
+import { formatCfa, formatCount } from "../../../../../lib/format";
+import { MOBILE_NETWORKS } from "../../../../../lib/mobile-networks";
 import { usePublicVotePayment } from "../../use-public-vote-payment";
 import { Button } from "../../../../../components/ui/button";
 import { Input } from "../../../../../components/ui/input";
 import { Label } from "../../../../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../../components/ui/select";
 import { FormError } from "../../../../../components/ui/form-error";
-import { AlertCircle, CheckCircle2, Loader2, Sparkles, Phone, CreditCard } from "lucide-react";
 import { trackEvent } from "../../../../../lib/analytics";
 import { sanitizePhoneInput } from "../../../../../lib/phone";
 
@@ -25,6 +25,14 @@ type Props = {
   initialVoteCount: number;
 };
 
+const PRESETS = [1, 5, 10, 20] as const;
+
+/**
+ * Formulaire de vote (zone sanctuarisée, 7.5). Le flux de paiement et ses
+ * payloads vivent dans usePublicVotePayment, inchangé : ce composant ne change
+ * que la présentation. Le numéro reste dans l'état local, donc un réessai ne
+ * demande pas de le ressaisir.
+ */
 export function CandidateVoteClient({
   organizerSlug,
   eventSlug,
@@ -35,7 +43,6 @@ export function CandidateVoteClient({
 }: Props) {
   const { locale, t } = useI18n();
   const isEn = locale === "en";
-  const dateLocale = publicEventDateLocale(locale);
   const { status, submit, reset } = usePublicVotePayment({ tenantSlug: organizerSlug, eventSlug, isEn });
   const [quantity, setQuantity] = useState(1);
   // Quantité envoyée au paiement : c'est elle qui compte après SUCCEEDED,
@@ -50,7 +57,9 @@ export function CandidateVoteClient({
   const isFailed = liveStatus === "FAILED";
   const isSubmitting = status.phase === "submitting";
   const canSubmit = quantity > 0 && voterPhone.trim().length >= 8 && !isSubmitting;
-  const amountCfa = voteUnitPriceCfa ? quantity * voteUnitPriceCfa : 0;
+  const hasPrice = voteUnitPriceCfa !== null && voteUnitPriceCfa > 0;
+  const amountCfa = hasPrice ? quantity * voteUnitPriceCfa : 0;
+  const paidQuantity = submittedQuantity ?? quantity;
 
   useEffect(() => {
     if (isDone) {
@@ -58,251 +67,174 @@ export function CandidateVoteClient({
     }
   }, [isDone, eventSlug, candidatePublicRef]);
 
-  async function onSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     setSubmittedQuantity(quantity);
     await submit({ candidatePublicRef, quantity, voterPhone, operator: operator || undefined });
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Vote Tally Header */}
-      <div className="flex items-center gap-3 bg-primary/5 px-4 py-3 rounded-xl border border-primary/10 w-fit">
-        <span className="text-3xl font-black text-primary tracking-tight">
-          {displayedVoteCount(initialVoteCount, isDone ? submittedQuantity : null).toLocaleString(dateLocale)}
-        </span>
-        <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-none">
-          {t("pub.totalVotesLabel")}
-        </span>
+  const tally = (
+    <p className="text-sm text-slate-600">
+      <span className="text-2xl font-extrabold text-slate-900 tabular-nums">
+        {formatCount(displayedVoteCount(initialVoteCount, isDone ? submittedQuantity : null), locale)}
+      </span>{" "}
+      {t("pay.votesSoFar")}
+    </p>
+  );
+
+  if (!hasPrice) {
+    return (
+      <div className="space-y-4">
+        {tally}
+        <p className="rounded-md border border-border bg-background px-4 py-3 text-sm text-slate-900">{t("pay.noPrice")}</p>
       </div>
+    );
+  }
 
-      <AnimatePresence mode="wait">
-        {!status.result ? (
-          <motion.form
-            key="vote-form"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-6"
-            onSubmit={onSubmit}
-          >
-            <div data-zone="secure-flow" className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-              {voteUnitPriceCfa !== null && voteUnitPriceCfa > 0 ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between py-2 border-b border-border/20">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                        {t("pub.pricePerVote")}
-                      </span>
-                    </div>
-                    <span className="text-base font-black text-foreground">
-                      {voteUnitPriceCfa.toLocaleString(dateLocale)} XOF
-                    </span>
-                  </div>
+  return (
+    <div className="space-y-4">
+      {tally}
 
-                  <div className="space-y-2">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      {t("pub.numberOfVotes")}
-                    </Label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[1, 5, 10, 20].map((preset) => {
-                        const isSelected = quantity === preset;
-                        return (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setQuantity(preset)}
-                            className={`flex min-h-11 flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition-all ${
-                              isSelected
-                                ? "border-primary bg-primary/10 text-primary font-black shadow-sm"
-                                : "border-border/60 bg-background/40 hover:bg-muted text-foreground font-bold"
-                            }`}
-                          >
-                            <span className="text-xs sm:text-sm">x{preset}</span>
-                            <span className="text-[9px] sm:text-[10px] opacity-80 font-mono mt-0.5">
-                              {(preset * voteUnitPriceCfa).toLocaleString(dateLocale)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+      {!status.result ? (
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div data-zone="secure-flow" className="space-y-5 rounded-md border border-border bg-background p-4 sm:p-5">
+            <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
+              <span className="text-sm text-slate-600">{t("pay.price")}</span>
+              <span className="text-base font-bold text-slate-900 tabular-nums">{formatCfa(voteUnitPriceCfa, locale)}</span>
+            </div>
 
-                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-dashed border-border/30">
-                      <span className="text-[11px] font-semibold text-muted-foreground">{t("pub.customQuantity")}</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={quantity}
-                        onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
-                        className="h-11 text-right font-bold w-24 ml-auto bg-background/50 border-border/50 text-xs"
-                      />
-                      <span className="text-xs font-bold text-muted-foreground">
-                        {t("pub.votesUnit")}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-primary/5 border border-primary/10">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      {t("pub.totalToPay")}
-                    </span>
-                    <span className="text-lg font-black text-primary">
-                      {amountCfa.toLocaleString(dateLocale)} XOF
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="py-4 text-center">
-                  <p className="text-sm font-semibold text-muted-foreground">
-                    {t("pub.noPriceConfigured")}
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="voterPhone" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  {t("pub.momoNumber")}
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold text-slate-900">{t("pay.quantity")}</legend>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {PRESETS.map((preset) => {
+                  const isSelected = quantity === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setQuantity(preset)}
+                      className={`min-h-11 rounded-md border px-2 text-base font-bold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        isSelected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background text-slate-900 hover:bg-muted"
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-3 pt-1">
+                <Label htmlFor="customQuantity" className="text-sm text-slate-600">
+                  {t("pay.customQuantity")}
                 </Label>
                 <Input
-                  id="voterPhone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  value={voterPhone}
-                  onChange={(inputEvent) => setVoterPhone(sanitizePhoneInput(inputEvent.target.value))}
-                  placeholder="+225 01 02 03 04 05"
-                  required
-                  className="text-lg h-12 tracking-widest font-mono bg-background/50 border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  id="customQuantity"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+                  className="h-11 w-24 text-right font-bold tabular-nums"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  {t("pub.momoHelp")}
-                </p>
               </div>
+            </fieldset>
 
-              <div className="space-y-2">
-                <Label htmlFor="operator" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-muted-foreground" />
-                  {t("pub.momoNetwork")}
-                </Label>
-                <Select value={operator || "auto"} onValueChange={(value) => setOperator(value === "auto" ? "" : value)}>
-                  <SelectTrigger id="operator" className="w-full text-base font-semibold data-[size=default]:h-12">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">{t("pub.operatorAuto")}</SelectItem>
-                    <SelectItem value="mtn">MTN</SelectItem>
-                    <SelectItem value="moov">Moov</SelectItem>
-                    <SelectItem value="orange">Orange</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="border-t border-border pt-3">
+              <p className="text-sm text-slate-600">{t("pay.total")}</p>
+              <p className="text-3xl font-extrabold text-slate-900 tabular-nums" aria-live="polite">
+                {formatCfa(amountCfa, locale)}
+              </p>
             </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              loading={isSubmitting}
-              disabled={!canSubmit}
-              className="h-14 w-full text-base font-bold shadow-xl"
-            >
-              {isSubmitting ? (
-                t("pub.processingPayment")
-              ) : (
-                <span className="flex items-center justify-center gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  {t("pub.voteFor")} {candidateName} · {quantity} {t("pub.votesUnit")} · {amountCfa.toLocaleString(dateLocale)} XOF
-                </span>
-              )}
-            </Button>
-          </motion.form>
-        ) : (
-          <motion.section
-            key="payment-status"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            data-zone="secure-flow"
-            className="space-y-6 rounded-2xl border border-border bg-card p-6 shadow-lg relative overflow-hidden"
-            aria-live="polite"
-          >
-            <h3 className="font-extrabold text-lg text-foreground border-b border-border/40 pb-3 flex items-center gap-2">
-              {t("pub.voteStatusTitle")}
-            </h3>
-
-            {!isDone && !isFailed ? (
-              <div className="flex flex-col items-center justify-center p-6 text-center space-y-4 bg-primary/5 rounded-xl border border-primary/10">
-                <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                <div className="space-y-1">
-                  <p className="font-bold text-foreground">
-                    {status.label || t("pub.pendingTitle")}
-                  </p>
-                  <p className="text-sm text-muted-foreground max-w-sm">
-                    {t("pub.pendingDesc")}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
-            {isDone ? (
-              <motion.div 
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, damping: 12 }}
-                className="flex flex-col items-center justify-center p-6 text-center space-y-4 rounded-xl border border-[var(--color-success)]/20 bg-[var(--color-success)]/5"
-              >
-                <motion.div
-                  initial={{ scale: 0, rotate: -45 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.1 }}
-                  className="rounded-full border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 p-4"
-                >
-                  <CheckCircle2 className="h-12 w-12 text-[var(--color-success)]" />
-                </motion.div>
-                <div className="space-y-1">
-                  <p className="font-bold text-foreground text-lg">
-                    {t("pub.confirmedTitle")}
-                  </p>
-                  <p className="text-sm text-[var(--color-success-text)]">
-                    {t("pub.confirmedDesc", { name: candidateName })}
-                  </p>
-                </div>
-              </motion.div>
-            ) : null}
-
-            {isFailed ? (
-              <div className="flex flex-col items-center justify-center p-6 text-center space-y-4 rounded-xl border border-destructive/20 bg-destructive/5">
-                <motion.div 
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.1 }}
-                  className="rounded-full bg-destructive/10 p-4 border border-destructive/20"
-                >
-                  <AlertCircle className="h-12 w-12 text-destructive" />
-                </motion.div>
-                <div className="space-y-2 w-full">
-                  <p className="font-bold text-foreground text-lg">
-                    {t("pub.failedTitle")}
-                  </p>
-                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {t("pub.failedDesc")}
-                  </p>
-                  <Button type="button" variant="outline" className="w-full mt-2" onClick={reset}>
-                    {t("pub.retry")}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="pt-4 border-t border-border/40 flex justify-between items-center text-[10px] text-muted-foreground font-mono">
-              <span>{t("pub.txRef")}</span>
-              <span className="font-bold text-foreground">{status.live?.providerRef ?? status.result.transactionId}</span>
+            <div className="space-y-1.5">
+              <Label htmlFor="voterPhone" className="text-sm font-semibold text-slate-900">
+                {t("pay.phone")}
+              </Label>
+              <Input
+                id="voterPhone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={voterPhone}
+                onChange={(inputEvent) => setVoterPhone(sanitizePhoneInput(inputEvent.target.value))}
+                placeholder="+229"
+                required
+                aria-describedby="voterPhone-help"
+                className="h-12 text-lg tracking-wide"
+              />
+              <p id="voterPhone-help" className="text-xs text-slate-600">
+                {t("pay.phoneHelp")}
+              </p>
             </div>
-          </motion.section>
-        )}
-      </AnimatePresence>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="operator" className="text-sm font-semibold text-slate-900">
+                {t("pay.network")}
+              </Label>
+              <Select value={operator || "auto"} onValueChange={(value) => setOperator(value === "auto" ? "" : value)}>
+                <SelectTrigger id="operator" className="w-full text-base data-[size=default]:h-12">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">{t("pub.operatorAuto")}</SelectItem>
+                  {MOBILE_NETWORKS.map((network) => (
+                    <SelectItem key={network.value} value={network.value}>
+                      {network.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Button type="submit" size="lg" loading={isSubmitting} disabled={!canSubmit} className="h-12 w-full text-base font-bold">
+            {isSubmitting ? t("pay.processing") : t("pay.submit", { total: formatCfa(amountCfa, locale) })}
+          </Button>
+          <p className="text-sm text-slate-600">{t("pay.note")}</p>
+        </form>
+      ) : (
+        <section data-zone="secure-flow" className="space-y-4 rounded-md border border-border bg-background p-4 sm:p-5" aria-live="polite">
+          {!isDone && !isFailed ? (
+            <div className="space-y-1">
+              <p className="font-bold text-slate-900">{t("pay.waiting")}</p>
+              <p className="text-sm text-slate-600">{t("pay.waitingDesc")}</p>
+              {status.label ? <p className="text-sm text-slate-600">{status.label}</p> : null}
+            </div>
+          ) : null}
+
+          {isDone ? (
+            <div className="space-y-2">
+              <p className="text-lg font-bold text-[var(--color-success-text)]">{t("pay.confirmed", { name: candidateName })}</p>
+              <p className="text-sm text-slate-900 tabular-nums">
+                {t("pay.confirmedDetail", {
+                  quantity: formatCount(paidQuantity, locale),
+                  total: formatCfa(paidQuantity * voteUnitPriceCfa, locale)
+                })}
+              </p>
+              <Link href={`/e/${eventSlug}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4">
+                {t("pay.backToCandidates")}
+              </Link>
+            </div>
+          ) : null}
+
+          {isFailed ? (
+            <div className="space-y-3">
+              <FormError>{t("pay.failed")}</FormError>
+              <Button type="button" variant="outline" className="h-12 w-full" onClick={reset}>
+                {t("pay.retry")}
+              </Button>
+            </div>
+          ) : null}
+
+          <p className="flex justify-between gap-3 border-t border-border pt-3 font-mono text-xs text-slate-600">
+            <span>{t("pay.ref")}</span>
+            <span className="truncate text-slate-900">{status.live?.providerRef ?? status.result.transactionId}</span>
+          </p>
+        </section>
+      )}
 
       <FormError>{status.error}</FormError>
     </div>
