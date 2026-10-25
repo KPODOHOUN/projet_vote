@@ -80,11 +80,10 @@ export default function AdminHomePage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[
+          { href: "/admin/offers/withdrawals", label: isEn ? "Withdrawals" : "Retraits" },
+          { href: "/admin/offers/events", label: isEn ? "Escrow events" : "Événements Escrow" },
           { href: "/admin/users", label: isEn ? "Users" : "Utilisateurs" },
-          { href: "/admin/subscriptions", label: isEn ? "Revenue" : "Revenus" },
-          { href: "/admin/payouts", label: isEn ? "Payouts" : "Versements" },
           { href: "/admin/votes", label: isEn ? "Vote moderation" : "Modération votes" },
-          { href: "/admin/partners", label: isEn ? "Partners" : "Partenaires" },
           { href: "/admin/settings", label: isEn ? "Settings" : "Réglages" },
           { href: "/admin/jobs", label: isEn ? "Jobs" : "Jobs" },
           { href: "/admin/maintenance", label: isEn ? "Maintenance" : "Maintenance" },

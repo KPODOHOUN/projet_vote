@@ -54,10 +54,9 @@ export default defineConfig({
               // 3100 → 3011 (login, maintenance…) sont bloqués par le preflight CORS.
               `export NODE_ENV=test DATABASE_URL="${e2eDatabaseUrl}" MAIL_RESEND_API_KEY= API_DISABLE_THROTTLE=1 API_CORS_ORIGINS="http://127.0.0.1:3100,http://localhost:3100" && ` +
               "npm --prefix ../../packages/shared run build && npm --prefix ../../packages/db run build && npm --prefix ../api run build && " +
-              // db push (pas migrate deploy) : des modèles du schema n'ont pas
-              // encore leur migration (travail en cours) — la base *_test jetable
-              // doit refléter le schema courant, pas l'historique des migrations.
-              "npx prisma db push --skip-generate --schema ../../packages/db/prisma/schema.prisma && " +
+              // migrate deploy, comme en production : le drift schema/migrations est
+              // nul (prisma migrate diff sur base vierge, 2026-10-25).
+              "npx prisma migrate deploy --schema ../../packages/db/prisma/schema.prisma && " +
               "PORT=3011 npm --prefix ../api run start",
             url: "http://127.0.0.1:3011/api/v1/health/ready",
             reuseExistingServer: false,
