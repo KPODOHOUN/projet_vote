@@ -69,7 +69,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function PublicEventPage({ params }: PageProps) {
   const { slug } = await params;
   const locale = await getServerLocale();
-  const isEn = locale === "en";
   const t9n = (key: MessageKey) => translate(locale, key);
   const data = await fetchPublicEvent(slug);
   if (!data) {
@@ -150,7 +149,7 @@ export default async function PublicEventPage({ params }: PageProps) {
                 slug={event.slug}
                 candidates={candidates}
                 layout={event.layout ?? "GRID"}
-                isEn={isEn}
+                closed={phase === "closed"}
               />
             )}
           </section>

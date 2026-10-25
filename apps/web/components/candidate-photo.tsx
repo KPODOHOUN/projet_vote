@@ -14,7 +14,7 @@ function initials(name: string): string {
 /**
  * Photo d'un candidat avec repli initiales. Si `photoUrl` est absent ou que
  * l'image casse au chargement (`onError`), on affiche les initiales sur un fond
- * accent-teinté clair (texte ink lisible quelle que soit la couleur organisateur).
+ * aplat --event-accent-strong (texte blanc ≥ 4,5:1 garanti par le moteur de thème).
  */
 export function CandidatePhoto({
   photoUrl,
@@ -31,7 +31,12 @@ export function CandidatePhoto({
   const cls = className || (size === "lg" ? "w-full h-full object-cover" : "w-full h-full object-cover");
   if (!photoUrl || broken) {
     return (
-      <span className={`flex items-center justify-center bg-muted text-muted-foreground font-bold tracking-widest ${cls}`} data-placeholder="true" aria-hidden="true">
+      <span
+        className={`flex items-center justify-center font-bold tracking-widest text-white ${cls}`}
+        style={{ background: "var(--event-accent-strong, var(--color-brand-600))" }}
+        data-placeholder="true"
+        aria-hidden="true"
+      >
         {initials(fullName)}
       </span>
     );
