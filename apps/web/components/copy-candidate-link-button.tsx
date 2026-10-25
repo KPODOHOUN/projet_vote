@@ -67,7 +67,13 @@ export function CopyCandidateLinkButton({
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button type="button" variant={variant} size={size} className="min-h-11" onClick={() => void onCopy()}>
+      <Button
+        type="button"
+        variant={variant}
+        size={size}
+        className={variant === "ghost" ? "min-h-11 border border-border" : "min-h-11"}
+        onClick={() => void onCopy()}
+      >
         {copied ? <Check className="mr-2 h-4 w-4" aria-hidden="true" /> : <Copy className="mr-2 h-4 w-4" aria-hidden="true" />}
         {copied ? t("share.copied") : t("share.copy")}
       </Button>

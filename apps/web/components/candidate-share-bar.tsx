@@ -21,7 +21,7 @@ export function CandidateShareBar({ eventSlug, publicRef, candidateName, eventTi
         publicRef={publicRef}
         candidateName={candidateName}
         eventTitle={eventTitle}
-        variant="secondary"
+        variant="ghost"
         size="sm"
       />
     </div>
