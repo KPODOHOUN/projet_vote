@@ -124,6 +124,10 @@ test("getPublicEventResults: expose branding (event > tenant) + 404 si absent", 
 
   const payload = await votes.getPublicEventResults("vote-evt");
   assert.equal(payload.event.slug, "vote-evt");
+  // Ajout additif (phase de vote côté front) : dates d'ouverture et de fin, toujours sans montant.
+  assert.equal(new Date(payload.event.startsAt).getTime(), event.startsAt.getTime());
+  assert.equal(new Date(payload.event.endsAt).getTime(), event.endsAt.getTime());
+  assert.ok(!("amountCfa" in payload.totals));
   assert.equal(payload.event.branding.brandColor, "#DB2777"); // event gagne
   assert.equal(payload.event.branding.logoUrl, "https://img.test/org.png"); // hérité du tenant
   assert.equal(payload.event.branding.tagline, "En direct");
@@ -180,6 +184,8 @@ test("getPublicCandidate: renvoie le candidat (photo+voteCount), 404 si absent",
   assert.equal(payload.candidate.photoUrl, "https://img.test/c7.jpg");
   assert.equal(payload.candidate.voteCount, 1);
   assert.equal(payload.event.slug, "vote-evt");
+  // Ajout additif : date d'ouverture (phase « upcoming » sur le profil).
+  assert.equal(new Date(payload.event.startsAt).getTime(), event.startsAt.getTime());
 
   await assert.rejects(votes.getPublicCandidate("vote-evt", "999"), /introuvable/);
   await assert.rejects(votes.getPublicCandidate("absent", candidate.publicRef), /introuvable/);

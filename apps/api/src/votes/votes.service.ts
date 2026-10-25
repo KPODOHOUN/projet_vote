@@ -170,6 +170,7 @@ export class VotesService {
         slug: event.slug,
         title: event.title,
         status: event.status,
+        startsAt: event.startsAt,
         endsAt: event.endsAt,
         voteUnitPriceCfa: event.voteUnitPriceCfa,
         branding: {
@@ -227,6 +228,8 @@ export class VotesService {
         slug: true,
         title: true,
         status: true,
+        startsAt: true,
+        endsAt: true,
         logoUrl: true,
         brandColor: true,
         tagline: true,
@@ -236,7 +239,7 @@ export class VotesService {
     if (!event) {
       throw new NotFoundException("Évènement introuvable.");
     }
-    const { id, slug, title, status } = event;
+    const { id, slug, title, status, startsAt, endsAt } = event;
     // Public ranking: expose vote COUNTS and ordering only — never the money
     // collected. Revealing per-candidate/total XOF publicly discourages voters
     // (fear of "being fleeced" / being first) and fuels disputes. The organizer
@@ -248,6 +251,8 @@ export class VotesService {
         slug,
         title,
         status,
+        startsAt,
+        endsAt,
         // Branding: event value wins, otherwise inherit the organizer's default.
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
