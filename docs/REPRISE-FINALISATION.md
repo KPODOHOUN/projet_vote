@@ -175,3 +175,35 @@ Gates : API 253/253, `test:offers` 35/35, typecheck 0, lint API 0.
 - H-L1 : `bucket` ajouté en plus de `direction` (D6) ; nécessaire à la réconciliation par compartiment.
 - H-L2 : `HELD_RELEASE` reste une seule ligne (`CREDIT WITHDRAWABLE`, débit implicite de `HELD`) pour ne pas changer les sommes de `EventSettlementService`.
 - H-L3 : la réconciliation n'est pas encore exposée par une route ; F1 l'affiche côté admin.
+
+## Lot D0 — Compléments du Lot B (2026-10-25) : terminé
+
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `048a934` | D0-1 prompt système du chatbot réécrit sur le flux réel (aucun taux, délai, opérateur, adresse inventée ; `contact@shadowa.votes` n'existait nulle part) | `chat.service.test.ts` : scan des termes interdits, RED sur l'ancien prompt |
+| `6ec7827` | D0-2 `CSP_REPORT_URI` optionnel (`report-uri`, `report-to`, `Reporting-Endpoints`) ; critère de passage en bloquant : 7 jours sans violation légitime | `headers()` vérifié avec et sans variable |
+| `42a371d` | D0-4 plafonds du chatbot partagés via Redis si `API_REDIS_URL` (clé par jour, expiration 2 j) ; un appel refusé ne consomme pas le quota | `chat.service.test.ts` 6/6 (cas deux instances RED puis GREEN) |
+| `a8c0260` | D0-3 `.env.example` et `staging-production.md` : variables front figées au build, `CSP_REPORT_URI`, plafonds | — |
+
+## Lot D — Zone publique (2026-10-25) : en cours
+
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `1fe3783` | D1+D2 Home réécrite selon 7.3 (aplat `slate-900`, texte à gauche, liste numérotée, « Comment l'argent est séparé », FAQ en `<dl>`), header wordmark à un CTA, footer sans fausse newsletter ni faux réseaux sociaux ; lien de démo `/vote` conditionné à `NEXT_PUBLIC_DEMO_EVENT_SLUG` | `/` 249 kB → 2,44 kB ; First Load 573 → 324 kB ; e2e 19/19 |
+| `12b08e9` | D3 en-tête d'événement à plat (variables du moteur), « Résultats »/« Billets » en liens soulignés, pied « Concours hébergé par » | typecheck, lint 43 |
+| `3119e35` | D4 `lib/vote-phase.ts`, hub (bandeau, « Comment voter » lisant `MOBILE_NETWORKS`, grille hors carte), `PhaseNotice`, `lib/format.ts`, métadonnées localisées vraies | vote-phase 2/2 (RED vu), format 2/2, web 16/16 ; e2e 19/19 (libellé du lien résultats mis à jour : « en direct » retiré, 7.11-b) |
+| `34fb3d5` | D5 cartes candidats sans animation ni survol nécessaire, initiales sur `--event-accent-strong` | typecheck, lint 43 |
+| `2b50f03` | API additive : `startsAt`/`endsAt` dans les payloads publics profil et résultats | votes.service 14/14 (RED à la compilation) |
+
+**Hypothèse D9-photo** : les trois fichiers de `public/slider` sont des images générées (1024×1024 carré, rendu photoréaliste pour `contest-night`, illustrations pour les deux autres). Hero en aplat `bg-slate-900`, aucune photo.
+
+### Travail sur disque NON COMMITÉ (Bash indisponible : le contrôle de sécurité du harnais ne répondait plus)
+- D6 profil + paiement : `app/e/[slug]/c/[ref]/page.tsx`, `CandidateVoteClient.tsx` (présentation seule ; `use-public-vote-payment.ts` intact, arguments de `submit` identiques). Typecheck 0 et lint 42 vérifiés avant la panne ; **e2e non relancé**.
+- D7 résultats : `app/e/[slug]/results/page.tsx` réécrit (voix seules, podium inégal, « Actualiser », métadonnées via `translate`) + clés `results.*` dans `lib/i18n.ts`. **Non typechecké.**
+- D8 billets : titre aligné à gauche sans icône, bandeau toujours affiché si la vente est fermée, prix via `formatCfa`. **Non typechecké.**
+- D9 auth (partiel) : `AuthSimpleLayout` sur fond neutre sans verre, wordmark texte ; `GlassCard` → `Card` dans check-email, forgot-password, reset-password, verify-email (migré en i18n), accept-invitation (×2), oauth/callback (erreur récupérable « Réessayer la connexion »). **Non typechecké.** Reste : modale d'auth (`max-h-[90dvh]`, offre Escrow seule).
+
+### Prochaine action exacte
+1. `cd apps/web && npx tsc --noEmit && npm run lint && npm test`.
+2. Commits séparés D6, D7, D8, D9 ; e2e après D7 (`TEST_DATABASE_URL` avec le mot de passe du conteneur).
+3. D9 modale, D10 pricing/légal/cookies, migration `isEn ?` (mesurer `rg -c "isEn \?"`), puis Lots E, F, M, G, H.

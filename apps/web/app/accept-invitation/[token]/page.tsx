@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AcceptInvitationClient } from "./AcceptInvitationClient";
 import { AuthSimpleLayout } from "../../../components/auth-simple-layout";
-import { GlassCard } from "../../../components/glass-card";
+import { Card } from "../../../components/ui";
 
 export const metadata: Metadata = {
   title: "Rejoindre l'organisation · SHADOMA Votes",
@@ -14,9 +14,9 @@ export default async function AcceptInvitationPage({ params }: PageProps) {
   const { token } = await params;
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-6 sm:p-8">
+      <Card className="w-full p-6 sm:p-8">
         <AcceptInvitationClient token={token} />
-      </GlassCard>
+      </Card>
     </AuthSimpleLayout>
   );
 }

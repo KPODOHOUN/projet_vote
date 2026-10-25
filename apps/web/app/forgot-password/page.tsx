@@ -9,8 +9,7 @@ import { showToast } from "../../lib/toast";
 import { useI18n } from "../../lib/i18n-provider";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
-import { GlassCard } from "@/components/glass-card";
-import { Button, FormError, Input } from "@/components/ui";
+import { Button, Card, FormError, Input } from "@/components/ui";
 
 type ForgotPasswordResponse = {
   success: boolean;
@@ -52,8 +51,8 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-6 sm:p-8">
-        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
+      <Card className="w-full p-6 sm:p-8">
+        <p className="mb-2 text-sm font-semibold text-slate-600">
           {isEn ? "Step 1 of 2" : "Étape 1 sur 2"}
         </p>
         <h1 className="mb-2 text-2xl font-bold sm:text-3xl">{t("login.forgot")}</h1>
@@ -82,7 +81,7 @@ export default function ForgotPasswordPage() {
             {isEn ? "← Back to sign in" : "← Retour à la connexion"}
           </Link>
         </p>
-      </GlassCard>
+      </Card>
     </AuthSimpleLayout>
   );
 }

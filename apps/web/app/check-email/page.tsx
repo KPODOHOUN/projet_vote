@@ -10,8 +10,7 @@ import { showToast } from "../../lib/toast";
 import { useI18n } from "../../lib/i18n-provider";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
-import { GlassCard } from "@/components/glass-card";
-import { Button, FormError, Input } from "@/components/ui";
+import { Button, Card, FormError, Input } from "@/components/ui";
 
 const DEV_OTP_STORAGE_KEY = "vp.dev.emailOtp";
 
@@ -180,7 +179,7 @@ function CheckEmailContent() {
 
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-6 sm:p-8">
+      <Card className="w-full p-6 sm:p-8">
         <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">
           {isEn ? "Confirm your email" : "Confirmez votre e-mail"}
         </h1>
@@ -277,7 +276,7 @@ function CheckEmailContent() {
             {isEn ? "← Back to SHADOMA" : "← Retour sur SHADOMA"}
           </Link>
         </div>
-      </GlassCard>
+      </Card>
     </AuthSimpleLayout>
   );
 }

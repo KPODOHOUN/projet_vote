@@ -10,9 +10,8 @@ import { showToast } from "../../lib/toast";
 import { useI18n } from "../../lib/i18n-provider";
 import { validateStrongPassword } from "../../lib/password-policy";
 import { authLoginUrl } from "@/lib/auth-navigation";
-import { GlassCard } from "@/components/glass-card";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
-import { Button, FormError, Input } from "@/components/ui";
+import { Button, Card, FormError, Input } from "@/components/ui";
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -91,8 +90,8 @@ function ResetPasswordContent() {
 
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-6 sm:p-8">
-        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
+      <Card className="w-full p-6 sm:p-8">
+        <p className="mb-2 text-sm font-semibold text-slate-600">
           {isEn ? "Step 2 of 2" : "Étape 2 sur 2"}
         </p>
         <h1 className="mb-2 text-2xl font-bold sm:text-3xl">
@@ -173,7 +172,7 @@ function ResetPasswordContent() {
             {isEn ? "Back to sign in" : "Retour à la connexion"}
           </Link>
         </p>
-      </GlassCard>
+      </Card>
     </AuthSimpleLayout>
   );
 }

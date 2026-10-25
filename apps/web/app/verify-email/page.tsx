@@ -3,17 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, XCircle } from "lucide-react";
 import { apiFetch } from "../../lib/api";
 import { useI18n } from "../../lib/i18n-provider";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
-import { GlassCard } from "@/components/glass-card";
-import { Button } from "@/components/ui";
+import { Button, Card, LoadingState } from "@/components/ui";
 
 function VerifyEmailContent() {
-  const { locale } = useI18n();
-  const isEn = locale === "en";
+  const { t } = useI18n();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
@@ -33,35 +30,27 @@ function VerifyEmailContent() {
 
   return (
     <AuthSimpleLayout contentClassName="max-w-[420px]">
-      <GlassCard intensity="strong" className="w-full p-8 text-center" role="status" aria-live="polite">
-        {status === "loading" ? (
-          <p className="text-muted-foreground">{isEn ? "Verifying…" : "Vérification en cours…"}</p>
-        ) : null}
+      <Card className="w-full p-6 sm:p-8" role="status" aria-live="polite">
+        {status === "loading" ? <LoadingState label={t("verifyEmail.loading")} /> : null}
         {status === "ok" ? (
           <>
-            <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-[var(--color-success)]" aria-hidden="true" />
-            <h1 className="mb-2 text-2xl font-bold">{isEn ? "Email confirmed!" : "E-mail confirmé !"}</h1>
-            <p className="mb-6 text-muted-foreground">
-              {isEn ? "Your account is active. You can sign in now." : "Votre compte est actif. Vous pouvez vous connecter."}
-            </p>
-            <Button asChild className="w-full">
-              <Link href={authLoginUrl()}>{isEn ? "Sign in" : "Se connecter"}</Link>
+            <h1 className="mb-2 text-2xl font-bold text-slate-900">{t("verifyEmail.okTitle")}</h1>
+            <p className="mb-6 text-slate-600">{t("verifyEmail.okDesc")}</p>
+            <Button asChild className="h-12 w-full">
+              <Link href={authLoginUrl()}>{t("verifyEmail.signIn")}</Link>
             </Button>
           </>
         ) : null}
         {status === "error" ? (
           <>
-            <XCircle className="mx-auto mb-4 h-12 w-12 text-destructive" aria-hidden="true" />
-            <h1 className="mb-2 text-2xl font-bold">{isEn ? "Invalid link" : "Lien invalide"}</h1>
-            <p className="mb-6 text-muted-foreground">
-              {isEn ? "This confirmation link expired or was already used." : "Ce lien a expiré ou a déjà été utilisé."}
-            </p>
-            <Button asChild variant="secondary" className="w-full">
-              <Link href="/check-email">{isEn ? "Resend email" : "Renvoyer l'e-mail"}</Link>
+            <h1 className="mb-2 text-2xl font-bold text-slate-900">{t("verifyEmail.errorTitle")}</h1>
+            <p className="mb-6 text-slate-600">{t("verifyEmail.errorDesc")}</p>
+            <Button asChild variant="secondary" className="h-12 w-full">
+              <Link href="/check-email">{t("verifyEmail.resend")}</Link>
             </Button>
           </>
         ) : null}
-      </GlassCard>
+      </Card>
     </AuthSimpleLayout>
   );
 }
