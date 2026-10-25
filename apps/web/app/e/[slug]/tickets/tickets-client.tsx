@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle2, Mail, Phone, Ticket, User } from "lucide-react";
+import { CheckCircle2, Mail, Phone, User } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
+import { formatCfa } from "@/lib/format";
 import { publicEventDateLocale } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-provider";
 import { sanitizePhoneInput } from "@/lib/phone";
@@ -91,12 +92,11 @@ export function TicketsClient({ slug }: { slug: string }) {
         <FormError>{error instanceof Error ? error.message : t("pub.loadError")}</FormError>
       ) : (
         <>
-          <div className="space-y-2 text-center">
-            <Ticket className="mx-auto h-10 w-10 text-primary" />
-            <h1 className="text-2xl font-black">{TICKET_SALES_OPEN ? t("pub.buyTickets") : t("pub.ticketsTitle")}</h1>
-          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
+            {TICKET_SALES_OPEN ? t("pub.buyTickets") : t("pub.ticketsTitle")}
+          </h1>
 
-          {!TICKET_SALES_OPEN && ticketTypes.length > 0 ? (
+          {!TICKET_SALES_OPEN ? (
             <p role="status" className="rounded-md border border-border bg-muted px-4 py-3 text-sm font-medium text-foreground">
               {t("pub.ticketSalesClosed")}
             </p>
@@ -132,9 +132,8 @@ export function TicketsClient({ slug }: { slug: string }) {
                             <p className="text-lg font-extrabold">{tt.name}</p>
                             {tt.description && <p className="mt-0.5 text-sm text-muted-foreground">{tt.description}</p>}
                           </div>
-                          <p className="text-2xl font-black text-primary">
-                            {tt.priceCfa.toLocaleString(dateLocale)}{" "}
-                            <span className="text-xs font-bold text-muted-foreground">XOF</span>
+                          <p className="whitespace-nowrap text-xl font-extrabold text-slate-900 tabular-nums">
+                            {formatCfa(tt.priceCfa, locale)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
