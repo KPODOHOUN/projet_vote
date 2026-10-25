@@ -1,20 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import type React from "react";
 import { Menu, X } from "lucide-react";
 import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
-import { authRegisterUrl } from "../lib/auth-navigation";
+import { authLoginUrl, authRegisterUrl } from "../lib/auth-navigation";
 import { useAuthModal } from "./auth/auth-modal-provider";
 import type { AuthMode } from "./auth/auth-dialog";
 
+/** Header marketing : wordmark, langue, « Connexion » en lien, un seul CTA. Aplat opaque, sans verre. */
 export function AppHeader() {
   const pathname = usePathname();
-  const { locale } = useI18n();
-  const isEn = locale === "en";
-  const isHome = pathname === "/";
+  const { t } = useI18n();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { openAuth } = useAuthModal();
 
@@ -36,85 +35,80 @@ export function AppHeader() {
     return null;
   }
 
-  const sectionLinks = [
-    { key: "hero", fr: "Accueil", en: "Home" },
-    { key: "comment-ca-marche", fr: "Comment ça marche", en: "How it works" },
-    { key: "offres", fr: "Offres", en: "Offers" },
-    { key: "billetterie", fr: "Billetterie", en: "Ticketing" },
-    { key: "faq", fr: "FAQ", en: "FAQ" }
-  ];
-
   return (
-    <header className="sticky top-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-6xl rounded-2xl border border-white/20 bg-black/40 backdrop-blur-xl shadow-lg shadow-black/20 transition-all duration-300 px-5 py-3 min-[721px]:px-6 min-[721px]:py-3" role="banner">
-      <div className="flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-90 shrink-0" aria-label="SHADOMA Votes">
-          <Image src="/logo-mark.svg" alt="" width={32} height={32} className="h-8 w-8 rounded-lg shadow-sm" priority />
-          <div className="flex flex-col">
-            <strong className="text-sm font-extrabold leading-none tracking-tight text-white">SHADOMA</strong>
-            <small className="mt-1 text-[9px] font-bold uppercase tracking-wider leading-none text-brand-300">
-              {isEn ? "Vote Platform" : "Plateforme de vote"}
-            </small>
-          </div>
+    <header
+      className="sticky top-0 z-50 border-b border-white/10 bg-slate-900 text-white"
+      role="banner"
+      // Le sélecteur de langue « brand-header » lit ces deux variables.
+      style={{ "--event-header-bg": "#0f172a", "--event-header-fg": "#ffffff" } as React.CSSProperties}
+    >
+      <div className="flex h-16 items-center justify-between gap-4 px-5 md:px-16">
+        <Link href="/" className="text-lg font-extrabold tracking-tight text-white" aria-label="SHADOMA">
+          SHADOMA
         </Link>
 
-        <nav className="hidden min-[721px]:flex items-center gap-6 lg:gap-8 text-sm font-semibold flex-1 justify-center" aria-label={isEn ? "Main navigation" : "Navigation principale"}>
-          {sectionLinks.map((item) => (
-            <Link key={item.key} href={item.key === "billetterie" ? "/vote" : isHome ? `#${item.key}` : `/#${item.key}`} className="text-white/80 transition-colors hover:text-white relative py-1 group whitespace-nowrap">
-              {isEn ? item.en : item.fr}
-              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-400 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-250" />
-            </Link>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <LanguageSwitcher />
+        <div className="flex items-center gap-3">
+          <LanguageSwitcher variant="brand-header" />
+          <Link
+            href={authLoginUrl()}
+            onClick={(event) => {
+              event.preventDefault();
+              handleOpenAuth("login");
+            }}
+            className="hidden min-h-11 items-center text-sm font-semibold text-white/90 underline-offset-4 hover:underline sm:inline-flex"
+            prefetch={false}
+          >
+            {t("home.login")}
+          </Link>
           <Link
             href={authRegisterUrl()}
             onClick={(event) => {
               event.preventDefault();
               handleOpenAuth("register");
             }}
-            className="hidden h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:inline-flex"
+            className="hidden h-10 items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 sm:inline-flex"
             prefetch={false}
           >
-            {isEn ? "Start" : "Démarrer"}
+            {t("home.cta")}
           </Link>
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 text-white min-[721px]:hidden"
-            aria-label={mobileOpen ? (isEn ? "Close menu" : "Fermer le menu") : isEn ? "Open menu" : "Ouvrir le menu"}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-white/20 text-white sm:hidden"
+            aria-label={mobileOpen ? t("home.menu.close") : t("home.menu.open")}
             aria-expanded={mobileOpen}
+            aria-controls="marketing-mobile-menu"
             onClick={() => setMobileOpen((open) => !open)}
           >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
           </button>
         </div>
       </div>
 
       {mobileOpen ? (
-        <nav className="mt-3 border-t border-white/10 pt-3 min-[721px]:hidden" aria-label={isEn ? "Mobile navigation" : "Navigation mobile"}>
-          <ul className="space-y-1">
-            {sectionLinks.map((item) => (
-              <li key={item.key}>
-                <Link
-                  href={item.key === "billetterie" ? "/vote" : isHome ? `#${item.key}` : `/#${item.key}`}
-                  className="block rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  {isEn ? item.en : item.fr}
-                </Link>
-              </li>
-            ))}
+        <nav id="marketing-mobile-menu" className="border-t border-white/10 px-5 py-3 sm:hidden" aria-label={t("home.nav.label")}>
+          <ul className="space-y-2">
+            <li>
+              <Link
+                href={authLoginUrl()}
+                className="flex min-h-11 items-center text-sm font-semibold text-white"
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleOpenAuth("login");
+                }}
+              >
+                {t("home.login")}
+              </Link>
+            </li>
             <li>
               <Link
                 href={authRegisterUrl()}
-                className="block rounded-lg bg-primary px-3 py-2 text-center text-sm font-medium text-primary-foreground mt-2"
+                className="flex h-11 items-center justify-center rounded-md bg-brand-600 text-sm font-semibold text-white"
                 onClick={(event) => {
                   event.preventDefault();
                   handleOpenAuth("register");
                 }}
               >
-                {isEn ? "Start" : "Démarrer"}
+                {t("home.cta")}
               </Link>
             </li>
           </ul>
