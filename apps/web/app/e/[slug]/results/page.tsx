@@ -122,6 +122,7 @@ export default async function PublicResultsPage({ params }: PageProps) {
             {t9n("results.title")}
           </h1>
           <div className="flex max-w-sm flex-col gap-2.5">
+            <h2 className={`m-0 ${accentKicker}`}>{event.title}</h2>
             <div className="flex flex-wrap items-center gap-3">
               <StatusChip tone={chip.tone} label={chip.label} />
               {!isFinal && hasVotes ? <span className={kicker}>{t9n("results.provisional")}</span> : null}
