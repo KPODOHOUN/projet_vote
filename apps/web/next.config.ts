@@ -1,9 +1,64 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+const isDev = process.env.NODE_ENV !== "production";
+
+function originOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+const imageHosts = [
+  "https://res.cloudinary.com",
+  "https://lh3.googleusercontent.com",
+  "https://platform-lookaside.fbsbx.com",
+  "https://graph.facebook.com"
+];
+
+// CSP en Report-Only : on observe les violations avant de bloquer (voir
+// docs/deployment/security-headers.md). Next injecte des scripts inline sans
+// nonce, d'où 'unsafe-inline' tant qu'aucun nonce n'est en place.
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob: ${imageHosts.join(" ")}`,
+  "font-src 'self' data:",
+  [
+    "connect-src 'self'",
+    originOf(process.env.NEXT_PUBLIC_API_BASE_URL),
+    "https://api.cloudinary.com",
+    "https://*.ingest.sentry.io",
+    "https://*.ingest.de.sentry.io",
+    isDev ? "ws:" : null
+  ]
+    .filter(Boolean)
+    .join(" "),
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'"
+].join("; ");
+
+const securityHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  // L'éditeur d'apparence affiche la page publique dans une iframe du même site.
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy }
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   async rewrites() {
     const apiOrigin =
       (process.env.API_BASE_URL && process.env.API_BASE_URL.trim() !== "")
@@ -18,7 +73,6 @@ const nextConfig: NextConfig = {
   },
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "i.pravatar.cc" },
       { protocol: "https", hostname: "res.cloudinary.com" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       { protocol: "https", hostname: "platform-lookaside.fbsbx.com" },
