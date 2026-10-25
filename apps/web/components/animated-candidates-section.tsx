@@ -14,10 +14,12 @@ import type { PublicCandidate, PublicEvent } from "../app/e/[slug]/page";
 const cardLink =
   "block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--event-accent-strong)] focus-visible:ring-offset-2";
 
-function NumberPill({ value }: { value: number }) {
+function NumberKicker({ value }: { value: number | null }) {
+  const { t } = useI18n();
+  if (value == null) return null;
   return (
-    <span className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md bg-background/95 px-2 text-sm font-extrabold text-slate-900 tabular-nums">
-      {String(value).padStart(2, "0")}
+    <span className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-600">
+      {t("pub.candidateNumber", { number: String(value).padStart(2, "0") })}
     </span>
   );
 }
@@ -27,69 +29,57 @@ function VotesLine({ count }: { count: number }) {
   return <>{t("pub.votesCount", { count: formatCount(count, locale) })}</>;
 }
 
+// Carte « podium » de la maquette : photo 4:5, numéro, nom en capitales, voix.
 function CandidateGridCard({ slug, c }: { slug: string; c: PublicCandidate }) {
   return (
-    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group`}>
-      <div className="overflow-hidden rounded-md border border-border bg-background group-hover:ring-2 group-hover:ring-[var(--event-accent-strong)]">
-        <div className="relative aspect-[3/4] bg-muted">
-          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
-          {c.number != null ? (
-            <span className="absolute left-2 top-2">
-              <NumberPill value={c.number} />
-            </span>
-          ) : null}
-        </div>
-        <div className="px-3 py-2.5">
-          <span className="block truncate text-base font-bold leading-tight text-slate-900">{c.fullName}</span>
-          <span className="mt-0.5 block text-sm text-slate-600 tabular-nums">
-            <VotesLine count={c.voteCount} />
-          </span>
-        </div>
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-col gap-3`}>
+      <div className="aspect-[4/5] overflow-hidden rounded-md bg-slate-900/5 group-hover:ring-2 group-hover:ring-[var(--event-accent-strong)]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
       </div>
+      <NumberKicker value={c.number} />
+      <span className="text-base font-medium uppercase leading-tight tracking-[0.06em] text-slate-900 sm:text-lg">{c.fullName}</span>
+      <span className="-mt-1.5 text-[13px] font-light text-slate-600 tabular-nums">
+        <VotesLine count={c.voteCount} />
+      </span>
     </Link>
   );
 }
 
+// Ligne de la maquette (« Vote du public ») : rang si clos, nom, voix.
 function CandidateListRow({ slug, c, rank }: { slug: string; c: PublicCandidate; rank: number | null }) {
   return (
     <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group`}>
-      <div className="flex min-h-16 items-center gap-3 border-b border-border bg-background px-3 py-2 group-hover:bg-[var(--event-accent-light)]">
-        {rank !== null ? (
-          <span className="w-8 shrink-0 text-center text-sm font-extrabold text-slate-900 tabular-nums">{rank}</span>
-        ) : null}
-        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+      <div className="flex min-h-16 items-center gap-4 border-b border-slate-900/15 py-3 group-hover:bg-[var(--event-accent-light)]">
+        <span className="w-10 shrink-0 text-[13px] text-slate-600 tabular-nums">
+          {rank !== null ? String(rank).padStart(2, "0") : c.number != null ? String(c.number).padStart(2, "0") : ""}
+        </span>
+        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-slate-900/5">
           <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="sm" className="h-full w-full object-cover" />
         </div>
-        <div className="min-w-0 flex-1">
-          <span className="block truncate text-base font-bold leading-tight text-slate-900">{c.fullName}</span>
-          <span className="mt-0.5 block text-sm text-slate-600 tabular-nums">
-            {c.number != null ? `N° ${String(c.number).padStart(2, "0")} · ` : null}
-            <VotesLine count={c.voteCount} />
-          </span>
-        </div>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium uppercase tracking-[0.06em] text-slate-900">{c.fullName}</span>
+        <span className="shrink-0 text-sm font-light text-slate-600 tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
       </div>
     </Link>
   );
 }
 
+// Bloc large de la maquette : photo à gauche, nom en très grand à droite.
 function CandidateSpotlight({ slug, c }: { slug: string; c: PublicCandidate }) {
   return (
-    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group`}>
-      <div className="grid overflow-hidden rounded-md border border-border bg-background group-hover:ring-2 group-hover:ring-[var(--event-accent-strong)] sm:grid-cols-2">
-        <div className="relative aspect-[4/3] bg-muted sm:aspect-auto sm:min-h-[300px]">
-          <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="lg" className="h-full w-full object-cover" />
-          {c.number != null ? (
-            <span className="absolute left-3 top-3">
-              <NumberPill value={c.number} />
-            </span>
-          ) : null}
-        </div>
-        <div className="flex flex-col justify-center p-6 sm:p-8">
-          <span className="block text-2xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-3xl">{c.fullName}</span>
-          <span className="mt-2 block text-base text-slate-600 tabular-nums">
-            <VotesLine count={c.voteCount} />
-          </span>
-        </div>
+    <Link href={publicCandidatePath(slug, c.publicRef)} className={`${cardLink} group flex flex-wrap gap-[clamp(32px,5vw,80px)]`}>
+      <div className="aspect-[4/5] min-w-0 flex-[1_1_300px] overflow-hidden rounded-md bg-slate-900/5 group-hover:ring-2 group-hover:ring-[var(--event-accent-strong)] sm:max-h-[640px]">
+        <CandidatePhoto photoUrl={c.photoUrl} fullName={c.fullName} size="lg" className="h-full w-full object-cover" />
+      </div>
+      <div className="flex min-w-0 flex-[1_1_300px] flex-col justify-end gap-5">
+        <NumberKicker value={c.number} />
+        <span className="break-words font-display text-[clamp(40px,6vw,96px)] font-light uppercase leading-[0.92] tracking-[0.04em] text-slate-900">
+          {c.fullName}
+        </span>
+        <span className="text-[15px] font-light text-slate-600 tabular-nums">
+          <VotesLine count={c.voteCount} />
+        </span>
       </div>
     </Link>
   );
@@ -113,7 +103,7 @@ export function AnimatedCandidatesSection({
       [...candidates].sort((a, b) => b.voteCount - a.voteCount).map((c, index) => [c.id, index + 1])
     );
     return (
-      <div className="border-t border-border">
+      <div className="border-t border-slate-900">
         {candidates.map((c) => (
           <CandidateListRow key={c.id} slug={slug} c={c} rank={closed ? (ranks.get(c.id) ?? null) : null} />
         ))}
@@ -121,13 +111,13 @@ export function AnimatedCandidatesSection({
     );
   }
 
-  const grid = "grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 lg:grid-cols-4";
+  const grid = "grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-7 lg:grid-cols-4";
 
   if (layout === "SPOTLIGHT" && candidates[0]) {
     // Le premier candidat dans l'ordre de l'API (numéro croissant), pas « le plus voté ».
     const [featured, ...rest] = candidates;
     return (
-      <div className="space-y-8">
+      <div className="space-y-14">
         <CandidateSpotlight slug={slug} c={featured} />
         {rest.length > 0 ? (
           <div className={grid}>

@@ -77,12 +77,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-// Podium : hauteurs inégales, or seulement pour le 1er (7.5).
-const PODIUM = {
-  1: { height: "h-32", border: "border-[var(--color-gold-600)]" },
-  2: { height: "h-24", border: "border-slate-300" },
-  3: { height: "h-20", border: "border-slate-300" }
-} as const;
+// Disposition d'après la maquette « 3 · Résultats » (filets, titres légers en
+// capitales), avec les composants et polices de la plateforme.
+const kicker = "text-[11px] font-medium uppercase tracking-[0.24em] text-slate-600";
+const accentKicker = "text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--event-accent-strong)]";
+const gutter = "px-[clamp(20px,4vw,56px)]";
 
 export default async function PublicResultsPage({ params }: PageProps) {
   const { slug } = await params;
@@ -105,90 +104,122 @@ export default async function PublicResultsPage({ params }: PageProps) {
         ? { tone: "muted" as const, label: t9n("phase.chip.closed") }
         : { tone: "draft" as const, label: t9n("phase.chip.draft") };
 
-  // Ordre visuel 2 · 1 · 3 ; seulement les rangs qui existent.
-  const podium = [
-    ranked[1] ? { row: ranked[1], rank: 2 as const } : null,
-    ranked[0] ? { row: ranked[0], rank: 1 as const } : null,
-    ranked[2] ? { row: ranked[2], rank: 3 as const } : null
-  ].filter((entry): entry is { row: ResultRow; rank: 1 | 2 | 3 } => entry !== null);
-
+  // Un vainqueur n'est nommé qu'après la clôture (7.5) ; avant, classement provisoire.
+  const isFinal = phase === "ended" || phase === "closed";
+  const hasVotes = totals.votes > 0;
+  const winner = isFinal && hasVotes ? ranked[0] : undefined;
+  const podium = winner ? ranked.slice(1, 4) : [];
+  const share = (count: number) => (totals.votes > 0 ? Math.round((count / totals.votes) * 100) : 0);
   const votesLabel = (count: number) => translateVars(locale, "pub.votesCount", { count: formatCount(count, locale) });
+  const numberLabel = (n: number | null) =>
+    n != null ? translateVars(locale, "pub.candidateNumber", { number: String(n).padStart(2, "0") }) : null;
 
   return (
-    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={branding}>
-      <main className="mx-auto max-w-4xl space-y-8 px-4 py-8 sm:px-6">
-        <header className="space-y-3">
-          <p className="text-sm font-semibold text-slate-600">{t9n("results.title")}</p>
-          <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-slate-900 md:text-4xl">{event.title}</h1>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-            <StatusChip tone={chip.tone} label={chip.label} />
-            <span className="text-slate-600">
-              {t9n("results.paidVotes")} :{" "}
-              <span className="font-bold text-slate-900 tabular-nums">{formatCount(totals.votes, locale)}</span>
-            </span>
-            <Link href={`/e/${event.slug}/results`} className="inline-flex min-h-11 items-center font-semibold text-primary underline-offset-4 hover:underline">
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={branding} active="results">
+      <main>
+        <section className={`mx-[clamp(20px,4vw,56px)] flex flex-wrap items-end justify-between gap-8 border-b border-slate-900 pb-14 pt-16 sm:pt-20`}>
+          <h1 className="m-0 font-display text-[clamp(48px,9vw,144px)] font-light uppercase leading-[0.9] tracking-[0.04em]">
+            {t9n("results.title")}
+          </h1>
+          <div className="flex max-w-sm flex-col gap-2.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <StatusChip tone={chip.tone} label={chip.label} />
+              {!isFinal && hasVotes ? <span className={kicker}>{t9n("results.provisional")}</span> : null}
+            </div>
+            <p className="text-sm font-light leading-relaxed text-slate-600">
+              {translateVars(locale, "results.meta", { count: formatCount(totals.votes, locale) })}
+            </p>
+            <Link href={`/e/${event.slug}/results`} className={`${kicker} inline-flex min-h-11 items-center text-slate-900 hover:opacity-65`}>
               {t9n("results.refresh")}
             </Link>
-            <Link href={`/e/${event.slug}`} className="inline-flex min-h-11 items-center font-semibold text-primary underline-offset-4 hover:underline">
-              {t9n("pay.backToCandidates")}
-            </Link>
           </div>
-        </header>
+        </section>
 
-        {ranked.length === 0 ? (
-          <p className="text-sm text-slate-600">{t9n("hub.noCandidates")}</p>
-        ) : totals.votes === 0 ? (
-          <p className="text-sm text-slate-600">{t9n("results.noVotes")}</p>
+        {ranked.length === 0 || !hasVotes ? (
+          <section className={`${gutter} flex flex-col items-start gap-6 py-24 sm:py-32`}>
+            <p className="m-0 max-w-4xl font-display text-[clamp(28px,4vw,56px)] font-light leading-tight">
+              {ranked.length === 0 ? t9n("hub.noCandidates") : t9n("results.noVotes")}
+            </p>
+            {phase === "open" ? (
+              <Link
+                href={`/e/${event.slug}`}
+                className="inline-flex min-h-11 items-center border-b border-[var(--event-accent-strong)] pb-1.5 text-[11px] font-medium uppercase tracking-[0.22em] hover:opacity-65"
+              >
+                {t9n("results.voteBeforeClose")}
+              </Link>
+            ) : null}
+            <p className="text-xs text-slate-600">{t9n("pub.paidOnlyNote")}</p>
+          </section>
         ) : (
-          <>
-            <div className="flex items-end gap-2 sm:gap-4" aria-hidden="true">
-              {podium.map(({ row, rank }) => (
-                <div key={row.candidateId} className="min-w-0 flex-1">
-                  <div className="mb-2 flex flex-col items-center text-center">
-                    <div className="h-12 w-12 overflow-hidden rounded-md bg-muted">
-                      <CandidatePhoto photoUrl={row.photoUrl} fullName={row.fullName} size="sm" className="h-full w-full object-cover" />
-                    </div>
-                    <p className="mt-1.5 w-full truncate text-sm font-bold text-slate-900">{row.fullName}</p>
-                    <p className="text-xs text-slate-600 tabular-nums">{votesLabel(row.voteCount)}</p>
-                  </div>
-                  <div
-                    className={`flex ${PODIUM[rank].height} items-start justify-center rounded-t-md border-2 border-b-0 ${PODIUM[rank].border} bg-background pt-2`}
-                  >
-                    <span className="text-2xl font-extrabold text-slate-900 tabular-nums">{rank}</span>
-                  </div>
+          <div className={gutter}>
+            {winner ? (
+              <section className="flex flex-wrap gap-[clamp(32px,5vw,80px)] py-16 sm:py-[72px]">
+                <div className="relative aspect-[4/5] min-w-0 flex-[1_1_320px] overflow-hidden rounded-md bg-slate-900/5 sm:max-h-[720px]">
+                  <CandidatePhoto photoUrl={winner.photoUrl} fullName={winner.fullName} size="lg" className="absolute inset-0 h-full w-full object-cover" />
                 </div>
-              ))}
-            </div>
+                <div className="flex min-w-0 flex-[1_1_320px] flex-col justify-end gap-5">
+                  <span className={accentKicker}>{t9n("results.winner")}</span>
+                  <h2 className="m-0 break-words font-display text-[clamp(44px,6.5vw,100px)] font-light uppercase leading-[0.92] tracking-[0.04em]">
+                    {winner.fullName}
+                  </h2>
+                  <span className="text-[15px] font-light text-slate-600">
+                    {[numberLabel(winner.number), votesLabel(winner.voteCount)].filter(Boolean).join(" · ")}
+                  </span>
+                </div>
+              </section>
+            ) : null}
 
-            <ol className="border-t border-border">
-              {ranked.map((row, index) => {
-                const share = maxVotes > 0 ? Math.round((row.voteCount / maxVotes) * 100) : 0;
-                return (
-                  <li key={row.candidateId} className="flex items-center gap-3 border-b border-border py-3">
-                    <span className="w-7 shrink-0 text-center text-sm font-extrabold text-slate-900 tabular-nums">{index + 1}</span>
-                    <span className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                      <CandidatePhoto photoUrl={row.photoUrl} fullName={row.fullName} size="sm" className="h-full w-full object-cover" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                        <span className="truncate text-sm font-bold text-slate-900 sm:text-base">
-                          {row.number != null ? `N° ${String(row.number).padStart(2, "0")} · ` : null}
-                          {row.fullName}
-                        </span>
-                        <span className="whitespace-nowrap text-sm font-bold text-slate-900 tabular-nums">{votesLabel(row.voteCount)}</span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-sm bg-muted" aria-hidden="true">
-                        <span className="block h-full bg-[var(--event-accent)]" style={{ width: `${share}%` }} />
-                      </div>
+            {podium.length > 0 ? (
+              <section className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-7 gap-y-10 border-t border-slate-900 pt-14">
+                {podium.map((row, index) => (
+                  <div key={row.candidateId} className="flex flex-col gap-4">
+                    <div className="aspect-[4/5] overflow-hidden rounded-md bg-slate-900/5">
+                      <CandidatePhoto photoUrl={row.photoUrl} fullName={row.fullName} size="lg" className="h-full w-full object-cover" />
                     </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </>
-        )}
+                    <span className={kicker}>{translateVars(locale, "results.place", { rank: index + 2 })}</span>
+                    <span className="text-xl font-medium uppercase tracking-[0.06em]">{row.fullName}</span>
+                    <span className="-mt-1.5 text-[13px] font-light text-slate-600">
+                      {[numberLabel(row.number), votesLabel(row.voteCount)].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                ))}
+              </section>
+            ) : null}
 
-        <p className="text-xs text-slate-600">{t9n("pub.paidOnlyNote")}</p>
+            <section className="py-20 sm:py-[120px]">
+              <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+                <h2 className="m-0 font-display text-[clamp(28px,3.4vw,48px)] font-light uppercase tracking-[0.04em]">
+                  {t9n("results.publicVote")}
+                </h2>
+                <span className={kicker}>{t9n("results.share")}</span>
+              </div>
+              <ol className="border-t border-slate-900">
+                {ranked.map((row, index) => {
+                  const width = maxVotes > 0 ? Math.round((row.voteCount / maxVotes) * 100) : 0;
+                  return (
+                    <li key={row.candidateId} className="grid grid-cols-[40px_minmax(0,1fr)_64px] items-center gap-4 border-b border-slate-900/15 py-4 sm:grid-cols-[48px_minmax(0,1fr)_80px] sm:gap-5">
+                      <span className="text-[13px] text-slate-600 tabular-nums">{String(index + 1).padStart(2, "0")}</span>
+                      <div className="flex min-w-0 flex-col gap-2.5">
+                        <span className="truncate text-sm font-medium uppercase tracking-[0.06em]">
+                          {row.fullName}
+                          <span className="ml-2 font-light normal-case tracking-normal text-slate-600">{votesLabel(row.voteCount)}</span>
+                        </span>
+                        <div className="h-0.5 bg-slate-900/5" aria-hidden="true">
+                          <div
+                            className="h-0.5"
+                            style={{ width: `${width}%`, background: index === 0 ? "var(--event-accent-strong)" : "var(--color-slate-900, #0f172a)" }}
+                          />
+                        </div>
+                      </div>
+                      <span className="text-right text-sm tabular-nums">{share(row.voteCount)} %</span>
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-6 text-xs text-slate-600">{t9n("pub.paidOnlyNote")}</p>
+            </section>
+          </div>
+        )}
       </main>
     </PublicEventShell>
   );

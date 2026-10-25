@@ -83,65 +83,75 @@ export default async function PublicEventPage({ params }: PageProps) {
   const resultsHref = `/e/${event.slug}/results`;
 
   return (
-    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding}>
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates">
       <main>
-        <section className="border-b border-border" style={{ background: "var(--event-accent-light)" }}>
-          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        {/* Disposition d'après la maquette « 3 · Résultats », composants de la plateforme. */}
+        <section className="mx-[clamp(20px,4vw,56px)] flex flex-wrap items-end justify-between gap-8 border-b border-slate-900 pb-14 pt-16 sm:pt-20">
+          <h1 className="m-0 max-w-5xl break-words font-display text-[clamp(44px,8vw,128px)] font-light uppercase leading-[0.9] tracking-[0.04em]">
+            {event.title}
+          </h1>
+          <div className="flex max-w-sm flex-col gap-2.5">
             {event.branding.tagline ? (
-              <p className="text-sm font-semibold" style={{ color: "var(--event-accent-strong)" }}>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--event-accent-strong)]">
                 {event.branding.tagline}
-              </p>
+              </span>
             ) : null}
-            <h1 className="mt-2 text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl">{event.title}</h1>
-            <p className="mt-3 text-sm text-slate-600">
-              {t9n("pub.organizedBy")} <span className="font-semibold text-slate-900">{organizer.displayName}</span>
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
+            <div className="flex flex-wrap items-center gap-3">
               <StatusChip tone={PHASE_TONE[phase]} label={t9n(`phase.chip.${phase}`)} />
-              {startLabel && endLabel ? (
-                <span>{translateVars(locale, "hub.dates", { start: startLabel, end: endLabel })}</span>
-              ) : null}
             </div>
+            <p className="text-sm font-light leading-relaxed text-slate-600">
+              {t9n("pub.organizedBy")} <span className="font-medium text-slate-900">{organizer.displayName}</span>
+              {startLabel && endLabel ? (
+                <>
+                  <br />
+                  {translateVars(locale, "hub.dates", { start: startLabel, end: endLabel })}
+                </>
+              ) : null}
+            </p>
           </div>
         </section>
 
-        <div className="mx-auto max-w-6xl space-y-10 px-4 py-10 sm:px-6">
+        <div className="space-y-14 px-[clamp(20px,4vw,56px)] py-14">
           <PhaseNotice phase={phase} locale={locale} startLabel={startLabel} resultsHref={resultsHref} />
 
-          <section aria-labelledby="how-to-vote" className="max-w-xl">
-            <h2 id="how-to-vote" className="text-lg font-bold text-slate-900">{t9n("hub.howTo.title")}</h2>
-            <dl className="mt-4 text-sm">
-              <div className="border-t border-border py-3">
-                <dt className="font-semibold text-slate-900">{t9n("hub.howTo.price")}</dt>
-                <dd className="mt-0.5 text-slate-600">
+          <section aria-labelledby="how-to-vote" className="max-w-2xl">
+            <h2 id="how-to-vote" className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-600">
+              {t9n("hub.howTo.title")}
+            </h2>
+            <dl className="mt-4 border-t border-slate-900 text-sm">
+              <div className="grid gap-1 border-b border-slate-900/15 py-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                <dt className="font-medium uppercase tracking-[0.06em]">{t9n("hub.howTo.price")}</dt>
+                <dd className="font-light text-slate-600">
                   {event.voteUnitPriceCfa && event.voteUnitPriceCfa > 0
                     ? formatCfa(event.voteUnitPriceCfa, locale)
                     : t9n("hub.howTo.noPrice")}
                 </dd>
               </div>
               {startLabel && endLabel ? (
-                <div className="border-t border-border py-3">
-                  <dt className="font-semibold text-slate-900">{t9n("hub.howTo.period")}</dt>
-                  <dd className="mt-0.5 text-slate-600">{translateVars(locale, "hub.dates", { start: startLabel, end: endLabel })}</dd>
+                <div className="grid gap-1 border-b border-slate-900/15 py-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                  <dt className="font-medium uppercase tracking-[0.06em]">{t9n("hub.howTo.period")}</dt>
+                  <dd className="font-light text-slate-600">{translateVars(locale, "hub.dates", { start: startLabel, end: endLabel })}</dd>
                 </div>
               ) : null}
-              <div className="border-t border-border py-3">
-                <dt className="font-semibold text-slate-900">{t9n("hub.howTo.payment")}</dt>
-                <dd className="mt-0.5 text-slate-600">
+              <div className="grid gap-1 border-b border-slate-900/15 py-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                <dt className="font-medium uppercase tracking-[0.06em]">{t9n("hub.howTo.payment")}</dt>
+                <dd className="font-light text-slate-600">
                   {translateVars(locale, "hub.howTo.paymentValue", {
                     networks: MOBILE_NETWORKS.map((n) => n.label).join(", ")
                   })}
                 </dd>
               </div>
-              <div className="border-t border-border py-3">
-                <dt className="font-semibold text-slate-900">{t9n("hub.howTo.counts")}</dt>
-                <dd className="mt-0.5 text-slate-600">{t9n("hub.howTo.countsValue")}</dd>
+              <div className="grid gap-1 border-b border-slate-900/15 py-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                <dt className="font-medium uppercase tracking-[0.06em]">{t9n("hub.howTo.counts")}</dt>
+                <dd className="font-light text-slate-600">{t9n("hub.howTo.countsValue")}</dd>
               </div>
             </dl>
           </section>
 
-          <section aria-labelledby="candidates-title">
-            <h2 id="candidates-title" className="sr-only">{t9n("hub.candidates")}</h2>
+          <section aria-labelledby="candidates-title" className="border-t border-slate-900 pt-14">
+            <h2 id="candidates-title" className="mb-10 font-display text-[clamp(28px,3.4vw,48px)] font-light uppercase tracking-[0.04em]">
+              {t9n("minisite.candidates")}
+            </h2>
             {candidates.length === 0 ? (
               <p className="text-sm text-slate-600">{t9n("hub.noCandidates")}</p>
             ) : (

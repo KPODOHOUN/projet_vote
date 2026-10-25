@@ -96,68 +96,68 @@ export default async function CandidateProfilePage({ params }: PageProps) {
   const t9n = (key: MessageKey) => translate(locale, key);
 
   return (
-    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding}>
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] md:items-start md:gap-10 md:py-10">
-        <div className="relative aspect-[4/5] max-h-[42dvh] w-full overflow-hidden rounded-md bg-muted md:sticky md:top-24 md:max-h-none">
+    <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates">
+      {/* Disposition du bloc « vainqueur » de la maquette : photo à gauche, nom en très grand à droite. */}
+      <main className="flex flex-wrap gap-[clamp(32px,5vw,80px)] px-[clamp(20px,4vw,56px)] py-10 sm:py-16">
+        <div className="relative aspect-[4/5] max-h-[42dvh] min-w-0 flex-[1_1_300px] overflow-hidden rounded-md bg-slate-900/5 md:sticky md:top-6 md:max-h-[720px] md:self-start">
           <CandidatePhoto
             photoUrl={candidate.photoUrl}
             fullName={candidate.fullName}
             size="lg"
             className="absolute inset-0 h-full w-full object-cover"
           />
-          {/* Scrim fonctionnel : garde la pastille lisible sur une photo claire. */}
-          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-neutral-950/50 to-transparent" aria-hidden="true" />
-          {candidate.number != null ? (
-            <span className="absolute bottom-3 left-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md bg-background px-3 text-2xl font-extrabold text-slate-900 tabular-nums">
-              {String(candidate.number).padStart(2, "0")}
-            </span>
-          ) : null}
         </div>
 
-        <div className="mt-5 space-y-5 md:mt-0">
-          <div>
-            <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{candidate.fullName}</h1>
-            {candidate.number != null ? (
-              <p className="mt-1 text-base font-semibold text-slate-600">
-                {translateVars(locale, "pub.candidateNumber", { number: candidate.number })}
-              </p>
-            ) : null}
-            <p className="mt-1 text-sm text-slate-600">
-              {t9n("pub.organizedBy")} <span className="font-semibold text-slate-900">{organizer.displayName}</span>
-            </p>
+        <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-6">
+          <div className="flex flex-col gap-4 border-b border-slate-900 pb-8">
             <Link
               href={`/e/${event.slug}`}
-              className="mt-2 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-11 w-fit items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.22em] text-slate-900 hover:opacity-65"
             >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
               {t9n("profile.back")}
             </Link>
+            {candidate.number != null ? (
+              <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--event-accent-strong)]">
+                {translateVars(locale, "pub.candidateNumber", { number: candidate.number })}
+              </span>
+            ) : null}
+            <h1 className="m-0 break-words font-display text-[clamp(40px,6vw,96px)] font-light uppercase leading-[0.92] tracking-[0.04em]">
+              {candidate.fullName}
+            </h1>
+            <p className="text-[15px] font-light text-slate-600">
+              {t9n("pub.organizedBy")} <span className="font-medium text-slate-900">{organizer.displayName}</span>
+            </p>
           </div>
 
-          {phase === "open" ? (
-            <CandidateVoteClient
-              organizerSlug={organizer.slug}
-              eventSlug={event.slug}
-              candidatePublicRef={candidate.publicRef}
-              candidateName={candidate.fullName}
-              voteUnitPriceCfa={event.voteUnitPriceCfa}
-              initialVoteCount={candidate.voteCount}
-            />
-          ) : (
-            <PhaseNotice
-              phase={phase}
-              locale={locale}
-              startLabel={formatEventDate(event.startsAt, locale)}
-              resultsHref={`/e/${event.slug}/results`}
-            />
-          )}
+          <div className="max-w-md">
+            {phase === "open" ? (
+              <CandidateVoteClient
+                organizerSlug={organizer.slug}
+                eventSlug={event.slug}
+                candidatePublicRef={candidate.publicRef}
+                candidateName={candidate.fullName}
+                voteUnitPriceCfa={event.voteUnitPriceCfa}
+                initialVoteCount={candidate.voteCount}
+              />
+            ) : (
+              <PhaseNotice
+                phase={phase}
+                locale={locale}
+                startLabel={formatEventDate(event.startsAt, locale)}
+                resultsHref={`/e/${event.slug}/results`}
+              />
+            )}
+          </div>
 
-          <CandidateShareBar
-            eventSlug={event.slug}
-            publicRef={candidate.publicRef}
-            candidateName={candidate.fullName}
-            isEn={isEn}
-          />
+          <div className="max-w-md">
+            <CandidateShareBar
+              eventSlug={event.slug}
+              publicRef={candidate.publicRef}
+              candidateName={candidate.fullName}
+              isEn={isEn}
+            />
+          </div>
         </div>
       </main>
     </PublicEventShell>
