@@ -1,4 +1,13 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { z } from "zod";
+import { env } from "../config/env";
+
+const chatMessageSchema = z.object({
+  message: z.string().trim().min(1).max(500)
+});
+
+/** Bornes de coût OpenAI : chaque réponse est courte et le volume journalier est plafonné. */
+const MAX_REPLY_TOKENS = 300;
 
 const SYSTEM_PROMPT = `Tu es un assistant virtuel de SHADOMA Votes, une plateforme SaaS de votes payants pour l'Afrique francophone.
 
@@ -24,23 +33,31 @@ CE QUE TU PEUX FAIRE :
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
-  private readonly apiKey: string | undefined;
+  // Daily counters live in this process only: with several API instances the
+  // effective cap is multiplied by the instance count. Good enough to bound
+  // cost; move to Redis if the API scales out.
+  private day = "";
+  private globalCount = 0;
+  private readonly perIpCount = new Map<string, number>();
 
-  constructor() {
-    this.apiKey = process.env.OPENAI_API_KEY;
+  isEnabled(): boolean {
+    return Boolean(env.OPENAI_API_KEY);
   }
 
-  async chat(message: string): Promise<string> {
-    if (!this.apiKey) {
-      return "Désolé, l'assistant n'est pas configuré. Contactez le support à contact@shadowa.votes.";
+  async chat(payload: unknown, ip: string): Promise<string> {
+    const { message } = chatMessageSchema.parse(payload);
+    const apiKey = env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new ServiceUnavailableException("L'assistant n'est pas disponible.");
     }
+    this.consumeDailyQuota(ip);
 
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`
+          Authorization: `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -48,7 +65,7 @@ export class ChatService {
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: message }
           ],
-          max_tokens: 300,
+          max_tokens: MAX_REPLY_TOKENS,
           temperature: 0.7
         })
       });
@@ -69,5 +86,20 @@ export class ChatService {
       if (err instanceof ServiceUnavailableException) throw err;
       throw new ServiceUnavailableException("Erreur de communication avec l'assistant AI.");
     }
+  }
+
+  private consumeDailyQuota(ip: string): void {
+    const today = new Date().toISOString().slice(0, 10);
+    if (today !== this.day) {
+      this.day = today;
+      this.globalCount = 0;
+      this.perIpCount.clear();
+    }
+    const ipCount = this.perIpCount.get(ip) ?? 0;
+    if (ipCount >= env.CHAT_DAILY_LIMIT_PER_IP || this.globalCount >= env.CHAT_DAILY_LIMIT) {
+      throw new HttpException("L'assistant a atteint sa limite pour aujourd'hui. Réessayez demain.", HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.perIpCount.set(ip, ipCount + 1);
+    this.globalCount += 1;
   }
 }

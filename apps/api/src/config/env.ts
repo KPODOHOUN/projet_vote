@@ -154,7 +154,10 @@ export const envSchema = z.object({
   // concernés.
   PSP_STATUS_PULL_MIN_INTERVAL_MS: z.coerce.number().int().min(1000).max(120_000).default(8_000),
   // OpenAI API key for the AI assistant chatbot
-  OPENAI_API_KEY: z.string().min(1).optional()
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  // Plafonds journaliers de l'assistant (coût OpenAI), en plus du throttle par minute.
+  CHAT_DAILY_LIMIT: z.coerce.number().int().min(0).default(500),
+  CHAT_DAILY_LIMIT_PER_IP: z.coerce.number().int().min(0).default(30)
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== "production") {
     return;

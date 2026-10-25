@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Get, Ip, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { ChatService } from "./chat.service";
 
@@ -6,10 +6,16 @@ import { ChatService } from "./chat.service";
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
+  /** Le widget ne s'affiche que si l'assistant est configuré. */
+  @Get("status")
+  status() {
+    return { enabled: this.chatService.isEnabled() };
+  }
+
   @Post()
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  async chat(@Body() body: { message: string }) {
-    const reply = await this.chatService.chat(body.message);
+  async chat(@Body() body: unknown, @Ip() ip: string) {
+    const reply = await this.chatService.chat(body, ip);
     return { reply };
   }
 }
