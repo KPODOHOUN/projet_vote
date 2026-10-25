@@ -17,6 +17,16 @@ export type WalletResponse = {
     createdAt: string;
     note: string | null;
   }>;
+  /** Ajouts additifs de l'API (Lot E5) : absents d'une ancienne API. */
+  commissionCfa?: number;
+  byEvent?: Array<{
+    eventId: string;
+    title: string;
+    grossCfa: number;
+    commissionCfa: number;
+    heldCfa: number;
+    creditedAvailableCfa: number;
+  }>;
 };
 
 export type Withdrawal = {
