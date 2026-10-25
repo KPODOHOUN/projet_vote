@@ -218,3 +218,29 @@ test("listPublicEvents: liste les events d'un tenant, 404 si tenant inconnu", as
   assert.equal(list.length, 1);
   await assert.rejects(votes.listPublicEvents("absent"), /introuvable/);
 });
+
+test("hub et profil comptent les voix payées (votesCount), comme les résultats, pas les lignes de vote", async () => {
+  const { event, candidate } = await seed();
+  // Un paiement de 5 voix = une seule ligne Vote avec votesCount = 5.
+  await prisma.vote.create({
+    data: { tenantId: event.tenantId, eventId: event.id, candidateId: candidate.id, amountCfa: 500, votesCount: 5, paidAt: new Date() }
+  });
+  await prisma.vote.create({
+    data: { tenantId: event.tenantId, eventId: event.id, candidateId: candidate.id, amountCfa: 200, votesCount: 2, paidAt: new Date() }
+  });
+  // Non payé et annulé : ne comptent pas.
+  await prisma.vote.create({
+    data: { tenantId: event.tenantId, eventId: event.id, candidateId: candidate.id, amountCfa: 900, votesCount: 9 }
+  });
+  await prisma.vote.create({
+    data: { tenantId: event.tenantId, eventId: event.id, candidateId: candidate.id, amountCfa: 300, votesCount: 3, paidAt: new Date(), cancelledAt: new Date() }
+  });
+
+  const hub = await votes.getPublicEventBySlug("vote-evt");
+  const profile = await votes.getPublicCandidate("vote-evt", candidate.publicRef);
+  const results = await votes.getPublicEventResults("vote-evt");
+  const inResults = results.results.find((r) => r.candidateId === candidate.id)!;
+  assert.equal(inResults.voteCount, 7);
+  assert.equal(hub.candidates.find((c) => c.id === candidate.id)!.voteCount, 7);
+  assert.equal(profile.candidate.voteCount, 7);
+});

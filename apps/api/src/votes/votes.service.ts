@@ -140,13 +140,14 @@ export class VotesService {
   }
 
   /** candidateId → nombre de votes PAID (même règle d'intégrité que computeResults). */
+  /** Voix payées par candidat : somme de votesCount (même règle que computeResults). */
   private async paidVoteCountByCandidate(eventId: string): Promise<Map<string, number>> {
     const grouped = await this.prisma.client.vote.groupBy({
       by: ["candidateId"],
       where: { eventId, cancelledAt: null, paidAt: { not: null } },
-      _count: { _all: true }
+      _sum: { votesCount: true }
     });
-    return new Map(grouped.map((g) => [g.candidateId, g._count._all]));
+    return new Map(grouped.map((g) => [g.candidateId, g._sum.votesCount ?? 0]));
   }
 
   /**
