@@ -116,3 +116,40 @@ test("accessibilité : mini-plateformes dans les dix-sept styles et éditeur d'a
   writeFileSync(test.info().outputPath("a11y-violations.json"), JSON.stringify(violations, null, 2));
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 });
+
+// Parcours de vote au clavier seul : Tab jusqu'au numéro Mobile Money, saisie,
+// puis Tab jusqu'au bouton de paiement ; chaque arrêt a un focus visible.
+test("accessibilité : voter au clavier seul, focus toujours visible", async ({ page, request }) => {
+  const unique = `${Date.now()}`;
+  const owner = await organizer(request, `kb-${unique}`);
+  const { slug, firstRef } = await seedEvent(request, owner.headers, `kb-${unique}`, "AFFICHE", "#6D28D9");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/e/${slug}/c/${firstRef}`);
+  await page.waitForLoadState("networkidle");
+
+  const focusState = () =>
+    page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el || el === document.body) return null;
+      const style = getComputedStyle(el);
+      const outline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
+      const ring = style.boxShadow !== "none";
+      return { id: el.id, tag: el.tagName, text: (el.textContent ?? "").trim().slice(0, 40), visible: outline || ring };
+    });
+
+  const tabUntil = async (match: (s: NonNullable<Awaited<ReturnType<typeof focusState>>>) => boolean, max: number) => {
+    for (let i = 0; i < max; i += 1) {
+      await page.keyboard.press("Tab");
+      const state = await focusState();
+      if (!state) continue;
+      expect(state.visible, `focus invisible sur ${state.tag}#${state.id} « ${state.text} »`).toBeTruthy();
+      if (match(state)) return state;
+    }
+    throw new Error("élément jamais atteint au clavier");
+  };
+
+  await tabUntil((s) => s.id === "voterPhone", 60);
+  await page.keyboard.type("+22997000001");
+  const pay = await tabUntil((s) => s.tag === "BUTTON" && /Payer/.test(s.text), 20);
+  expect(pay.text).toContain("Payer");
+});

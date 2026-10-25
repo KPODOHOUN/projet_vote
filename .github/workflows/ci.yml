@@ -103,3 +103,54 @@ jobs:
           NODE_ENV: test
           DATABASE_URL: postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test
         run: npm run test:offers
+
+  # Parcours navigateur (Playwright) : vote, organisateur, admin, et
+  # accessibilité des mini-plateformes (axe, WCAG 2.2 AA, 17 styles). Les
+  # serveurs API et web sont construits et lancés par playwright.config.ts.
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: votezpro
+          POSTGRES_PASSWORD: votezpro_dev
+          POSTGRES_DB: votezpro_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema packages/db/prisma/schema.prisma
+
+      - name: Install Chromium for Playwright
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e suite (Playwright)
+        working-directory: apps/web
+        env:
+          TEST_DATABASE_URL: postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test
+        run: npx playwright test --reporter=line
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: apps/web/test-results/
+          retention-days: 7
