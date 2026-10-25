@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useI18n } from "../../lib/i18n-provider";
 import { LoginForm } from "./login-form";
@@ -85,49 +84,38 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login", returnTo
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={close} aria-hidden="true" />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="relative my-auto w-full max-w-[420px]"
-      >
+      <div className="fixed inset-0 bg-black/60" onClick={close} aria-hidden="true" />
+      <div className="relative my-auto w-full max-w-[420px]">
         <div
           ref={panelRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="auth-dialog-title"
-          className="vp-glass-strong flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-border/60 shadow-2xl"
+          data-zone="secure-flow"
+          className="flex max-h-[90dvh] flex-col overflow-y-auto rounded-md border border-border bg-background"
         >
-          {/* Header gradient */}
-          <div className="relative px-6 pt-8 pb-4 text-center"
-            style={{
-              background: "linear-gradient(135deg, var(--color-brand-500), var(--color-violet-600))"
-            }}
-          >
+          {/* En-tête plat (7.5) : wordmark, titre, fermer en 44 px. */}
+          <div className="relative border-b border-border px-6 pb-4 pt-5">
             <button
               type="button"
               onClick={close}
-              className="absolute right-4 top-4 rounded-full p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+              className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-600 hover:bg-muted hover:text-slate-900"
               aria-label={t("auth.dialog.close")}
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur shadow-inner">
-              <span className="text-xl font-black text-white">SV</span>
-            </div>
-            <h2 id="auth-dialog-title" className="text-xl font-bold text-white">
+            <p className="text-base font-extrabold tracking-tight text-slate-900">SHADOMA</p>
+            <h2 id="auth-dialog-title" className="mt-2 text-xl font-bold text-slate-900">
               {mode === "login" ? t("auth.dialog.titleLogin") : t("auth.dialog.titleRegister")}
             </h2>
-            <p className="mt-1 text-sm text-white/80">
+            <p className="mt-1 text-sm text-slate-600">
               {mode === "login" ? t("auth.dialog.subtitleLogin") : t("auth.dialog.subtitleRegister")}
             </p>
           </div>
 
-          <div className="min-h-0 overflow-y-auto p-6">
+          <div className="p-6">
             {/* Tab switcher — pilule glissante animée sous l'onglet actif */}
-            <div role="tablist" aria-label={mode === "login" ? t("auth.dialog.titleLogin") : t("auth.dialog.titleRegister")} className="relative mb-5 grid grid-cols-2 gap-1 rounded-xl bg-muted/50 p-1">
+            <div role="tablist" aria-label={mode === "login" ? t("auth.dialog.titleLogin") : t("auth.dialog.titleRegister")} className="relative mb-5 grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
               {tabs.map((tab) => {
                 const selected = mode === tab.value;
                 return (
@@ -137,17 +125,12 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login", returnTo
                     role="tab"
                     aria-selected={selected}
                     onClick={() => setMode(tab.value)}
-                    className={`relative rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                    className={`relative min-h-11 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
                       selected ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {selected ? (
-                      <motion.span
-                        layoutId="auth-tab-pill"
-                        transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                        className="absolute inset-0 rounded-lg bg-card shadow-sm ring-1 ring-border/50"
-                        aria-hidden="true"
-                      />
+                      <span className="absolute inset-0 rounded-md bg-background ring-1 ring-border" aria-hidden="true" />
                     ) : null}
                     <span className="relative">{tab.label}</span>
                   </button>
@@ -155,24 +138,16 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login", returnTo
               })}
             </div>
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={mode}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 8 }}
-                transition={{ duration: 0.2 }}
-              >
+            <div key={mode}>
                 {mode === "login" ? (
                   <LoginForm hideHeading returnTo={returnTo} onSuccess={close} onSwitchToRegister={() => setMode("register")} />
                 ) : (
                   <RegisterForm hideHeading onSuccess={close} onSwitchToLogin={() => setMode("login")} />
                 )}
-              </motion.div>
-            </AnimatePresence>
+            </div>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
