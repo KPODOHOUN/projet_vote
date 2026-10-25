@@ -19,6 +19,18 @@ const imageHosts = [
   "https://graph.facebook.com"
 ];
 
+// Collecteur optionnel des rapports de violation (voir security-headers.md).
+// Valeur figée au build, comme toute la config Next.
+const cspReportUri = (() => {
+  const raw = process.env.CSP_REPORT_URI?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return null;
+  }
+})();
+
 // CSP en Report-Only : on observe les violations avant de bloquer (voir
 // docs/deployment/security-headers.md). Next injecte des scripts inline sans
 // nonce, d'où 'unsafe-inline' tant qu'aucun nonce n'est en place.
@@ -41,8 +53,11 @@ const contentSecurityPolicy = [
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",
-  "object-src 'none'"
-].join("; ");
+  "object-src 'none'",
+  cspReportUri ? `report-uri ${cspReportUri}; report-to csp` : null
+]
+  .filter(Boolean)
+  .join("; ");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -50,7 +65,8 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
   // L'éditeur d'apparence affiche la page publique dans une iframe du même site.
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy }
+  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy },
+  ...(cspReportUri ? [{ key: "Reporting-Endpoints", value: `csp="${cspReportUri}"` }] : [])
 ];
 
 const nextConfig: NextConfig = {
