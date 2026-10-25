@@ -162,39 +162,70 @@ export function brandStyle(value: string | null | undefined): CSSProperties | un
 }
 
 /* ── Extract dominant color from an image (client-side) ────────────────── */
+/**
+ * Couleur dominante exploitable d'une image (RGBA à plat). Ignore les pixels
+ * transparents, quasi blancs (L > 92 %), quasi noirs (L < 8 %) et peu saturés
+ * (S < 15 %) ; parmi les compartiments restants, la fréquence l'emporte, la
+ * saturation départage. Renvoie null si rien n'est exploitable. Fonction pure
+ * (testée sans canvas dans brand.test.ts).
+ */
+export function dominantColorFromPixels(data: ArrayLike<number>): string | null {
+  const buckets = new Map<string, { r: number; g: number; b: number; count: number; sat: number }>();
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
+    if (a < 128) continue;
+    const max = Math.max(r, g, b) / 255;
+    const min = Math.min(r, g, b) / 255;
+    const l = (max + min) / 2;
+    if (l > 0.92 || l < 0.08) continue;
+    const d = max - min;
+    const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    if (sat < 0.15) continue;
+    const key = `${r >> 5},${g >> 5},${b >> 5}`;
+    const entry = buckets.get(key);
+    if (entry) {
+      entry.r += r;
+      entry.g += g;
+      entry.b += b;
+      entry.count += 1;
+      entry.sat += sat;
+    } else {
+      buckets.set(key, { r, g, b, count: 1, sat });
+    }
+  }
+  let best: { r: number; g: number; b: number; count: number; sat: number } | null = null;
+  let bestScore = 0;
+  for (const entry of buckets.values()) {
+    const score = entry.count * (0.5 + entry.sat / entry.count);
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+  if (!best) return null;
+  return rgbToHex(Math.round(best.r / best.count), Math.round(best.g / best.count), Math.round(best.b / best.count));
+}
+
 export function extractColorFromImage(url: string): Promise<string | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 100;
-      canvas.height = 100;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(null); return; }
-      ctx.drawImage(img, 0, 0, 100, 100);
-      const data: number[] = Array.from(ctx.getImageData(0, 0, 100, 100).data);
-      const colorCounts: Record<string, { r: number; g: number; b: number; count: number }> = {};
-      for (let i = 0; i < data.length; i += 16) {
-        const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
-        if (a < 128) continue;
-        const key = `${Math.round(r / 32)},${Math.round(g / 32)},${Math.round(b / 32)}`;
-        if (colorCounts[key]) {
-          colorCounts[key]!.count++;
-        } else {
-          colorCounts[key] = { r, g, b, count: 1 };
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 100;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
         }
+        ctx.drawImage(img, 0, 0, 100, 100);
+        // getImageData lève une SecurityError si l'image n'autorise pas le CORS.
+        resolve(dominantColorFromPixels(ctx.getImageData(0, 0, 100, 100).data));
+      } catch {
+        resolve(null);
       }
-      let maxCount = 0;
-      let dominant = { r: 99, g: 102, b: 241 };
-      for (const key in colorCounts) {
-        const entry = colorCounts[key]!;
-        if (entry.count > maxCount) {
-          maxCount = entry.count;
-          dominant = entry;
-        }
-      }
-      resolve(rgbToHex(dominant.r, dominant.g, dominant.b));
     };
     img.onerror = () => resolve(null);
     img.src = url;
@@ -205,33 +236,34 @@ export function extractColorFromImage(url: string): Promise<string | null> {
 export interface BrandPreset {
   color: string;
   label: string;
+  labelEn: string;
   vibe: "luxe" | "nature" | "festif" | "pro" | "culture" | "sport";
 }
 
 export const BRAND_COLOR_PRESETS: BrandPreset[] = [
   // Luxe
-  { color: "#6366F1", label: "Indigo royal", vibe: "luxe" },
-  { color: "#8B5CF6", label: "Violet électrique", vibe: "luxe" },
-  { color: "#0F172A", label: "Bleu nuit profond", vibe: "luxe" },
-  { color: "#1E293B", label: "Ardoise premium", vibe: "luxe" },
+  { color: "#6366F1", label: "Indigo royal", labelEn: "Royal indigo", vibe: "luxe" },
+  { color: "#8B5CF6", label: "Violet électrique", labelEn: "Electric violet", vibe: "luxe" },
+  { color: "#0F172A", label: "Bleu nuit profond", labelEn: "Deep night blue", vibe: "luxe" },
+  { color: "#1E293B", label: "Ardoise", labelEn: "Slate", vibe: "luxe" },
   // Festif
-  { color: "#F59E0B", label: "Or chatoyant", vibe: "festif" },
-  { color: "#EF4444", label: "Rouge passion", vibe: "festif" },
-  { color: "#F97316", label: "Orange feu", vibe: "festif" },
-  { color: "#EC4899", label: "Rose élégant", vibe: "festif" },
+  { color: "#F59E0B", label: "Or chatoyant", labelEn: "Gold", vibe: "festif" },
+  { color: "#EF4444", label: "Rouge passion", labelEn: "Passion red", vibe: "festif" },
+  { color: "#F97316", label: "Orange feu", labelEn: "Fire orange", vibe: "festif" },
+  { color: "#EC4899", label: "Rose élégant", labelEn: "Rose", vibe: "festif" },
   // Nature
-  { color: "#10B981", label: "Émeraude", vibe: "nature" },
-  { color: "#059669", label: "Forêt profonde", vibe: "nature" },
-  { color: "#0D9488", label: "Teal océan", vibe: "nature" },
-  { color: "#14B8A6", label: "Turquoise", vibe: "nature" },
+  { color: "#10B981", label: "Émeraude", labelEn: "Emerald", vibe: "nature" },
+  { color: "#059669", label: "Forêt profonde", labelEn: "Deep forest", vibe: "nature" },
+  { color: "#0D9488", label: "Teal océan", labelEn: "Ocean teal", vibe: "nature" },
+  { color: "#14B8A6", label: "Turquoise", labelEn: "Turquoise", vibe: "nature" },
   // Pro / Culture
-  { color: "#3B82F6", label: "Bleu confiance", vibe: "pro" },
-  { color: "#0EA5E9", label: "Ciel serein", vibe: "pro" },
-  { color: "#7C2D12", label: "Terre d'Afrique", vibe: "culture" },
-  { color: "#B45309", label: "Cuir noble", vibe: "culture" },
+  { color: "#3B82F6", label: "Bleu confiance", labelEn: "Trust blue", vibe: "pro" },
+  { color: "#0EA5E9", label: "Ciel serein", labelEn: "Clear sky", vibe: "pro" },
+  { color: "#7C2D12", label: "Terre d'Afrique", labelEn: "African earth", vibe: "culture" },
+  { color: "#B45309", label: "Cuir noble", labelEn: "Leather", vibe: "culture" },
   // Sport
-  { color: "#E11D48", label: "Rouge écarlate", vibe: "sport" },
-  { color: "#0284C7", label: "Bleu dynamique", vibe: "sport" },
+  { color: "#E11D48", label: "Rouge écarlate", labelEn: "Scarlet", vibe: "sport" },
+  { color: "#0284C7", label: "Bleu dynamique", labelEn: "Bright blue", vibe: "sport" },
 ];
 
 export function getBrandPresetsByVibe(): Record<string, BrandPreset[]> {

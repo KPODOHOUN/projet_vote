@@ -6,6 +6,8 @@ import {
   buildEventTheme,
   contrastRatio,
   deriveAccentStrong,
+  dominantColorFromPixels,
+  hexToRgb,
   normalizeBrandColor,
 } from "./brand";
 
@@ -94,4 +96,35 @@ test("thème: entrée invalide ou vide → couleur par défaut #4F46E5", () => {
   for (const input of [null, undefined, "", "pas-une-couleur", "#12"]) {
     assert.equal(buildEventTheme(input).accent, "#4f46e5");
   }
+});
+
+function pixels(list: Array<[number, number, number, number, number]>): Uint8ClampedArray {
+  // [r, g, b, a, nombre de pixels]
+  const out: number[] = [];
+  for (const [r, g, b, a, n] of list) for (let i = 0; i < n; i += 1) out.push(r, g, b, a);
+  return new Uint8ClampedArray(out);
+}
+
+test("extraction : logo blanc sur fond blanc → null (rien d'exploitable)", () => {
+  assert.equal(dominantColorFromPixels(pixels([[255, 255, 255, 255, 900], [250, 250, 250, 255, 100]])), null);
+});
+
+test("extraction : logo rouge sur fond blanc → rouge", () => {
+  const hex = dominantColorFromPixels(pixels([[255, 255, 255, 255, 800], [220, 30, 40, 255, 200]]));
+  assert.ok(hex, "une couleur attendue");
+  const { r, g, b } = hexToRgb(hex!)!;
+  assert.ok(r > 180 && g < 80 && b < 80, `rouge attendu, reçu ${hex}`);
+});
+
+test("extraction : pixels transparents, noirs et gris ignorés ; la saturation départage", () => {
+  const hex = dominantColorFromPixels(
+    pixels([
+      [20, 120, 200, 0, 5000], // transparent
+      [5, 5, 5, 255, 3000], // quasi noir
+      [128, 128, 128, 255, 3000], // gris
+      [16, 185, 129, 255, 300] // émeraude
+    ])
+  );
+  const { r, g, b } = hexToRgb(hex!)!;
+  assert.ok(g > r && g > b, `vert attendu, reçu ${hex}`);
 });
