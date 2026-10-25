@@ -16,12 +16,12 @@ import {
   CreditCard,
   Rocket,
   Ticket,
-  Search,
   Wallet
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useI18n } from "../lib/i18n-provider";
 import { useAuth } from "../lib/auth-context";
+import { useOrganizerEvents } from "../lib/hooks/use-organizer-events";
 
 type NavItem = {
   href: string;
@@ -36,6 +36,9 @@ export function DashboardSidebar() {
   const { isPlatformAdmin } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  // « Démarrer » disparaît dès qu'un événement existe (la route reste accessible).
+  const eventsQuery = useOrganizerEvents(true);
+  const hasEvent = (eventsQuery.data?.length ?? 0) > 0;
 
   useEffect(() => {
     const handleResize = () => setIsCollapsed(window.innerWidth < 1024);
@@ -47,13 +50,13 @@ export function DashboardSidebar() {
   useEffect(() => { setIsMobileOpen(false); }, [pathname]);
 
   const navItems = useMemo(() => {
+    // Ordre 7.6 ; la recherche vit dans le header.
     const items: NavItem[] = [
       { href: "/dashboard", label: t("nav.overview"), icon: LayoutDashboard },
-      { href: "/dashboard/start", label: t("nav.start"), icon: Rocket },
+      ...(hasEvent ? [] : [{ href: "/dashboard/start", label: t("nav.start"), icon: Rocket }]),
       { href: "/dashboard/events", label: t("nav.events"), icon: Calendar },
-      { href: "/dashboard/ticketing", label: t("nav.ticketing"), icon: Ticket },
-      { href: "/dashboard/search", label: t("nav.search"), icon: Search },
       { href: "/dashboard/wallet", label: t("nav.wallet"), icon: Wallet },
+      { href: "/dashboard/ticketing", label: t("nav.ticketing"), icon: Ticket },
       { href: "/dashboard/offer", label: t("nav.offer"), icon: CreditCard },
       { href: "/dashboard/team", label: t("nav.team"), icon: UserPlus },
       { href: "/dashboard/notifications", label: t("nav.notifications"), icon: Bell },
@@ -68,7 +71,7 @@ export function DashboardSidebar() {
       });
     }
     return items;
-  }, [t, isPlatformAdmin]);
+  }, [t, isPlatformAdmin, hasEvent]);
 
   return (
     <>
@@ -77,7 +80,7 @@ export function DashboardSidebar() {
         onClick={() => setIsMobileOpen(!isMobileOpen)}
         aria-label={isMobileOpen ? t("nav.closeMenu") : t("nav.openMenu")}
         aria-expanded={isMobileOpen}
-        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm transition-all hover:bg-accent lg:hidden"
+        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-foreground hover:bg-accent lg:hidden"
       >
         <Menu className="h-5 w-5" aria-hidden="true" />
       </button>
@@ -90,16 +93,12 @@ export function DashboardSidebar() {
         )}
       >
         <div className="flex shrink-0 items-center gap-4 overflow-hidden border-b border-border p-6">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 font-bold text-white shadow-sm">
-            SV
-          </div>
-          {!isCollapsed && (
-            <div className="transition-opacity duration-300">
-              <h1 className="truncate text-lg font-bold tracking-tight text-foreground">SHADOMA</h1>
-              <p className="text-[11px] font-medium text-muted-foreground">
-                {t("nav.workspace")}
-              </p>
-            </div>
+          {isCollapsed ? (
+            <span className="text-lg font-extrabold tracking-tight text-slate-900" aria-label="SHADOMA">S</span>
+          ) : (
+            <Link href="/dashboard" className="truncate text-lg font-extrabold tracking-tight text-slate-900">
+              SHADOMA
+            </Link>
           )}
         </div>
 
@@ -114,18 +113,18 @@ export function DashboardSidebar() {
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "group relative flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  "group relative flex min-h-11 items-center gap-3 rounded-md px-4 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                   isActive
                     ? isAdminLink
-                      ? "border-l-2 border-gold-500 bg-gold-500/10 text-gold-700"
-                      : "border-l-2 border-primary bg-primary/8 text-primary shadow-sm"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                      ? "border-l-2 border-gold-600 bg-accent text-gold-700"
+                      : "bg-accent font-semibold text-slate-900"
+                    : "text-slate-600 hover:bg-accent/60 hover:text-slate-900",
                   item.className
                 )}
                 title={isCollapsed ? item.label : undefined}
               >
                 <Icon
-                  className={cn("h-5 w-5 shrink-0", isActive && (isAdminLink ? "text-gold-600" : "text-primary"))}
+                  className={cn("h-5 w-5 shrink-0", isActive && isAdminLink && "text-gold-600")}
                   aria-hidden="true"
                 />
                 {!isCollapsed && <span className="truncate">{item.label}</span>}
@@ -147,7 +146,7 @@ export function DashboardSidebar() {
       <div className={cn("hidden shrink-0 transition-all duration-300 lg:block", isCollapsed ? "w-20" : "w-64")} />
 
       {isMobileOpen && (
-        <div className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden" onClick={() => setIsMobileOpen(false)} aria-hidden="true" />
+        <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setIsMobileOpen(false)} aria-hidden="true" />
       )}
     </>
   );
