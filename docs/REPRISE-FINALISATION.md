@@ -329,3 +329,15 @@ Demande : pages d'événement personnalisables par l'organisateur (logo, brandin
 - La couverture passe derrière les bandeaux de tous les styles (voile à la couleur de l'événement), sauf choix « couleur unie ».
 - Seize modèles prêts à l'emploi par type d'événement (`lib/event-presets.ts`, testé) dans l'éditeur d'apparence.
 - Portes : API 261/261, offres 36/36, web 39/39, e2e 23/23, typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0.
+
+## Suite — dix-sept styles, 78 modèles en huit familles (2026-10-25)
+
+- Styles `MARCHE`, `MENU`, `WAX`, `CAMPUS`, `BADGE`, `STORY`, `SANCTUAIRE` — migration additive `20261025230000_event_page_styles_more` ; bandeau, cartes candidats (Menu : liste de plats), vignette de l'éditeur, jetons CSS. `isNightStyle` regroupe les styles à fond nuit.
+- 78 modèles en huit familles (`EVENT_PRESET_CATEGORIES`), recherche sans accents FR/EN (`filterPresets`), testés : combinaisons style + police + couleur uniques.
+- Captures : `VISUAL_PALETTES=a,b` limite `tests/visual/minisite.spec.ts` à certaines palettes ; `E2E_WEB_PORT` change le port du site de test (3100 par défaut).
+- Finition : étiquette Marché (nom puis numéro, plus de coupure en plein mot à 390 px) ; mouvement réduit respecté sur les cartes candidats.
+- Accessibilité : spec e2e `a11y-minisite.spec.ts` (axe WCAG 2.2 A/AA + défilement horizontal, 17 styles × 3 pages à 390 px + éditeur). Premier passage : 44 violations ; toutes corrigées (`--event-accent-ink` / `deriveAccentInk`, `--color-muted-foreground` → slate-600, sélecteur de langue, numéro Magazine, `<dl>` Affiche, aperçu de l'éditeur). Détail : `docs/validation/RAPPORT.md`.
+- Dépendances (npm audit, production) : 3 critiques + 13 hautes → 0 critique + 5 hautes. `next` 15.5.28, `@sentry/nextjs` 10.76.2, `proxy-addr` 2.0.8, overrides `multer` 2.5.0, `sharp` 0.35.5, `postcss` 8.5.31. Restent : `zod` 3 (correctif = zod 4, majeur ; corps JSON limités à 100 ko + throttling), `prisma` 6 / `deepmerge-ts` (CLI de migration, correctif = Prisma 7), `postcss` 8.4.31 interne à `next` (build seulement).
+- Portes : API 261/261, offres 36/36, web 44/44, e2e 24/24 (dont accessibilité), typecheck 0, lint web 0 erreur / 42 avertissements, lint API 0.
+- e2e : si le port 3100 est pris par une autre application, `E2E_WEB_PORT=3110`. Base de test du conteneur local : `TEST_DATABASE_URL` avec les identifiants de `DATABASE_URL` (`.env`) et la base `votezpro_test`.
+
