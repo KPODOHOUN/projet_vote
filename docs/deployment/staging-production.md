@@ -99,6 +99,8 @@ Puis lancer l'action **Deploy Maintenance Cron Worker** avec l'environnement cib
 
 ## Post-déploiement obligatoire
 
+**Premier passage en paiement réel** : suivre `docs/runbooks/premier-paiement-reel.md` (sandbox puis live 100 FCFA, requêtes de contrôle, idempotence, retrait). Ne pas ouvrir au public avant que toutes les cases soient cochées.
+
 ### Migrations base de données
 
 Les migrations s'appliquent **automatiquement** au démarrage du conteneur API (`docker-entrypoint.api.sh`).
