@@ -82,7 +82,7 @@ export default function OrganizerOfferPage() {
       ) : (
         <Card>
           <CardHeader>
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">
+            <p className="text-xs font-semibold text-slate-600">
               {t("offer.escrowKicker")}
             </p>
             <CardTitle className="text-xl font-bold">{t("offer.escrowTitle")}</CardTitle>

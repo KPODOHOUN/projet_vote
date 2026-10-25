@@ -179,7 +179,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
     <>
       {!hideHeading ? (
         <>
-          <span className="mb-6 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+          <span className="mb-6 inline-block text-xs font-semibold text-slate-600">
             {t("auth.register.badge")}
           </span>
           <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">

@@ -62,7 +62,7 @@ export default function DashboardEventsPage() {
     <div className="space-y-10">
       <header className="flex flex-col justify-between gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center">
         <div className="space-y-1">
-          <span className="block text-sm font-bold uppercase tracking-widest text-primary">{isEn ? "Events" : "Évènements"}</span>
+          <span className="block text-sm font-semibold text-slate-600">{isEn ? "Events" : "Évènements"}</span>
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{isEn ? "Your events" : "Vos évènements"}</h2>
         </div>
         <Button asChild>

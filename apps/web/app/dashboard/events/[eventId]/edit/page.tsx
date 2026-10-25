@@ -170,7 +170,7 @@ export default function EditEventPage() {
       ) : null}
 
       <header className="flex flex-col gap-2">
-        <span className="text-sm font-bold uppercase tracking-widest text-primary">{isEn ? "Edit event" : "Modifier l'évènement"}</span>
+        <span className="text-sm font-semibold text-slate-600">{isEn ? "Edit event" : "Modifier l'évènement"}</span>
         <h2 className="text-4xl font-extrabold tracking-tight text-foreground">{title}</h2>
         <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
           {slug ? <CopyPublicLinkButton eventSlug={slug} isEn={isEn} /> : null}

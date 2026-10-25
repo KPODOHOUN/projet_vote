@@ -169,7 +169,7 @@ export default function QuickStartPage() {
   return (
     <div className="mx-auto max-w-xl space-y-8 py-4">
       <header className="space-y-2 text-center sm:text-left">
-        <span className="text-sm font-bold uppercase tracking-widest text-primary">
+        <span className="text-sm font-semibold text-slate-600">
           {isEn ? "Quick launch" : "Lancement rapide"}
         </span>
         <h2 className="text-3xl font-extrabold tracking-tight text-foreground">

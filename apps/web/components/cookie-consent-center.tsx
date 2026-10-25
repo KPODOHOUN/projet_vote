@@ -129,7 +129,7 @@ export function CookieConsentCenter() {
     >
       <div className="mx-auto max-w-4xl pointer-events-auto flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-2xl animate-in slide-in-from-bottom-full duration-500 sm:gap-6 sm:p-6 md:flex-row md:items-center md:justify-between">
         <div className="flex-1 space-y-1.5 sm:space-y-2">
-          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary">
+          <span className="inline-flex items-center text-[10px] font-semibold text-slate-600">
             {t("cookies.title")}
           </span>
           <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">

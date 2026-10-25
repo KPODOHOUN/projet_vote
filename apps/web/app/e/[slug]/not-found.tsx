@@ -8,7 +8,7 @@ export default async function EventNotFoundPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-16 text-center">
-      <p className="text-sm font-bold uppercase tracking-widest text-primary">
+      <p className="text-sm font-semibold text-slate-600">
         {translate(locale, "pub.voteNotFound")}
       </p>
       <h1 className="mt-4 max-w-lg text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">

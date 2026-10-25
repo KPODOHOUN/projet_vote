@@ -118,7 +118,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister, hideHeading = false, 
     <>
       {!hideHeading ? (
         <div className="mb-8 md:mb-10">
-          <span className="mb-4 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+          <span className="mb-4 inline-block text-xs font-semibold text-slate-600">
             {t("auth.login.badge")}
           </span>
           <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">{t("login.title")}</h1>
