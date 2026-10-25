@@ -1,103 +1,115 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { getStoredToken } from "../../lib/auth";
 import { useI18n } from "../../lib/i18n-provider";
-import { KpiCard, LoadingState } from "@/components/ui";
+import { FormError, LoadingState } from "@/components/ui";
 import { InternalCapabilitiesPanel } from "@/components/admin/internal-capabilities-panel";
 import { AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
-import { pendingPartnerRequestCount } from "../../lib/partners";
+import { fetchMaintenanceMode } from "../../lib/platform-maintenance";
 
-type JobsOverview = {
-  pendingPayments: number;
-  failedPayments24h: number;
-  expiredIdempotencyKeys: number;
+type JobsOverview = { pendingPayments: number; failedPayments24h: number; expiredIdempotencyKeys: number };
+type LedgerSummary = { walletsChecked: number; driftCount: number; unverifiableCount: number; unknownEntries: number };
+
+type Overview = {
+  pendingWithdrawals: number | null;
+  activeEscrowEvents: number | null;
+  ledger: LedgerSummary | null;
+  maintenance: boolean | null;
+  jobs: JobsOverview | null;
 };
 
+/**
+ * Vue d'ensemble admin (7.8) : un chiffre dominant (retraits à traiter), le
+ * reste en lignes cliquables. Chaque valeur vient d'une route existante ; une
+ * route en échec affiche « — », jamais un chiffre inventé.
+ */
 export default function AdminHomePage() {
-  const router = useRouter();
-  const { locale } = useI18n();
-  const isEn = locale === "en";
-  const [jobs, setJobs] = useState<JobsOverview | null>(null);
-  const [partnerPending, setPartnerPending] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [fetchError, setFetchError] = useState("");
+  const { t } = useI18n();
+  const [data, setData] = useState<Overview | null>(null);
+  const [partialError, setPartialError] = useState(false);
 
   useEffect(() => {
     const token = getStoredToken();
-    if (!token) {
-      return;
-    }
-    void Promise.all([
-      apiFetch<JobsOverview>("/admin/jobs/overview", { headers: { Authorization: `Bearer ${token}` } }),
-      pendingPartnerRequestCount(token)
-    ])
-      .then(([overview, partners]) => {
-        setJobs(overview);
-        setPartnerPending(partners.count);
-      })
-      .catch((err) => {
-        setJobs(null);
-        setFetchError(err instanceof Error ? err.message : "Erreur de chargement");
-      })
-      .finally(() => setIsLoading(false));
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    void Promise.allSettled([
+      apiFetch<unknown[]>("/admin/offers/withdrawals?status=PENDING", { headers }),
+      apiFetch<unknown[]>("/admin/offers/events/active", { headers }),
+      apiFetch<LedgerSummary>("/admin/offers/ledger-reconciliation", { headers }),
+      fetchMaintenanceMode(token),
+      apiFetch<JobsOverview>("/admin/jobs/overview", { headers })
+    ]).then(([withdrawals, events, ledger, maintenance, jobs]) => {
+      setPartialError([withdrawals, events, ledger, maintenance, jobs].some((r) => r.status === "rejected"));
+      setData({
+        pendingWithdrawals: withdrawals.status === "fulfilled" ? withdrawals.value.length : null,
+        activeEscrowEvents: events.status === "fulfilled" ? events.value.length : null,
+        ledger: ledger.status === "fulfilled" ? ledger.value : null,
+        maintenance: maintenance.status === "fulfilled" ? maintenance.value.enabled : null,
+        jobs: jobs.status === "fulfilled" ? jobs.value : null
+      });
+    });
   }, []);
 
-  if (isLoading) {
-    return <LoadingState variant="kpi" count={4} label={isEn ? "Loading admin overview…" : "Chargement de l'administration…"} />;
+  if (!data) {
+    return <LoadingState variant="rows" count={4} label={t("adminHome.title")} />;
   }
+
+  const dash = (value: number | null | undefined) => (value == null ? "—" : String(value));
+  const row = "flex min-h-11 items-center border-b border-border py-2 text-sm text-slate-900 hover:bg-accent/40";
 
   return (
     <AdminPageShell>
-      <AdminPageHeader
-        eyebrow={isEn ? "Platform" : "Plateforme"}
-        title={isEn ? "Platform administration" : "Administration plateforme"}
-        description={
-          isEn
-            ? "Supervise organizers, revenue, partners and platform health from this dedicated space."
-            : "Supervisez les organisateurs, les revenus, les partenaires et la santé de la plateforme depuis cet espace dédié."
-        }
-      />
+      <AdminPageHeader eyebrow="SHADOMA" title={t("adminHome.title")} />
 
-      {fetchError && (
-        <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive text-sm">
-          {fetchError}
-        </div>
-      )}
+      {partialError ? <FormError>{t("adminHome.loadFailed")}</FormError> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={isEn ? "Pending payments" : "Paiements en attente"} value={String(jobs?.pendingPayments ?? "—")} />
-        <KpiCard label={isEn ? "Failed (24h)" : "Échecs (24h)"} value={String(jobs?.failedPayments24h ?? "—")} />
-        <KpiCard label={isEn ? "Partner requests" : "Demandes partenaires"} value={String(partnerPending)} />
-        <KpiCard
-          label={isEn ? "Expired idempotency keys" : "Clés idempotence expirées"}
-          value={String(jobs?.expiredIdempotencyKeys ?? "—")}
-        />
-      </div>
+      <section className="grid gap-8 md:grid-cols-[3fr_2fr]">
+        <Link href="/admin/offers/withdrawals?status=PENDING" className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <p className="text-sm text-slate-600">{t("adminHome.pending")}</p>
+          <p className="mt-1 text-4xl font-extrabold text-slate-900 tabular-nums">{dash(data.pendingWithdrawals)}</p>
+          {data.pendingWithdrawals === 0 ? <p className="mt-1 text-sm text-slate-600">{t("adminHome.pendingNone")}</p> : null}
+        </Link>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {[
-          { href: "/admin/offers/withdrawals", label: isEn ? "Withdrawals" : "Retraits" },
-          { href: "/admin/offers/events", label: isEn ? "Escrow events" : "Événements Escrow" },
-          { href: "/admin/users", label: isEn ? "Users" : "Utilisateurs" },
-          { href: "/admin/votes", label: isEn ? "Vote moderation" : "Modération votes" },
-          { href: "/admin/settings", label: isEn ? "Settings" : "Réglages" },
-          { href: "/admin/jobs", label: isEn ? "Jobs" : "Jobs" },
-          { href: "/admin/maintenance", label: isEn ? "Maintenance" : "Maintenance" },
-          { href: "/admin/audit", label: isEn ? "Audit log" : "Journal d'audit" }
-        ].map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="rounded-xl border border-border bg-card p-5 text-sm font-semibold text-foreground transition-all duration-200 hover:border-amber-500/40 hover:bg-amber-500/10 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] active:opacity-80 cursor-pointer"
-          >
-            {item.label}
-          </Link>
-        ))}
-      </div>
+        <ul className="border-t border-border">
+          <li>
+            <Link href="/admin/offers/events" className={row}>
+              {t("adminHome.activeEvents", { count: dash(data.activeEscrowEvents) })}
+            </Link>
+          </li>
+          <li>
+            <Link href="/admin/offers" className={row}>
+              {data.ledger === null
+                ? "—"
+                : data.ledger.driftCount > 0
+                  ? <span className="font-semibold text-[var(--color-error-text)]">{t("adminHome.ledgerDrift", { count: data.ledger.driftCount })}</span>
+                  : t("adminHome.ledgerOk", { count: data.ledger.walletsChecked })}
+            </Link>
+          </li>
+          {data.ledger && data.ledger.unknownEntries > 0 ? (
+            <li className="border-b border-border py-2 text-sm text-slate-600">
+              {t("adminHome.ledgerUnknown", { count: data.ledger.unknownEntries })}
+            </li>
+          ) : null}
+          <li>
+            <Link href="/admin/maintenance" className={row}>
+              {data.maintenance === null ? "—" : data.maintenance ? t("adminHome.maintenanceOn") : t("adminHome.maintenanceOff")}
+            </Link>
+          </li>
+          <li>
+            <Link href="/admin/jobs" className={row}>
+              {t("adminHome.pendingPayments", { count: dash(data.jobs?.pendingPayments) })}
+            </Link>
+          </li>
+          <li>
+            <Link href="/admin/jobs" className={row}>
+              {t("adminHome.failedPayments", { count: dash(data.jobs?.failedPayments24h) })}
+            </Link>
+          </li>
+        </ul>
+      </section>
 
       <InternalCapabilitiesPanel />
     </AdminPageShell>
