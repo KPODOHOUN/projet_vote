@@ -80,6 +80,46 @@ test("createEvent: layout par défaut GRID, et layout choisi persisté + exposé
   assert.equal(pub.event.layout, "SPOTLIGHT");
 });
 
+test("personnalisation de la mini-plateforme : couverture, style de page, police (défauts, mise à jour, contrat public)", async () => {
+  const t = await tenant("ev-style");
+  const ev = await events.createEvent(owner(t.id), {
+    slug: "style-default",
+    title: "Style Default",
+    startsAt: past(),
+    endsAt: future()
+  });
+  assert.equal(ev.coverUrl, null);
+  assert.equal(ev.pageStyle, "AFFICHE");
+  assert.equal(ev.fontStyle, "FESTIVAL");
+
+  const cover = "https://res.cloudinary.com/demo/image/upload/v1/cover.jpg";
+  const updated = await events.updateEvent(owner(t.id), ev.id, {
+    coverUrl: cover,
+    pageStyle: "SOIREE",
+    fontStyle: "GALA"
+  });
+  assert.equal(updated.coverUrl, cover);
+  assert.equal(updated.pageStyle, "SOIREE");
+  assert.equal(updated.fontStyle, "GALA");
+
+  await prisma.candidate.create({ data: { eventId: ev.id, fullName: "Ada", number: 1, publicRef: "ada-ref" } });
+  const hub = await votes.getPublicEventBySlug("style-default");
+  const profile = await votes.getPublicCandidate("style-default", "ada-ref");
+  const results = await votes.getPublicEventResults("style-default");
+  for (const branding of [hub.event.branding, profile.event.branding, results.event.branding]) {
+    assert.equal(branding.coverUrl, cover);
+    assert.equal(branding.pageStyle, "SOIREE");
+    assert.equal(branding.fontStyle, "GALA");
+  }
+
+  // null efface la couverture ; une valeur hors liste est refusée.
+  const cleared = await events.updateEvent(owner(t.id), ev.id, { coverUrl: null });
+  assert.equal(cleared.coverUrl, null);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { pageStyle: "NEON" }));
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { fontStyle: "COMIC" }));
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { coverUrl: "javascript:alert(1)" }));
+});
+
 test("createEvent: rejette endsAt <= startsAt", async () => {
   const t = await tenant();
   await assert.rejects(

@@ -6,7 +6,7 @@ import {
   HttpStatus,
   NotFoundException
 } from "@nestjs/common";
-import { EventLayout, EventStatus, PaymentProvider, TenantOfferType, UserRole } from "@prisma/client";
+import { EventFontStyle, EventLayout, EventPageStyle, EventStatus, PaymentProvider, TenantOfferType, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma/prisma.service";
 import { VotesService } from "../votes/votes.service";
@@ -47,6 +47,9 @@ const createEventSchema = z.object({
   logoUrl: z.string().url().max(500).nullable().optional(),
   brandColor: brandColorSchema.nullable().optional(),
   layout: z.nativeEnum(EventLayout).optional(),
+  coverUrl: photoUrlSchema.nullable().optional(),
+  pageStyle: z.nativeEnum(EventPageStyle).optional(),
+  fontStyle: z.nativeEnum(EventFontStyle).optional(),
   voteUnitPriceCfa: z.number().int().positive().max(10_000_000).optional()
 });
 
@@ -225,6 +228,9 @@ export class EventsService {
           ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
           ...(input.brandColor !== undefined ? { brandColor: input.brandColor } : {}),
           ...(input.layout !== undefined ? { layout: input.layout } : {}),
+          ...(input.coverUrl !== undefined ? { coverUrl: input.coverUrl } : {}),
+          ...(input.pageStyle !== undefined ? { pageStyle: input.pageStyle } : {}),
+          ...(input.fontStyle !== undefined ? { fontStyle: input.fontStyle } : {}),
           ...(input.voteUnitPriceCfa !== undefined
             ? { voteUnitPriceCfa: input.voteUnitPriceCfa }
             : {})
@@ -745,6 +751,9 @@ export class EventsService {
       logoUrl: z.string().url().max(500).nullable().optional(),
       brandColor: brandColorSchema.nullable().optional(),
       layout: z.nativeEnum(EventLayout).optional(),
+      coverUrl: photoUrlSchema.nullable().optional(),
+      pageStyle: z.nativeEnum(EventPageStyle).optional(),
+      fontStyle: z.nativeEnum(EventFontStyle).optional(),
       voteUnitPriceCfa: z.number().int().positive().max(10_000_000).optional()
     });
     const input = updateEventSchema.parse(payload);
@@ -760,6 +769,9 @@ export class EventsService {
     if (input.logoUrl !== undefined) data.logoUrl = input.logoUrl;
     if (input.brandColor !== undefined) data.brandColor = input.brandColor;
     if (input.layout !== undefined) data.layout = input.layout;
+    if (input.coverUrl !== undefined) data.coverUrl = input.coverUrl;
+    if (input.pageStyle !== undefined) data.pageStyle = input.pageStyle;
+    if (input.fontStyle !== undefined) data.fontStyle = input.fontStyle;
     if (input.voteUnitPriceCfa !== undefined) data.voteUnitPriceCfa = input.voteUnitPriceCfa;
 
     // Activation gate: going ACTIVE requires the activation fee to be paid

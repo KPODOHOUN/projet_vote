@@ -125,7 +125,10 @@ export class VotesService {
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
           brandColor: event.brandColor ?? event.tenant.brandColor,
-          tagline: event.tagline
+          tagline: event.tagline,
+          coverUrl: event.coverUrl,
+          pageStyle: event.pageStyle,
+          fontStyle: event.fontStyle
         }
       },
       candidates: candidates.map((c) => ({
@@ -177,7 +180,10 @@ export class VotesService {
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
           brandColor: event.brandColor ?? event.tenant.brandColor,
-          tagline: event.tagline
+          tagline: event.tagline,
+          coverUrl: event.coverUrl,
+          pageStyle: event.pageStyle,
+          fontStyle: event.fontStyle
         }
       },
       candidate: {
@@ -234,6 +240,9 @@ export class VotesService {
         logoUrl: true,
         brandColor: true,
         tagline: true,
+        coverUrl: true,
+        pageStyle: true,
+        fontStyle: true,
         tenant: { select: { logoUrl: true, brandColor: true } }
       }
     });
@@ -258,7 +267,10 @@ export class VotesService {
         branding: {
           logoUrl: event.logoUrl ?? event.tenant.logoUrl,
           brandColor: event.brandColor ?? event.tenant.brandColor,
-          tagline: event.tagline
+          tagline: event.tagline,
+          coverUrl: event.coverUrl,
+          pageStyle: event.pageStyle,
+          fontStyle: event.fontStyle
         }
       },
       results: results.map(({ totalAmountCfa: _omitted, ...rest }) => rest),

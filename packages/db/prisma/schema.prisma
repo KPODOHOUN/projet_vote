@@ -30,6 +30,20 @@ enum EventLayout {
   SPOTLIGHT
 }
 
+// Habillage de la mini-plateforme publique, choisi par l'organisateur.
+enum EventPageStyle {
+  AFFICHE // photo de couverture en plein écran derrière le titre
+  SOIREE  // fond sombre, compte à rebours en grand
+  BILLET  // aplat de la couleur de l'événement, infos en billet
+}
+
+// Police des titres de la mini-plateforme.
+enum EventFontStyle {
+  FESTIVAL  // Unbounded
+  GALA      // Playfair Display
+  CLASSIQUE // Plus Jakarta Sans (police de la plateforme)
+}
+
 enum PaymentStatus {
   INITIATED
   PENDING
@@ -339,6 +353,10 @@ model Event {
   brandColor      String?
   // Public page layout template (how candidates are displayed on /e/{slug}).
   layout          EventLayout @default(GRID)
+  // Image de couverture (import Cloudinary), style de page et police des titres.
+  coverUrl        String?
+  pageStyle       EventPageStyle @default(AFFICHE)
+  fontStyle       EventFontStyle @default(FESTIVAL)
   // Per-event voting rule: if set, every vote must match this unit price.
   voteUnitPriceCfa Int?
   // Per-event platform commission override, in basis points (1% = 100 bps).
