@@ -107,15 +107,12 @@ export function AdminSidebar() {
         )}
       >
         <div className="flex shrink-0 items-center gap-4 border-b border-border p-6">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-gold-500 to-gold-700 font-bold text-white shadow-sm">
-            AD
-          </div>
-          {!isCollapsed && (
+          {isCollapsed ? (
+            <span className="text-lg font-extrabold tracking-tight text-slate-900" aria-label="SHADOMA">S</span>
+          ) : (
             <div>
-              <h1 className="truncate text-lg font-bold tracking-tight text-foreground">SHADOMA</h1>
-              <p className="text-[11px] font-medium text-gold-700/80">
-                {isEn ? "Platform admin" : "Admin plateforme"}
-              </p>
+              <p className="truncate text-lg font-extrabold tracking-tight text-slate-900">SHADOMA</p>
+              <p className="text-xs font-medium text-gold-700">{isEn ? "Platform admin" : "Admin plateforme"}</p>
             </div>
           )}
         </div>

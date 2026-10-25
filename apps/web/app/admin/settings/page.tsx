@@ -153,11 +153,24 @@ export default function DashboardAdminSettingsPage() {
     event.preventDefault();
     const token = getStoredToken();
     if (!token) return;
+    // Un champ vide n'est jamais enregistré en 0 ; un 0 explicite est confirmé.
+    const normalizedCommission = commissionPercent.trim().replace(",", ".");
+    const commission = Number.parseFloat(normalizedCommission);
+    if (normalizedCommission === "" || !Number.isFinite(commission) || commission < 0 || commission > 100) {
+      setError(isEn ? "Enter a commission between 0 and 100 %." : "Saisissez une commission entre 0 et 100 %.");
+      return;
+    }
+    if (
+      commission === 0 &&
+      !window.confirm(isEn ? "Save a 0 % default commission?" : "Enregistrer une commission par défaut de 0 % ?")
+    ) {
+      return;
+    }
     setIsSavingSettings(true);
     setError("");
     try {
       const response = await updatePlatformSettings(token, {
-        commissionBps: Math.round(Number.parseFloat(commissionPercent.replace(",", ".")) * 100),
+        commissionBps: Math.round(commission * 100),
         activationFeeCfa: Number.parseInt(activationFeeCfa, 10)
       });
       setData(response);
