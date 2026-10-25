@@ -12,6 +12,7 @@ P0 si auth, vote ou paiement indisponible.
 1. Vérifier la santé API:
    - `curl -i "$API_HEALTHCHECK_URL_PRODUCTION"`
    - `curl -i "$API_BASE_URL_PRODUCTION/api/v1/health/ready"`
+   - `/health` en 200 mais `/health/ready` en 503 (`checks.database: "unreachable"`) : l'API tourne, la base ne répond pas → étape 3, pas de redémarrage.
 2. Vérifier les logs récents et filtrer par `traceId`.
 3. Vérifier la connectivité DB (Neon) et la latence.
 
