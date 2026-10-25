@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../../../../lib/api";
 import { getStoredToken } from "../../../../lib/auth";
 import { useI18n } from "../../../../lib/i18n-provider";
-import { Button, Input, LoadingState, StatusChip } from "@/components/ui";
+import { Button, LoadingState, StatusChip } from "@/components/ui";
 import { Shield, ArrowLeft, Check, FileText, AlertCircle, History, Eye, PenLine } from "lucide-react";
 import { authLoginUrl } from "@/lib/auth-navigation";
 
@@ -54,7 +54,7 @@ export default function PartnerPage() {
   const [contractHtml, setContractHtml] = useState<string | null>(null);
   const [isLoadingContract, setIsLoadingContract] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
       router.push(authLoginUrl());
@@ -76,11 +76,11 @@ export default function PartnerPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const loadContract = async (requestId: string) => {
     const token = getStoredToken();
@@ -401,7 +401,9 @@ export default function PartnerPage() {
                         <button
                           type="button"
                           onClick={() => loadContract(r.id)}
-                          className="text-primary hover:text-primary/80 text-xs font-semibold flex items-center gap-1 transition-colors"
+                          disabled={isLoadingContract}
+                          aria-busy={isLoadingContract}
+                          className="text-primary hover:text-primary/80 text-xs font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-wait"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           {isEn ? "Contract" : "Contrat"}

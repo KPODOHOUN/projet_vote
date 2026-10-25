@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
@@ -9,7 +9,7 @@ import { Button, Input, KpiCard, StatusChip, LoadingState, DataTable } from "@/c
 import type { DataTableColumn } from "@/components/ui";
 import { showToast } from "@/lib/toast";
 import { AdminErrorAlert, AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
-import { ShieldCheck, CreditCard, Sparkles, Save, Check } from "lucide-react";
+import { ShieldCheck, CreditCard, Save, Check } from "lucide-react";
 import { authLoginUrl } from "@/lib/auth-navigation";
 
 type AccountSubscription = {
@@ -50,7 +50,7 @@ export default function DashboardAdminSubscriptionsPage() {
   const [renewMonths, setRenewMonths] = useState(6);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
       router.push(authLoginUrl());
@@ -72,11 +72,11 @@ export default function DashboardAdminSubscriptionsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     void loadData();
-  }, [router]);
+  }, [loadData]);
 
   const handlePriceChange = <K extends keyof PricingItem>(
     index: number,

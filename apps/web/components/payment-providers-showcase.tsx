@@ -26,6 +26,7 @@ export function PaymentProvidersShowcase({ isEn = false, compact = false }: Paym
               aria-hidden="true"
             >
               {provider.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- logo prestataire (SVG ou URL externe) : hors remotePatterns de next/image
                 <img src={provider.logoUrl} alt={provider.name} className="h-full w-full object-contain p-1.5" />
               ) : (
                 provider.name.slice(0, 2).toUpperCase()

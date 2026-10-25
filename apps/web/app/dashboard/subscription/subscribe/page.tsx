@@ -45,7 +45,6 @@ export default function SubscribePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phase, setPhase] = useState<"pricing" | "checkout" | "polling" | "success" | "failed">("pricing");
   const [error, setError] = useState("");
-  const [transactionId, setTransactionId] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState("");
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -76,7 +75,7 @@ export default function SubscribePage() {
   useEffect(() => {
     void loadPricing();
     return () => stopPolling();
-  }, []);
+  }, [stopPolling]);
 
   const startPolling = (txId: string) => {
     stopPolling();
@@ -137,7 +136,6 @@ export default function SubscribePage() {
         })
       });
 
-      setTransactionId(res.transactionId);
       setLiveStatus(res.status);
       setPhase("polling");
       startPolling(res.transactionId);

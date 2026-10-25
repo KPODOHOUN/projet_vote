@@ -48,6 +48,7 @@ export function PartnerCarousel() {
                 rel="noreferrer"
                 className="flex-shrink-0 flex items-center justify-center h-16 w-36 md:w-44 rounded-xl bg-background border border-border p-3 hover:border-primary/30 hover:shadow-sm transition-all"
               >
+                {/* eslint-disable-next-line @next/next/no-img-element -- logo partenaire saisi par l'admin : domaine quelconque ou data: */}
                 <img
                   src={partner.logoUrl}
                   alt={partner.name}

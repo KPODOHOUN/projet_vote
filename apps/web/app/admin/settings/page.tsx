@@ -2,7 +2,7 @@
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { apiFetch } from "@/lib/api";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, Settings2, Shield, Key, Plus, Trash2 } from "lucide-react";
@@ -47,7 +47,7 @@ export default function DashboardAdminSettingsPage() {
   const [savingKey, setSavingKey] = useState(false);
   const [showNewKey, setShowNewKey] = useState(false);
 
-  const loadAdmins = async () => {
+  const loadAdmins = useCallback(async () => {
     const token = getStoredToken();
     if (!token) return;
     try {
@@ -55,9 +55,9 @@ export default function DashboardAdminSettingsPage() {
       setAdmins(data);
     } catch { /* silent */ }
     finally { setAdminsLoading(false); }
-  };
+  }, []);
 
-  const loadApiKeys = async () => {
+  const loadApiKeys = useCallback(async () => {
     const token = getStoredToken();
     if (!token) return;
     try {
@@ -65,7 +65,7 @@ export default function DashboardAdminSettingsPage() {
       setApiKeys(data);
     } catch { /* silent */ }
     finally { setApiKeysLoading(false); }
-  };
+  }, []);
 
   const addAdmin = async () => {
     const token = getStoredToken();
@@ -119,7 +119,7 @@ export default function DashboardAdminSettingsPage() {
   useEffect(() => {
     loadAdmins();
     loadApiKeys();
-  }, []);
+  }, [loadAdmins, loadApiKeys]);
 
   useEffect(() => {
     const token = getStoredToken();

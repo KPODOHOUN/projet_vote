@@ -1,6 +1,5 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
@@ -9,10 +8,10 @@ import { Button, LoadingState, Dialog, DialogContent, DialogHeader, DialogTitle 
 import { DashboardBreadcrumb } from "@/components/dashboard-breadcrumb";
 import { showToast } from "@/lib/toast";
 import {
-  ArrowLeft, Bold, Check, ChevronDown, ChevronUp,
-  Copy, Eye, EyeOff, Image, Italic, Layers, Palette,
-  Plus, Save, Text, Trash2, Type, Underline,
-  AlignLeft, AlignCenter, AlignRight, Move,
+  ArrowLeft, Bold, ChevronDown, ChevronUp,
+  Copy, Eye, EyeOff, ImageIcon, Italic, Layers, Palette,
+  Save, Trash2, Type, Underline,
+  AlignLeft, AlignCenter, AlignRight,
   Upload, Crop, X
 } from "lucide-react";
 
@@ -41,37 +40,6 @@ type TicketDesign = {
 let idCounter = 0;
 function genId() { return `layer-${++idCounter}-${Date.now()}`; }
 
-function defaultDesign(): TicketDesign {
-  return {
-    width: 600,
-    height: 300,
-    background: { type: "color", value: "#0a0c10" },
-    backgroundImage: null,
-    layers: [
-      {
-        id: genId(), type: "text", content: "EVENT NAME",
-        x: 40, y: 30, width: 400, height: 50, zIndex: 1, visible: true,
-        style: { fontSize: 32, fontWeight: "900", color: "#ffffff", textAlign: "left" }
-      },
-      {
-        id: genId(), type: "text", content: "VIP Pass",
-        x: 40, y: 90, width: 300, height: 36, zIndex: 2, visible: true,
-        style: { fontSize: 22, fontWeight: "700", color: "#fbbf24", textAlign: "left" }
-      },
-      {
-        id: genId(), type: "text", content: "Samedi 19 Juillet 2026",
-        x: 40, y: 240, width: 300, height: 24, zIndex: 3, visible: true,
-        style: { fontSize: 14, fontWeight: "400", color: "#94a3b8", textAlign: "left" }
-      },
-      {
-        id: genId(), type: "text", content: "15 000 XOF",
-        x: 460, y: 240, width: 120, height: 24, zIndex: 4, visible: true,
-        style: { fontSize: 16, fontWeight: "800", color: "#ffffff", textAlign: "right" }
-      }
-    ]
-  };
-}
-
 type TicketTypeInfo = {
   id: string; name: string; event: { title: string };
 };
@@ -89,7 +57,6 @@ export default function TicketDesignerPage() {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
-  const [addingText, setAddingText] = useState(false);
   const [uploadingBg, setUploadingBg] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [showCropModal, setShowCropModal] = useState<"background" | "logo" | null>(null);
@@ -97,7 +64,6 @@ export default function TicketDesignerPage() {
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
   const [cropDrag, setCropDrag] = useState<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
-  const [previewGenerated, setPreviewGenerated] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileBgRef = useRef<HTMLInputElement>(null);
@@ -124,6 +90,8 @@ export default function TicketDesignerPage() {
       }
     }
     load();
+    // Chargé une fois par billet : relancer au changement de langue écraserait le design non enregistré.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, typeId]);
 
   const addLayer = useCallback((layer: DesignLayer) => {
@@ -371,7 +339,7 @@ export default function TicketDesignerPage() {
               <Type className="w-3.5 h-3.5" /> {isEn ? "Text" : "Texte"}
             </button>
             <button onClick={() => fileBgRef.current?.click()} disabled={uploadingBg} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted text-xs font-semibold transition-colors">
-              <Image className="w-3.5 h-3.5" /> {isEn ? "Background" : "Fond"}
+              <ImageIcon className="w-3.5 h-3.5" /> {isEn ? "Background" : "Fond"}
             </button>
             <button onClick={() => fileLogoRef.current?.click()} disabled={uploadingLogo} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted text-xs font-semibold transition-colors">
               <Upload className="w-3.5 h-3.5" /> {isEn ? "Logo" : "Logo"}
@@ -393,7 +361,7 @@ export default function TicketDesignerPage() {
                 }`}
               >
                 <span className="w-5 h-5 flex items-center justify-center rounded bg-muted flex-shrink-0">
-                  {layer.type === "text" ? <Type className="w-3 h-3" /> : <Image className="w-3 h-3" />}
+                  {layer.type === "text" ? <Type className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                 </span>
                 <span className="truncate flex-1">{layer.type === "text" ? (layer.content || "text") : layer.content.split("/").pop()?.slice(0, 20) ?? "image"}</span>
                 <button onClick={(e) => { e.stopPropagation(); updateLayer(layer.id, { visible: !layer.visible }); }} className="opacity-50 hover:opacity-100">
@@ -475,6 +443,7 @@ export default function TicketDesignerPage() {
                         {layer.content}
                       </span>
                     ) : (
+                      // eslint-disable-next-line @next/next/no-img-element -- image importée par l'organisateur (URL ou data:), dimensions libres sur le billet
                       <img
                         src={layer.content}
                         alt=""
@@ -703,9 +672,10 @@ export default function TicketDesignerPage() {
                 {isEn ? "Drag the image to position it within the crop area." : "Déplacez l'image pour la positionner dans la zone de rognage."}
               </p>
               <div className="relative bg-muted rounded-xl overflow-hidden" style={{ aspectRatio: `${design.width} / ${design.height}`, maxHeight: "400px" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- aperçu local (blob:), hors de portée de next/image */}
                 <img
                   src={cropImageUrl}
-                  alt="crop preview"
+                  alt={isEn ? "Crop preview" : "Aperçu du rognage"}
                   draggable={false}
                   onMouseDown={onCropImageMouseDown}
                   className="absolute cursor-grab active:cursor-grabbing"

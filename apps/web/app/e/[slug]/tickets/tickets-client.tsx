@@ -278,6 +278,7 @@ export function TicketsClient({ slug }: { slug: string }) {
                     <span className="mr-2 truncate font-mono text-xs text-muted-foreground">
                       {ticket.id.slice(0, 12)}...
                     </span>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- QR généré à la volée par l'API : ni optimisation ni cache next/image */}
                     <img
                       src={`/api/tickets/${ticket.id}/qr`}
                       alt={t("pub.qrAlt", { id: ticket.id.slice(0, 8) })}

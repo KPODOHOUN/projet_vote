@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch, getApiBaseUrl } from "../../../../../lib/api";
@@ -9,7 +9,7 @@ import { Button, Card, LoadingState, Badge } from "@/components/ui";
 import { Input } from "@/components/ui/input";
 import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcrumb";
 import { showToast } from "../../../../../lib/toast";
-import { Plus, Pencil, Trash2, Ticket, X, Loader2, AlertCircle, CheckCircle2, Palette, Download, TrendingUp } from "lucide-react";
+import { Plus, Pencil, Ticket, X, Loader2, AlertCircle, Palette, Download, TrendingUp } from "lucide-react";
 
 type TicketType = {
   id: string;
@@ -67,7 +67,7 @@ export default function TicketsPage() {
   const [dailySales, setDailySales] = useState<DailySale[]>([]);
   const [showChart, setShowChart] = useState(false);
 
-  async function loadTypes() {
+  const loadTypes = useCallback(async () => {
     try {
       const token = getStoredToken();
       if (!token) { router.push("/login"); return; }
@@ -82,7 +82,7 @@ export default function TicketsPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [eventId, router]);
 
   async function loadDailySales() {
     try {
@@ -93,7 +93,7 @@ export default function TicketsPage() {
     } catch { /* ignore */ }
   }
 
-  async function loadTickets() {
+  const loadTickets = useCallback(async () => {
     try {
       const token = getStoredToken();
       if (!token) return;
@@ -104,7 +104,7 @@ export default function TicketsPage() {
       const data = await apiFetch<Ticket[]>(`/events/${eventId}/tickets${q}`, { headers: { Authorization: `Bearer ${token}` } });
       setTickets(data);
     } catch { /* ignore */ }
-  }
+  }, [eventId, showTypeFilter, showStatusFilter]);
 
   function downloadCsv() {
     const token = getStoredToken();
@@ -123,8 +123,8 @@ export default function TicketsPage() {
       .catch(() => showToast.error(isEn ? "Export failed" : "Échec de l'export"));
   }
 
-  useEffect(() => { loadTypes(); }, [eventId]);
-  useEffect(() => { if (showTickets) loadTickets(); }, [showTickets, showTypeFilter, showStatusFilter]);
+  useEffect(() => { loadTypes(); }, [loadTypes]);
+  useEffect(() => { if (showTickets) loadTickets(); }, [showTickets, loadTickets]);
 
   if (isLoading) return <LoadingState variant="rows" count={4} label={isEn ? "Loading tickets..." : "Chargement des tickets..."} />;
   if (error) return <div className="flex items-center gap-3 p-4 rounded-xl bg-destructive/5 text-destructive border border-destructive/10"><AlertCircle className="h-5 w-5 flex-shrink-0" /><p className="text-sm font-semibold">{error}</p></div>;

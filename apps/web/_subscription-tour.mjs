@@ -55,7 +55,7 @@ async function run() {
       await page.click("button:has-text('Tout accepter')", { timeout: 3000 });
       await pause(1000);
       console.log("Cookie banner accepted on dashboard.");
-    } catch (e) {
+    } catch {
       console.log("Cookie banner not found on dashboard.");
     }
 

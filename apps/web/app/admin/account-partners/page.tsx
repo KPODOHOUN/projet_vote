@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
@@ -8,7 +8,7 @@ import { useI18n } from "../../../lib/i18n-provider";
 import { Button, Input, StatusChip, LoadingState, DataTable } from "@/components/ui";
 import type { DataTableColumn } from "@/components/ui";
 import { AdminErrorAlert, AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
-import { ShieldCheck, FileText, Check, X, AlertCircle, History, Loader2 } from "lucide-react";
+import { FileText, Check, X, AlertCircle, History, Loader2 } from "lucide-react";
 import { authLoginUrl } from "@/lib/auth-navigation";
 import {
   AlertDialog,
@@ -58,7 +58,7 @@ export default function AccountPartnersAdminPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewContractHtml, setViewContractHtml] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
       router.push(authLoginUrl());
@@ -74,11 +74,11 @@ export default function AccountPartnersAdminPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const handleAction = async () => {
     if (!activeRequest || !actionType) return;
@@ -182,6 +182,9 @@ export default function AccountPartnersAdminPage() {
       )
     }
   ];
+
+  // Sans cet état, la page affichait « Aucune demande en attente » pendant le chargement.
+  if (isLoading) return <LoadingState label={isEn ? "Loading partnership requests…" : "Chargement des demandes de partenariat…"} />;
 
   return (
     <AdminPageShell>

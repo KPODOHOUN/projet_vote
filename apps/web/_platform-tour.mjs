@@ -10,7 +10,6 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 const VW = 1366, VH = 800;
-const ts = Date.now();
 
 const ORG = { email: "organisateur@demovote.africa", password: "SecurePass123!" };
 const ADMIN = { email: "admin@shadoma.africa", password: "SecurePass123!" };
@@ -46,14 +45,6 @@ async function safe(name, fn) {
 
 function isPageDead(page) {
   return page.isClosed();
-}
-
-async function ensurePage(context, getAuthFn) {
-  const page = await context.newPage();
-  if (getAuthFn) {
-    try { await getAuthFn(page); } catch {}
-  }
-  return page;
 }
 
 async function visit(page, path, label, downMs = 2200) {
@@ -120,7 +111,7 @@ async function runSection(name, fn) {
 // ===========================================================================
 // PART 1 — PUBLIC SURFACE (no auth)
 // ===========================================================================
-await runSection("PART 1 — PUBLIC", async ({ page: p, context, recover }) => {
+await runSection("PART 1 — PUBLIC", async ({ page: p, recover }) => {
   async function v(path, label, downMs) {
     await recover();
     await visit(p, path, label, downMs);
@@ -167,7 +158,7 @@ await runSection("PART 1 — PUBLIC", async ({ page: p, context, recover }) => {
 // ===========================================================================
 // PART 2 — ORGANIZER DASHBOARD (authenticated)
 // ===========================================================================
-await runSection("PART 2 — ORGANIZER", async ({ page: p, context, recover }) => {
+await runSection("PART 2 — ORGANIZER", async ({ page: p, recover }) => {
   let authFn = null;
 
   await safe("login organizer", async () => {
@@ -236,7 +227,7 @@ await runSection("PART 2 — ORGANIZER", async ({ page: p, context, recover }) =
 // ===========================================================================
 // PART 3 — PLATFORM ADMIN (god-mode, authenticated as admin)
 // ===========================================================================
-await runSection("PART 3 — ADMIN", async ({ page: p, context, recover }) => {
+await runSection("PART 3 — ADMIN", async ({ page: p, recover }) => {
   let authFn = null;
 
   await safe("login admin", async () => {

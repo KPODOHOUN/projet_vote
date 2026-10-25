@@ -14,7 +14,6 @@ export const prisma = new Proxy({} as PrismaClient, {
     return getPrisma()[prop as keyof PrismaClient];
   },
   set(_, prop, value) {
-    (getPrisma() as any)[prop] = value;
-    return true;
+    return Reflect.set(getPrisma(), prop, value);
   },
 });

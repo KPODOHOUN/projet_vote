@@ -142,6 +142,7 @@ export default function AdminDisplayPartnersPage() {
           {partners.map((p) => (
             <div key={p.id} className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
               <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element -- logo saisi par l'admin : domaine quelconque ou data:, hors remotePatterns de next/image */}
                 <img src={p.logoUrl} alt={p.name} className="h-10 w-10 rounded-lg object-contain bg-muted" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">{p.name}</p>
