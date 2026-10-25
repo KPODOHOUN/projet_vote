@@ -114,5 +114,45 @@ Méthode : TDD (test RED exécuté, puis GREEN) pour chaque changement de logiqu
 - Playwright 1.62 attend `chromium_headless_shell-1234` : `npx playwright install --only-shell chromium` (sinon les 19 specs échouent au lancement du navigateur, sans rien tester).
 - Le hook GateGuard bloque la première écriture de chaque fichier ; la réessayer passe.
 
+## Lot C — Tokens et moteur de thème (2026-10-25) : terminé
+
+Commit `68e1300` (correction : son message dit « 20 presets », il y en a **18**). Tests `lib/brand.test.ts` 8/8 (18 presets + 7 couleurs libres + 500 aléatoires à graine fixe).
+
+- Moteur 9.11-a dans `lib/brand.ts` : `accentStrong`, en-tête garanti ≥ 4,5:1, défaut `#4F46E5`, exports publics conservés (+ `contrastRatio`, `deriveAccentStrong`, `DEFAULT_BRAND_COLOR`).
+- `accentAlt`, `--event-gradient-*`, `--event-glow` supprimés ; 3 usages passés en aplat. `rg` : 0 occurrence restante.
+- `[data-event-theme]` (globals.css) ne remet plus la couleur brute en `--color-primary`.
+- Tokens corrigés (mesurés sur blanc) : primary `brand-500` 4,47 → `brand-600` 6,29 ; `success-text` 3,77 → 5,48 ; destructif 3,76 → 4,83 ; zone `secure-flow` en `brand-600`.
+- `design-system/` (tokens.ts, theme.css) n'est importé nulle part par l'app : copie de référence, laissée en l'état.
+- `isEn ?` : 1 180 → 1 169 (migration poursuivie au Lot D sur `/e/*`, auth, Home).
+
+### Matrice de contraste (avant → après le moteur)
+✗ = sous 4,5:1. Avant : en-tête = texte choisi par le seuil 0,38 ; texte primaire = couleur brute sur blanc.
+
+| Couleur | Hex | En-tête avant | Texte primaire avant | En-tête après | Texte primaire après (accentStrong) |
+|---|---|---|---|---|---|
+| Indigo royal | `#6366f1` | 4.47 ✗ | 4.47 ✗ | 4.61 | 4.61 (`#6063f1`) |
+| Violet électrique | `#8b5cf6` | 4.23 ✗ | 4.23 ✗ | 4.71 | 4.71 (`#8351f5`) |
+| Bleu nuit profond | `#0f172a` | 17.85 | 17.85 | 17.85 | 17.85 (`#0f172a`) |
+| Ardoise premium | `#1e293b` | 14.63 | 14.63 | 14.63 | 14.63 (`#1e293b`) |
+| Or chatoyant | `#f59e0b` | 8.31 | 2.15 ✗ | 8.31 | 4.65 (`#a26807`) |
+| Rouge passion | `#ef4444` | 3.76 ✗ | 3.76 ✗ | 4.74 | 4.52 (`#eb1414`) |
+| Orange feu | `#f97316` | 2.80 ✗ | 2.80 ✗ | 6.37 | 4.66 (`#c25205`) |
+| Rose élégant | `#ec4899` | 3.53 ✗ | 3.53 ✗ | 5.06 | 4.51 (`#e2187c`) |
+| Émeraude | `#10b981` | 2.54 ✗ | 2.54 ✗ | 7.04 | 4.76 (`#0b835c`) |
+| Forêt profonde | `#059669` | 3.77 ✗ | 3.77 ✗ | 4.74 | 4.65 (`#04855d`) |
+| Teal océan | `#0d9488` | 3.74 ✗ | 3.74 ✗ | 4.77 | 4.63 (`#0c8379`) |
+| Turquoise | `#14b8a6` | 2.49 ✗ | 2.49 ✗ | 7.17 | 4.52 (`#0e8578`) |
+| Bleu confiance | `#3b82f6` | 3.68 ✗ | 3.68 ✗ | 4.85 | 4.63 (`#1a6df4`) |
+| Ciel serein | `#0ea5e9` | 2.77 ✗ | 2.77 ✗ | 6.44 | 4.52 (`#0b7eb2`) |
+| Terre d'Afrique | `#7c2d12` | 9.37 | 9.37 | 9.37 | 9.37 (`#7c2d12`) |
+| Cuir noble | `#b45309` | 5.02 | 5.02 | 5.02 | 5.02 (`#b45309`) |
+| Rouge écarlate | `#e11d48` | 4.70 | 4.70 | 4.70 | 4.70 (`#e11d48`) |
+| Bleu dynamique | `#0284c7` | 4.10 ✗ | 4.10 ✗ | 4.56 | 4.56 (`#027cbb`) |
+| Blanc (saisi) | `#ffffff` | 17.85 | 1.00 ✗ | 17.85 | 4.61 (`#757575`) |
+| Jaune pâle (saisi) | `#fff9c4` | 16.66 | 1.07 ✗ | 16.66 | 4.53 (`#857700`) |
+| Gris clair (saisi) | `#e5e7eb` | 14.42 | 1.24 ✗ | 14.42 | 4.64 (`#6a758a`) |
+
+Bilan sur 21 couleurs : en-tête 12 échecs → 0 ; texte primaire 16 échecs → 0.
+
 ### Prochaine action
-Lot C (tokens + moteur de thème accessible `lib/brand.ts`).
+Lot D (zone publique et Home).
