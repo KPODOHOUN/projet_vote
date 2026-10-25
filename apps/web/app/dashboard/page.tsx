@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CreditCard, ArrowRight } from "lucide-react";
+import { AlertTriangle, CreditCard, ArrowRight, ChevronRight } from "lucide-react";
 
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { getStoredToken } from "../../lib/auth";
@@ -14,7 +14,9 @@ import {
 } from "../../lib/hooks/use-organizer-events";
 import { useOrganizerOffer } from "../../lib/hooks/use-organizer-offer";
 import { useSubscriptionUsage } from "../../lib/hooks/use-subscription";
-import { KpiCard, StatusChip, EmptyState, LoadingState, Button, FormError } from "@/components/ui";
+import { StatusChip, EmptyState, LoadingState, Button, FormError } from "@/components/ui";
+import { useWalletQuery } from "../../lib/hooks/use-wallet";
+import { formatCfa, formatEventDate } from "../../lib/format";
 import { OnboardingChecklist } from "../../components/onboarding-checklist";
 import { CopyPublicLinkButton } from "../../components/copy-public-link-button";
 import { formatEventStatus } from "../../lib/i18n";
@@ -44,6 +46,8 @@ export default function DashboardHomePage() {
     }
   }, [eventsQuery.isFetching, eventsQuery.isSuccess, events.length, router]);
 
+  const walletQuery = useWalletQuery(hasToken);
+  const wallet = walletQuery.data;
   const activeEvents = events.filter((item) => item.status === "ACTIVE").length;
   const recentEvents = events.slice(0, 5);
 
@@ -73,7 +77,7 @@ export default function DashboardHomePage() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <OnboardingChecklist events={events} isEn={isEn} paymentReady={paymentReady} skipPaymentStep={skipPaymentStep} />
 
       {subscriptionBlocked && (
@@ -122,23 +126,55 @@ export default function DashboardHomePage() {
         </div>
       )}
 
-      <header className="flex flex-col justify-between gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center">
-        <div className="space-y-1">
-          <span className="block text-sm font-bold uppercase tracking-widest text-primary">{t("dash.overview.kicker")}</span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
-            {t("dash.overview.title")}
-          </h2>
-        </div>
+      <header>
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("today.title")}</h1>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard label={t("dash.overview.totalEvents")} value={String(events.length)} />
-        <KpiCard label={t("dash.overview.activeEvents")} value={String(activeEvents)} />
-        <KpiCard label={t("dash.overview.latestEvent")} value={events[0]?.title ?? "…"} />
+      {/* Un chiffre dominant : le disponible (7.6). */}
+      <section className="flex flex-col gap-4 border-b border-border pb-8 sm:flex-row sm:items-end sm:gap-10">
+        <div>
+          <p className="text-sm text-slate-600">{t("today.available")}</p>
+          {walletQuery.isPending ? (
+            <LoadingState variant="rows" count={1} label={t("today.available")} />
+          ) : walletQuery.isError || !wallet ? (
+            <p className="text-sm text-slate-600">{t("today.walletUnavailable")}</p>
+          ) : (
+            <p className="text-4xl font-extrabold text-slate-900 tabular-nums">{formatCfa(wallet.withdrawableCfa, locale)}</p>
+          )}
+        </div>
+        <div className="space-y-1 text-sm text-slate-600">
+          {wallet ? <p>{t("today.held", { amount: formatCfa(wallet.heldCfa, locale) })}</p> : null}
+          <p>{t("today.activeEvents", { count: activeEvents })}</p>
+          <Link href="/dashboard/wallet" className="inline-flex min-h-11 items-center font-semibold text-primary underline-offset-4 hover:underline">
+            {t("today.walletLink")}
+          </Link>
+        </div>
       </section>
 
-      <section>
-        <h3 className="mb-4 text-xl font-bold tracking-tight text-foreground">{t("dash.overview.recentEvents")}</h3>
+      {latest ? (
+        <section aria-labelledby="latest-title" className="space-y-2">
+          <h2 id="latest-title" className="text-sm font-semibold text-slate-600">{t("today.latest")}</h2>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <strong className="text-lg text-slate-900">{latest.title}</strong>
+            <StatusChip label={formatEventStatus(latest.status, isEn)} tone={latest.status === "ACTIVE" ? "active" : "muted"} />
+            <Link href={`/e/${latest.slug}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline-offset-4 hover:underline">
+              {t("today.publicLink")}
+            </Link>
+            <Link href={`/dashboard/events/${latest.id}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline-offset-4 hover:underline">
+              {t("today.view")}
+            </Link>
+            {latest.status === "ACTIVE" ? <CopyPublicLinkButton eventSlug={latest.slug} isEn={isEn} /> : null}
+          </div>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="recent-title">
+        <div className="flex items-baseline justify-between">
+          <h2 id="recent-title" className="text-lg font-bold text-slate-900">{t("today.recent")}</h2>
+          <Link href="/dashboard/events" className="text-sm font-semibold text-primary underline-offset-4 hover:underline">
+            {t("today.allEvents")}
+          </Link>
+        </div>
         {recentEvents.length === 0 ? (
           <EmptyState
             title={t("dash.overview.noEventsTitle")}
@@ -150,28 +186,27 @@ export default function DashboardHomePage() {
             }
           />
         ) : (
-          <ul className="space-y-3">
+          <ul className="mt-4 border-t border-border">
             {recentEvents.map((eventItem) => (
-              <li
-                key={eventItem.id}
-                className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow sm:flex-row sm:items-center"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <li key={eventItem.id} className="border-b border-border">
+                <Link
+                  href={`/dashboard/events/${eventItem.id}`}
+                  className="flex min-h-14 items-center gap-3 py-3 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-slate-900">{eventItem.title}</span>
+                    {eventItem.endsAt ? (
+                      <span className="block text-xs text-slate-600">
+                        {t("today.endsOn", { date: formatEventDate(eventItem.endsAt, locale) })}
+                      </span>
+                    ) : null}
+                  </span>
                   <StatusChip
                     label={formatEventStatus(eventItem.status, isEn)}
                     tone={eventItem.status === "ACTIVE" ? "active" : "muted"}
                   />
-                  <strong className="text-foreground">{eventItem.title}</strong>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <CopyPublicLinkButton eventSlug={eventItem.slug} isEn={isEn} />
-                  <Link
-                    href={`/dashboard/events/${eventItem.id}/candidates`}
-                    className="text-sm font-semibold text-primary transition-all hover:text-primary/80 hover:underline"
-                  >
-                    {t("dash.overview.candidates")}
-                  </Link>
-                </div>
+                  <ChevronRight className="size-4 shrink-0 text-slate-400" aria-hidden="true" />
+                </Link>
               </li>
             ))}
           </ul>

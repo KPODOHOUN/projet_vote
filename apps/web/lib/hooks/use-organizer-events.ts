@@ -12,6 +12,7 @@ export type OrganizerEventItem = {
   title: string;
   slug: string;
   status: string;
+  endsAt?: string;
   candidateCount: number;
 };
 
