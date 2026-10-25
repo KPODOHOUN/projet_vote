@@ -49,7 +49,8 @@ function TicketValidationContent() {
         const data = await apiFetch<TicketDetail>(`/public/tickets/${ticketId}`);
         setTicket(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : t("ticket.notFound"));
+        // Message vide : l'écran d'erreur affiche alors « Billet introuvable ».
+        setError(err instanceof Error ? err.message : "");
       } finally {
         setIsLoading(false);
       }
