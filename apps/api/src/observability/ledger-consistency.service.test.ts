@@ -218,3 +218,20 @@ test("wallet : crédits et demandes de retrait concurrents laissent soldes = jou
   assert.equal(check.status, "ok");
   assert.equal(check.storedHeldCfa, 1_000);
 });
+
+test("résumé admin : nombre de wallets vérifiés, écarts et lignes inconnues, sans montant", async () => {
+  const a = await seedEscrowTenant();
+  const b = await seedEscrowTenant();
+  await wallet.creditSplit({ tenantId: a.tenant.id, netCfa: 1_000, heldBps: 0, kind: WalletLedgerKind.VOTE_CREDIT });
+  await wallet.creditSplit({ tenantId: b.tenant.id, netCfa: 1_000, heldBps: 0, kind: WalletLedgerKind.VOTE_CREDIT });
+  await prisma.organizerWallet.update({ where: { tenantId: b.tenant.id }, data: { withdrawableCfa: { increment: 5 } } });
+
+  const summary = await ledger.summarizeWallets();
+  assert.deepEqual(summary, {
+    walletsChecked: 2,
+    driftCount: 1,
+    unverifiableCount: 0,
+    unknownEntries: 0,
+    driftTenantIds: [b.tenant.id]
+  });
+});

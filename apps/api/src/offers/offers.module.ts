@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { ObservabilityModule } from "../observability/observability.module";
 import { AdminOffersController } from "./admin-offers.controller";
 import { CommissionOverrideService } from "./commission-override.service";
 import { EventSettlementService } from "./event-settlement.service";
@@ -13,7 +14,7 @@ import { WalletService } from "./wallet.service";
 import { WithdrawalsService } from "./withdrawals.service";
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ObservabilityModule],
   controllers: [OrganizerOffersController, AdminOffersController, OffersCronController],
   providers: [
     OfferSettingsService,

@@ -137,4 +137,16 @@ export class LedgerConsistencyService {
       unknownEntries: checks.reduce((sum, c) => sum + c.unknownEntries, 0)
     };
   }
+
+  /** Résumé pour la vue d'ensemble admin (F1) : des compteurs, aucun montant. */
+  async summarizeWallets() {
+    const report = await this.reconcileWallets();
+    return {
+      walletsChecked: report.wallets.length,
+      driftCount: report.driftCount,
+      unverifiableCount: report.wallets.filter((w) => w.status === "unverifiable").length,
+      unknownEntries: report.unknownEntries,
+      driftTenantIds: report.wallets.filter((w) => w.status === "drift").map((w) => w.tenantId)
+    };
+  }
 }
