@@ -223,9 +223,82 @@ Gates : API 253/253, `test:offers` 35/35, typecheck 0, lint API 0.
 | `5354c83` | E2 « Aujourd'hui » : disponible en `text-4xl`, réserve et événements actifs en texte, ligne d'action, liste de 5 | — |
 | `6a8c37a` | E5 portefeuille 60/40, commission et tableau par événement depuis l'API | — |
 
-### Prochaine action exacte
-E6 (compte : export `/privacy/export`, suppression), E3/E4 (création, candidats), puis F, M3 (null tagline/logo/couleur), M4 (éditeur), G, H. Captures : `npx playwright test -c playwright.visual.config.ts` (TEST_DATABASE_URL requis).
-
 ### Constats ouverts
 - P3 : la fiche utilisateur admin compte des transactions de vote, pas des voix (`admin.service.ts` ~l.627).
 - `pub.votesCount` EN reste « {count} votes » (« 1 votes »).
+
+## Suite des lots E, F, M, G, H (2026-10-25)
+
+| Commit | Sujet | Preuve |
+|---|---|---|
+| `c732d43` | E6 compte : « Télécharger mes données » (`/privacy/export`) ; suppression = demande à SHADOMA (pas de bouton d'anonymisation immédiate : un propriétaire perdrait l'accès à un portefeuille qui peut contenir de l'argent) | typecheck |
+| `0fefad5` | E4 aperçu photo au format 3:4 + rappel du recadrage | — |
+| `1dc350f` | M3 API : `null` efface slogan / logo / couleur (deux schémas), refus pour un autre organisateur | events 9/9 (**RED vu** : ZodError) |
+| `ffd09f2` | M4 éditeur d'apparence (échantillon mini-plateforme, contraste, pastilles 44 px libellées, `null` envoyé, slogan 2–80 + compteur, aperçu « version enregistrée » 390 px / ordinateur, bouton collant, garde « non enregistré », i18n) ; `dominantColorFromPixels` pure et testée ; `labelEn` ; « Ardoise » | brand 11/11 (**RED vu**) |
+| `27534bd` `6ecd5eb` | F1 route `admin/offers/ledger-reconciliation` + vue d'ensemble (retraits à traiter en dominant, journal, maintenance, paiements) | ledger-consistency +1 (RED à la compilation) |
+| `78051c4` | F3 commission vide refusée, 0 % confirmé ; F4 déjà conforme (Hérité replié, « Déprécié ») | — |
+| `eefb59b` | G1/G2 `cloudinaryTransform` unique, `ogImageUrl`, carte de partage typographique `/e/{slug}/og`, métadonnées hub/profil | og-image-url 4/4 (RED vu) |
+| `18a96d1` | G3 manifest minimal ; G4 First Load `/` 573 → 289 kB | `next start` : manifest, icon.svg, og.png 200 |
+| `28d7125` | H1 e2e phase (à venir, terminé, ouvert) + billetterie fermée | 4/4 |
+| `d0a5996` | H4 CI : `test:offers` reçoit `DATABASE_URL` ; tous les `*.test.ts` API sont listés | — |
+
+E3 (création/édition d'événement en une colonne) : **non traité** au-delà du logo en import ; la page garde sa structure actuelle.
+
+## Passe design finale (2026-10-25)
+
+| Commit | Sujet |
+|---|---|
+| `a53c400` `1639b2b` | Composants partagés sans verre (`Card`, `GlassCard`, header dashboard), `rounded-md` ; sur-titres en casse normale (13 fichiers) |
+| `cc451ae` | `DESIGN.md` du projet : principes, tokens, disposition des mini-plateformes, mouvement, états, langue, images |
+| `fe68635` `22e2c2c` `283a49d` | Correctifs trouvés sur les captures 390 px : headers dashboard et admin, bandeau Escrow faux, compteur d'étapes, numéro de retrait, `fieldset` qui élargissait les cartes |
+
+Validation visuelle détaillée : `docs/validation/RAPPORT.md` (captures dans `docs/validation/{390,1280}/`).
+
+# RAPPORT FINAL
+
+## 1. Verdict : **GO CONDITIONNEL**
+
+Démontré par le code et les tests : intégrité financière du portefeuille (journal signé, transitions de retrait atomiques, réconciliation exposée à l'admin), funnel de vote non régressé (hook de paiement et payloads inchangés, e2e verts), billetterie honnête (fermée côté API et interface), isolation multi-tenant testée sur les nouveaux chemins (événements, portefeuille). Non démontrable par le code : un paiement réel de bout en bout chez un PSP — d'où « conditionnel ».
+
+## 2. État Git
+Branche `chore/finalisation-shadoma`, 66 commits depuis `main` @ `6d2bda5`, **jamais poussée**. Hors `package-lock.json` : 153 fichiers, +6 076 / −3 142 lignes.
+
+## 3. Constats majeurs (tous corrigés, avec test)
+| Prio | Constat | Correctif |
+|---|---|---|
+| P0 | Aucun écran pour le numéro de retrait : aucun retrait possible | `558fe1d` |
+| P0 | Double restitution d'un retrait rejeté en concurrence | `a6790e8` (RED vu) |
+| P1 | Billetterie créant des billets jamais payés | `75c7fca` |
+| P1 | Journal wallet sans sens : réconciliation impossible | Lot L (ADR-021, RED vu) |
+| P1 | Hub et profil comptaient les lignes de vote, pas les voix payées | `a28c913` (RED vu) |
+| P1 | OTP non envoyé en production sans erreur ; chatbot sans plafond | Lot B |
+| P2 | Prompt du chatbot promettant des choses fausses (adresse inventée…) | `048a934` |
+| P2 | CI : `test:offers` sans `DATABASE_URL` | `d0a5996` |
+
+## 4. Résultats des commandes (état final)
+| Commande | Baseline | Final |
+|---|---|---|
+| API `npm test` | 229/230 | **258/258** |
+| `test:offers` | 31/32 | **36/36** |
+| Web `npm test` | non lancé | **23/23** |
+| e2e Playwright | non lancé | **23/23** (19 historiques + 4 phase/billetterie) |
+| Typecheck web / API | 0 / 0 | 0 / 0 |
+| Lint web | 43 warnings | **42** warnings, 0 erreur |
+| First Load `/` | 573 kB | **289 kB** |
+| `isEn ?` (lignes, `grep -c`) | 1 180 | 978 |
+
+## 5. Restant (priorisé)
+1. Captures à refaire après les deux derniers correctifs de header/fieldset ; regarder compte, maintenance et les palettes non regardées.
+2. i18n : ~978 ternaires `isEn ?` restent, surtout en admin et dans le designer de billets.
+3. Fiche utilisateur admin : compte des transactions, pas des voix (P3).
+4. Édition d'un événement existant (`/events/[id]/edit`) pas encore passée en une colonne.
+
+## 6. Checklist de préproduction (humaine)
+- Clés PSP de production et **un paiement réel de bout en bout** (vote → confirmation serveur → crédit wallet → réconciliation à 0 écart).
+- `MAIL_RESEND_API_KEY` + domaine d'envoi vérifié ; OTP reçu.
+- Secrets régénérés (JWT, organisateur, vault, cron, ops) ; mot de passe admin du seed changé.
+- API toujours active, `API_BASE_URL`, proxy `/api/v1` ; worker cron déployé avec ses secrets.
+- `prisma migrate deploy` (40 migrations) puis compter les lignes de journal inconnues ; sauvegardes et test de restauration.
+- Cloudinary configuré (sinon l'import de photos est indisponible, message affiché) ; CSP passée en bloquant après 7 jours sans violation.
+- **Adresse de contact réelle sur la page Mentions légales** (aucune aujourd'hui).
+- CGU et confidentialité relues par une personne compétente ; logo SHADOMA définitif ; runbook du virement manuel.
