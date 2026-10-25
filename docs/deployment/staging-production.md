@@ -39,6 +39,22 @@ Ce document couvre le déploiement serverless opérationnel de SHADOMA Votes san
 - `CLOUDFLARE_PAGES_DEPLOY_HOOK_STAGING`
 - `CLOUDFLARE_PAGES_DEPLOY_HOOK_PRODUCTION`
 
+### Variables du front figées au build
+
+`NEXT_PUBLIC_*` et `CSP_REPORT_URI` sont lues par `next build`. En changer la valeur
+impose un nouveau build et un nouveau déploiement du front.
+
+| Variable | Défaut | Effet |
+|---|---|---|
+| `NEXT_PUBLIC_TICKET_SALES_OPEN` | `false` | `true` ouvre le formulaire d'achat de billets. Réservé à la démo : l'API refuse l'achat hors `API_PAYMENT_DEMO_MODE`. |
+| `NEXT_PUBLIC_DEMO_EVENT_SLUG` | vide | Slug d'un concours de démonstration lié depuis la Home. Vide : aucun lien. |
+| `CSP_REPORT_URI` | vide | Collecteur des violations CSP (voir `security-headers.md`). |
+
+### Plafonds de l'assistant (API)
+
+`CHAT_DAILY_LIMIT` (500) et `CHAT_DAILY_LIMIT_PER_IP` (30). Avec `API_REDIS_URL`, les compteurs
+sont partagés (clé par jour) ; sans Redis, chaque instance compte de son côté.
+
 ## Déploiement API Cloud Run
 
 1. Ouvrir l'action **Deploy API (Cloud Run)**.
