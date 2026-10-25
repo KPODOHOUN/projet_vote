@@ -22,7 +22,7 @@ export const RequestPartnershipSchema = z.object({
   reason: z.string().trim().min(20).max(1000),
   signedFullName: z.string().trim().min(3).max(100),
   acceptedTerms: z.literal(true, {
-    errorMap: () => ({ message: 'Vous devez accepter les conditions du contrat partenaire.' })
+    error: 'Vous devez accepter les conditions du contrat partenaire.'
   })
 });
 

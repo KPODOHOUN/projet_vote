@@ -37,9 +37,7 @@ const requestSchema = z.object({
     .min(1, "Indiquez vos recettes prévues pour appliquer la bonne commission.")
     .max(500_000_000),
   acceptedTerms: z.literal(true, {
-    errorMap: () => ({
-      message: "Vous devez accepter les conditions de la formule partenaire."
-    })
+    error: "Vous devez accepter les conditions de la formule partenaire."
   })
 });
 

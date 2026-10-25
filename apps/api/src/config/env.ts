@@ -168,7 +168,7 @@ export const envSchema = z.object({
   // never be enabled outside dev/test.
   if (value.API_PAYMENT_DEMO_MODE) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["API_PAYMENT_DEMO_MODE"],
       message: "API_PAYMENT_DEMO_MODE ne doit jamais etre active en production."
     });
@@ -178,7 +178,7 @@ export const envSchema = z.object({
   // email. Without a key, nobody can sign up — fail at boot, not at first OTP.
   if (!value.MAIL_RESEND_API_KEY) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["MAIL_RESEND_API_KEY"],
       message: "MAIL_RESEND_API_KEY doit etre defini en production."
     });
@@ -245,7 +245,7 @@ export const envSchema = z.object({
     const current = value[secret.key as keyof typeof value];
     if (typeof current === "string" && current === secret.value) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: [secret.key],
         message: `${secret.key} doit etre remplace en production.`
       });
@@ -259,14 +259,14 @@ export const envSchema = z.object({
     // catch typos / misconfigured deploys at boot time, not at first webhook.
     if (!value.FEEXPAY_API_KEY.startsWith("fp_") && !value.FEEXPAY_API_KEY.startsWith("test_")) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["FEEXPAY_API_KEY"],
         message: "FEEXPAY_API_KEY doit commencer par 'fp_' (LIVE) ou 'test_' (SANDBOX)."
       });
     }
     if (value.FEEXPAY_SHOP_ID === "dev-shop") {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["FEEXPAY_SHOP_ID"],
         message: "FEEXPAY_SHOP_ID doit etre defini en production."
       });

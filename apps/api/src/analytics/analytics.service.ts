@@ -7,7 +7,7 @@ const trackEventSchema = z.object({
   sessionId: z.string().min(8).max(120),
   userId: z.string().optional(),
   tenantId: z.string().optional(),
-  metadata: z.record(z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 @Injectable()
