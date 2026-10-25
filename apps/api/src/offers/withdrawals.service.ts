@@ -127,8 +127,10 @@ export class WithdrawalsService {
     }
 
     return this.prisma.client.$transaction(async (tx) => {
-      const updated = await tx.withdrawalRequest.update({
-        where: { id },
+      // Atomic claim: only one concurrent reject/approve can move the request
+      // out of PENDING. Without it two rejects both restored the amount.
+      const claim = await tx.withdrawalRequest.updateMany({
+        where: { id, status: WithdrawalStatus.PENDING },
         data: {
           status: WithdrawalStatus.REJECTED,
           rejectReason: input.reason,
@@ -136,6 +138,10 @@ export class WithdrawalsService {
           processedAt: new Date()
         }
       });
+      if (claim.count === 0) {
+        throw new ConflictException("Ce retrait a déjà été traité.");
+      }
+      const updated = await tx.withdrawalRequest.findUniqueOrThrow({ where: { id } });
 
       // Restore available balance.
       await this.wallet.credit(
@@ -188,32 +194,38 @@ export class WithdrawalsService {
       );
     }
 
-    const updated = await this.prisma.client.withdrawalRequest.update({
-      where: { id },
-      data: {
-        status: to,
-        processedByUserId: admin.userId,
-        processedAt: new Date()
-      }
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: existing.tenantId,
-        actorUserId: admin.userId,
-        actorRole: admin.role,
-        action: meta.action,
-        targetType: "WithdrawalRequest",
-        targetId: id,
-        metadata: {
-          from,
-          to,
-          amountCfa: existing.amountCfa,
-          ...(meta.demoMode ? { paymentDemoMode: true } : {})
+    return this.prisma.client.$transaction(async (tx) => {
+      const claim = await tx.withdrawalRequest.updateMany({
+        where: { id, status: from },
+        data: {
+          status: to,
+          processedByUserId: admin.userId,
+          processedAt: new Date()
         }
+      });
+      if (claim.count === 0) {
+        throw new ConflictException("Ce retrait a déjà été traité.");
       }
-    });
+      const updated = await tx.withdrawalRequest.findUniqueOrThrow({ where: { id } });
 
-    return updated;
+      await tx.auditLog.create({
+        data: {
+          tenantId: existing.tenantId,
+          actorUserId: admin.userId,
+          actorRole: admin.role,
+          action: meta.action,
+          targetType: "WithdrawalRequest",
+          targetId: id,
+          metadata: {
+            from,
+            to,
+            amountCfa: existing.amountCfa,
+            ...(meta.demoMode ? { paymentDemoMode: true } : {})
+          }
+        }
+      });
+
+      return updated;
+    });
   }
 }
