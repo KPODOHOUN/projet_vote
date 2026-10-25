@@ -314,7 +314,7 @@ export default function EventDesignPage() {
                 layout
                 className="overflow-hidden rounded-xl"
                 style={{
-                  background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentAlt} 100%)`
+                  background: theme.headerBg
                 }}
               >
                 <div className="flex items-center gap-3 px-5 py-4" style={{ color: theme.headerFg }}>

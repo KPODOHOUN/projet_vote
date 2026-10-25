@@ -40,8 +40,28 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 }
 
+/** Couleur par défaut d'un événement : brand-600, 6,3:1 avec du blanc. */
+export const DEFAULT_BRAND_COLOR = "#4f46e5";
+const INK = "#0f172a";
+const WHITE = "#ffffff";
+const MIN_TEXT_CONTRAST = 4.5;
+
+/** Rapport de contraste WCAG 2.x entre deux couleurs. */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** Le plus lisible de blanc ou d'encre sur `bg`. */
+function onBest(bg: string): { color: string; ratio: number } {
+  const white = contrastRatio(WHITE, bg);
+  const ink = contrastRatio(INK, bg);
+  return white >= ink ? { color: WHITE, ratio: white } : { color: INK, ratio: ink };
+}
+
 export function readableTextOnBackground(hex: string): string {
-  return relativeLuminance(hex) > 0.38 ? "#0f172a" : "#ffffff";
+  return onBest(hex).color;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -63,7 +83,7 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
     else if (max === gn) h = ((bn - rn) / delta + 2) * 60;
     else h = ((rn - gn) / delta + 4) * 60;
   }
-  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+  return { h, s: s * 100, l: l * 100 };
 }
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -78,44 +98,59 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-function shiftColor(hex: string, lightnessShift: number, saturationShift = 0): string {
-  const hsl = hexToHsl(hex);
-  const newL = Math.max(0, Math.min(100, hsl.l + lightnessShift));
-  const newS = Math.max(0, Math.min(100, hsl.s + saturationShift));
-  return hslToHex(hsl.h, newS, newL);
+/**
+ * Version de la couleur utilisable pour du texte et des boutons sur fond blanc :
+ * on assombrit (teinte et saturation conservées, luminosité −1 point par pas)
+ * jusqu'à 4,5:1. Une couleur déjà lisible est rendue telle quelle.
+ */
+export function deriveAccentStrong(accent: string): string {
+  if (contrastRatio(accent, WHITE) >= MIN_TEXT_CONTRAST) return accent;
+  const { h, s, l } = hexToHsl(accent);
+  for (let lightness = Math.floor(l); lightness >= 8; lightness -= 1) {
+    const candidate = hslToHex(h, s, lightness);
+    if (contrastRatio(candidate, WHITE) >= MIN_TEXT_CONTRAST) return candidate;
+  }
+  return hslToHex(h, s, 8);
 }
 
 export type EventTheme = {
+  /** Couleur choisie par l'organisateur : décor et aplats sans texte. */
   accent: string;
-  accentAlt: string;
+  /** Texte, liens, boutons sur fond blanc (≥ 4,5:1). */
+  accentStrong: string;
   headerBg: string;
   headerFg: string;
   cssVars: CSSProperties;
 };
 
+/**
+ * Thème d'un événement, dérivé au rendu (la couleur est stockée telle quelle).
+ * Garanties : `--color-primary` ≥ 4,5:1 sur blanc, texte d'en-tête ≥ 4,5:1.
+ * La couleur brute n'est jamais une couleur de texte sur fond clair.
+ */
 export function buildEventTheme(brandColor: string | null | undefined): EventTheme {
-  const accent = normalizeBrandColor(brandColor) ?? "#6366F1";
-  const accentAlt = shiftColor(accent, 15, 10);
-  const headerFg = readableTextOnBackground(accent);
+  const accent = normalizeBrandColor(brandColor) ?? DEFAULT_BRAND_COLOR;
+  const accentStrong = deriveAccentStrong(accent);
+  const onAccent = onBest(accent);
+  const headerBg = onAccent.ratio >= MIN_TEXT_CONTRAST ? accent : accentStrong;
+  const headerFg = onAccent.ratio >= MIN_TEXT_CONTRAST ? onAccent.color : WHITE;
   return {
     accent,
-    accentAlt,
-    headerBg: accent,
+    accentStrong,
+    headerBg,
     headerFg,
     cssVars: {
       "--event-accent": accent,
-      "--event-accent-alt": accentAlt,
+      "--event-accent-strong": accentStrong,
+      "--event-on-strong": WHITE,
       "--event-accent-soft": hexToRgba(accent, 0.12),
       "--event-accent-muted": hexToRgba(accent, 0.25),
       "--event-accent-light": hexToRgba(accent, 0.06),
-      "--event-header-bg": accent,
+      "--event-header-bg": headerBg,
       "--event-header-fg": headerFg,
-      "--color-primary": accent,
-      "--color-primary-foreground": headerFg,
-      "--color-ring": accent,
-      "--event-gradient-start": accent,
-      "--event-gradient-end": accentAlt,
-      "--event-glow": hexToRgba(accent, 0.3),
+      "--color-primary": accentStrong,
+      "--color-primary-foreground": WHITE,
+      "--color-ring": accentStrong,
     } as CSSProperties
   };
 }

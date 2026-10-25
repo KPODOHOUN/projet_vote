@@ -59,13 +59,14 @@
   --color-error: #EF4444;
   --color-info: #3B82F6;
 
-  --color-success-text: #059669;
+  --color-success-text: #047857; /* emerald-700 : 5,5:1 sur blanc (#059669 : 3,8:1) */
   --color-error-text: #DC2626;
   --color-warning-text: #B45309;
   --color-info-text: #1D4ED8;
 
   /* ── shadcn/ui bridge ──────────────────────────────────────────────── */
-  --color-primary: var(--color-brand-500);
+  /* brand-600 : 6,3:1 avec le blanc (brand-500 : 4,47:1, sous AA). */
+  --color-primary: var(--color-brand-600);
   --color-primary-foreground: #FFFFFF;
   --color-secondary: var(--color-violet-50);
   --color-secondary-foreground: var(--color-violet-900);
@@ -79,11 +80,11 @@
   --color-muted-foreground: var(--color-slate-500);
   --color-accent: var(--color-slate-100);
   --color-accent-foreground: var(--color-slate-900);
-  --color-destructive: var(--color-error);
+  --color-destructive: var(--color-error-text); /* #DC2626 : 4,8:1 avec le blanc */
   --color-destructive-foreground: #FFFFFF;
   --color-border: var(--color-slate-200);
   --color-input: var(--color-slate-200);
-  --color-ring: var(--color-brand-500);
+  --color-ring: var(--color-brand-600);
   --radius: 12px;
 
   /* ── Typographie ────────────────────────────────────────────────────── */
@@ -634,20 +635,20 @@ img {
 }
 
 /* ── Event branding scope ──────────────────────────────────────────────── */
+/* La couleur brute (--event-accent) ne sert qu'au décor sans texte ; le texte,
+   les liens et les boutons utilisent --event-accent-strong (≥ 4,5:1 sur blanc). */
 [data-event-theme] {
-  --color-primary: var(--event-accent);
-  --color-primary-foreground: var(--event-header-fg, #ffffff);
-  --color-ring: var(--event-accent);
+  --color-primary: var(--event-accent-strong, var(--color-brand-600));
+  --color-primary-foreground: #ffffff;
+  --color-ring: var(--event-accent-strong, var(--color-brand-600));
   --event-primary-soft: var(--event-accent-soft);
   --event-primary-muted: var(--event-accent-muted);
-  --event-gradient-start: var(--event-accent);
-  --event-gradient-end: var(--event-accent-alt);
 }
 
 /* ── Security zone ─────────────────────────────────────────────────────── */
 [data-zone="secure-flow"] {
-  --color-primary: var(--color-brand-500);
-  --color-ring: var(--color-brand-500);
+  --color-primary: var(--color-brand-600);
+  --color-ring: var(--color-brand-600);
 }
 
 /* ── Number counter animation ──────────────────────────────────────────── */

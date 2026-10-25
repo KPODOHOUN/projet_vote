@@ -262,7 +262,7 @@ export default async function PublicResultsPage({ params }: PageProps) {
                         role="img"
                         aria-label={`${row.fullName} : ${row.voteCount} votes`}
                       >
-                        <span className="block h-full bg-gradient-to-r from-[var(--event-gradient-start)] to-[var(--event-gradient-end)] rounded-full transition-all duration-500" style={{ width: `${share}%` }} />
+                        <span className="block h-full bg-[var(--event-accent)] rounded-full transition-all duration-500" style={{ width: `${share}%` }} />
                       </div>
                     </div>
                   </li>

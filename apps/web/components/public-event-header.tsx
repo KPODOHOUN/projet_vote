@@ -77,9 +77,7 @@ export function PublicEventHeader({
         scrolled ? "shadow-lg" : "shadow-sm"
       }`}
       style={{
-        background: scrolled
-          ? `linear-gradient(135deg, ${theme.headerBg} 0%, ${theme.accentAlt} 100%)`
-          : theme.headerBg,
+        background: theme.headerBg,
         color: theme.headerFg
       }}
     >
