@@ -20,6 +20,8 @@ type ImageUploadFieldProps = {
   token: string;
   label: string;
   preview?: ReactNode;
+  /** Phrase d'aide sous le libellé (ex. recadrage appliqué sur la page publique). */
+  hint?: string;
 };
 
 export function ImageUploadField({
@@ -27,7 +29,8 @@ export function ImageUploadField({
   onChange,
   token,
   label,
-  preview
+  preview,
+  hint
 }: ImageUploadFieldProps) {
   // Photos importées uniquement (fichier envoyé à Cloudinary), jamais un lien saisi.
   const { locale, t } = useI18n();
@@ -86,6 +89,7 @@ export function ImageUploadField({
   return (
     <div className="flex flex-col gap-3">
       <span className="text-sm font-semibold text-foreground">{label}</span>
+      {hint ? <span className="-mt-2 text-xs text-slate-600">{hint}</span> : null}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         {preview ? <div className="shrink-0">{preview}</div> : null}

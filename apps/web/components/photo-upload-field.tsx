@@ -2,10 +2,12 @@
 
 import { ImageUploadField } from "./image-upload-field";
 import { CandidatePhoto } from "./candidate-photo";
+import { useI18n } from "../lib/i18n-provider";
 
 /**
- * Champ photo candidat : choix fichier (galerie, appareil photo, ordinateur),
- * glisser-déposer, aperçu et repli URL. Pilote toujours `value` (= photoUrl).
+ * Champ photo candidat : import de fichier (galerie, appareil photo,
+ * ordinateur) ou glisser-déposer, aperçu au format 3:4 de la page publique.
+ * Pilote toujours `value` (= photoUrl).
  */
 export function PhotoUploadField({
   value,
@@ -20,13 +22,19 @@ export function PhotoUploadField({
   label: string;
   fullName: string;
 }) {
+  const { t } = useI18n();
   return (
     <ImageUploadField
       value={value}
       onChange={onChange}
       token={token}
       label={label}
-      preview={<CandidatePhoto photoUrl={value || null} fullName={fullName || "?"} size="sm" />}
+      hint={t("upload.cropHint")}
+      preview={
+        <div className="aspect-[3/4] w-24 overflow-hidden rounded-md bg-muted">
+          <CandidatePhoto photoUrl={value || null} fullName={fullName || "?"} size="sm" className="h-full w-full object-cover" />
+        </div>
+      }
     />
   );
 }

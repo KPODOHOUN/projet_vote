@@ -730,6 +730,7 @@ const messages = {
     "adminHome.failedPayments": "Paiements échoués (24 h) : {count}",
     "adminHome.links": "Accès",
     "adminHome.loadFailed": "Une partie des indicateurs n'a pas pu être chargée.",
+    "upload.cropHint": "La photo sera coupée en portrait 3:4 sur la page publique.",
   },
   en: {
     "lang.switch": "Language",
@@ -1453,6 +1454,7 @@ const messages = {
     "adminHome.failedPayments": "Failed payments (24 h): {count}",
     "adminHome.links": "Shortcuts",
     "adminHome.loadFailed": "Some figures could not be loaded.",
+    "upload.cropHint": "The photo will be cropped to a 3:4 portrait on the public page.",
   }
 } as const;
 
