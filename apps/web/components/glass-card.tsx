@@ -9,12 +9,6 @@ type GlassCardProps = HTMLAttributes<HTMLDivElement> & {
   intensity?: "default" | "strong" | "subtle";
 };
 
-const intensityClass = {
-  default: "vp-glass",
-  strong: "vp-glass-strong",
-  subtle: "vp-glass-subtle"
-} as const;
-
 export function GlassCard({
   children,
   className,
@@ -25,8 +19,7 @@ export function GlassCard({
   return (
     <div
       className={cn(
-        "rounded-2xl",
-        intensityClass[intensity],
+        "rounded-md border border-border bg-card",
         hover && "vp-glass-hover transition-all duration-300",
         className
       )}

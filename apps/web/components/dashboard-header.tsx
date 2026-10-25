@@ -126,7 +126,7 @@ export function DashboardHeader() {
   const hasAny = results != null && (results.events.length + results.candidates.length + results.members.length + results.payments.length) > 0;
 
   return (
-    <header className="vp-header-glass sticky top-0 z-30 flex h-16 w-full items-center justify-between gap-4 px-6 sm:px-8">
+    <header className="sticky top-0 border-b border-border bg-background z-30 flex h-16 w-full items-center justify-between gap-4 px-6 sm:px-8">
       <div ref={boxRef} className="relative flex-1 max-w-md">
         <form onSubmit={onSubmit} role="search" className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

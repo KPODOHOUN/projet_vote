@@ -4,14 +4,14 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const cardVariants = cva(
-  "flex flex-col gap-6 rounded-xl py-6 text-card-foreground",
+  "flex flex-col gap-6 rounded-md py-6 text-card-foreground",
   {
     variants: {
       surface: {
         default: "border bg-card shadow-sm",
-        glass: "vp-glass",
-        glassStrong: "vp-glass-strong",
-        glassSubtle: "vp-glass-subtle",
+        glass: "border bg-card",
+        glassStrong: "border bg-card",
+        glassSubtle: "border bg-card",
       },
     },
     defaultVariants: { surface: "default" },
