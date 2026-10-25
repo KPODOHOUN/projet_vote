@@ -16,6 +16,9 @@ import {
   useWithdrawalMutation
 } from "@/lib/hooks/use-wallet";
 import { mobileNetworkLabel } from "@/lib/mobile-networks";
+import type { MessageKey } from "@/lib/i18n";
+
+const WITHDRAWAL_STATUSES = new Set(["PENDING", "APPROVED", "PAID", "REJECTED"]);
 import {
   Button,
   Card,
@@ -183,7 +186,10 @@ export default function DashboardWalletPage() {
                     <p className="mt-1 text-xs text-destructive">{w.rejectReason}</p>
                   ) : null}
                 </div>
-                <StatusChip label={w.status} tone="muted" />
+                <StatusChip
+                  label={WITHDRAWAL_STATUSES.has(w.status) ? t(`withdrawal.status.${w.status}` as MessageKey) : w.status}
+                  tone={w.status === "PAID" ? "success" : w.status === "REJECTED" ? "error" : w.status === "PENDING" ? "pending" : "live"}
+                />
               </li>
             ))}
           </ul>

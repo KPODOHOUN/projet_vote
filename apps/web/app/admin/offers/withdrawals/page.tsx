@@ -13,7 +13,8 @@ import {
   type WithdrawalRow,
   type WithdrawalStatus
 } from "@/lib/hooks/use-admin-withdrawals";
-import { Button, DataTable, EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import { Button, ConfirmDialog, DataTable, EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import type { MessageKey } from "@/lib/i18n";
 import type { DataTableColumn } from "@/components/ui";
 import {
   AdminErrorAlert,
@@ -45,6 +46,10 @@ function statusTone(status: WithdrawalStatus): "pending" | "warning" | "success"
   }
 }
 
+function statusLabelKey(status: WithdrawalStatus): MessageKey {
+  return `withdrawal.status.${status}` as MessageKey;
+}
+
 export default function AdminWithdrawalsPage() {
   const router = useRouter();
   const { locale, t } = useI18n();
@@ -59,6 +64,7 @@ export default function AdminWithdrawalsPage() {
 
   const [statusFilter, setStatusFilter] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const withdrawalsQuery = useAdminWithdrawalsQuery(statusFilter, hasToken);
   const actionMutation = useAdminWithdrawalActionMutation();
@@ -68,39 +74,92 @@ export default function AdminWithdrawalsPage() {
   const error = withdrawalsQuery.isError
     ? withdrawalsQuery.error instanceof Error
       ? withdrawalsQuery.error.message
-      : "Erreur"
+      : t("admin.withdrawals.actionFailed")
     : null;
 
-  const runAction = async (id: string, action: "approve" | "reject" | "mark-paid") => {
-    let reason: string | undefined;
-    if (action === "reject") {
-      const promptReason = window.prompt(
-        isEn ? "Rejection reason (required):" : "Motif du refus (obligatoire) :"
-      );
-      if (!promptReason || promptReason.trim().length < 3) {
-        showToast.error(isEn ? "Reason required (min 3 chars)." : "Motif requis (min. 3 caractères).");
-        return;
-      }
-      reason = promptReason.trim();
-    }
+  const runAction = async (id: string, action: "approve" | "reject" | "mark-paid", reason?: string) => {
     setBusyId(id);
     try {
       await actionMutation.mutateAsync({ id, action, ...(reason ? { reason } : {}) });
-      showToast.success(isEn ? "Updated." : "Mis à jour.");
+      showToast.success(t("admin.withdrawals.updated"));
     } catch (caught) {
       showToast.error(
-        caught instanceof ApiError
-          ? caught.message
-          : caught instanceof Error
-            ? caught.message
-            : isEn
-              ? "Action failed."
-              : "Action impossible."
+        caught instanceof ApiError || caught instanceof Error ? caught.message : t("admin.withdrawals.actionFailed")
       );
     } finally {
       setBusyId(null);
     }
   };
+
+  const renderActions = (row: WithdrawalRow) => {
+    const busy = busyId === row.id && actionMutation.isPending;
+    const trimmedReason = rejectReason.trim();
+    return (
+      <div className="flex flex-wrap gap-2">
+        {row.status === "PENDING" ? (
+          <>
+            <Button size="sm" variant="secondary" className="min-h-11" loading={busy} onClick={() => void runAction(row.id, "approve")}>
+              {t("admin.withdrawals.approve")}
+            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button size="sm" variant="ghost" className="min-h-11" disabled={busy}>
+                  {t("admin.withdrawals.reject")}
+                </Button>
+              }
+              onOpenChange={(open) => {
+                if (open) setRejectReason("");
+              }}
+              title={t("admin.withdrawals.rejectTitle")}
+              description={t("admin.withdrawals.rejectDesc")}
+              confirmLabel={t("admin.withdrawals.reject")}
+              cancelLabel={t("admin.withdrawals.cancel")}
+              variant="destructive"
+              confirmDisabled={trimmedReason.length < 3}
+              onConfirm={() => runAction(row.id, "reject", trimmedReason)}
+            >
+              <label htmlFor={`reject-${row.id}`} className="block text-sm font-medium text-foreground">
+                {t("admin.withdrawals.rejectReasonLabel")}
+              </label>
+              <textarea
+                id={`reject-${row.id}`}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                maxLength={500}
+                rows={3}
+                className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              />
+            </ConfirmDialog>
+          </>
+        ) : null}
+        {row.status === "APPROVED" ? (
+          <ConfirmDialog
+            trigger={
+              <Button size="sm" className="min-h-11" loading={busy}>
+                {t("admin.withdrawals.markPaid")}
+              </Button>
+            }
+            title={t("admin.withdrawals.markPaidTitle")}
+            description={t("admin.withdrawals.markPaidDesc", {
+              amount: formatCfa(row.amountCfa, isEn),
+              org: row.tenant.displayName
+            })}
+            confirmLabel={t("admin.withdrawals.markPaidConfirm")}
+            cancelLabel={t("admin.withdrawals.cancel")}
+            variant="default"
+            onConfirm={() => runAction(row.id, "mark-paid")}
+          />
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderStatus = (row: WithdrawalRow) => (
+    <div>
+      <StatusChip label={t(statusLabelKey(row.status))} tone={statusTone(row.status)} />
+      {row.rejectReason ? <p className="mt-1 text-xs text-muted-foreground">{row.rejectReason}</p> : null}
+    </div>
+  );
 
   if (isLoading) {
     return <LoadingState variant="rows" count={5} label={t("admin.withdrawals.loading")} />;
@@ -121,19 +180,12 @@ export default function AdminWithdrawalsPage() {
       key: "amount",
       header: t("admin.withdrawals.colAmount"),
       align: "right",
-      render: (row) => <span className="font-semibold">{formatCfa(row.amountCfa, isEn)}</span>
+      render: (row) => <span className="font-semibold tabular-nums">{formatCfa(row.amountCfa, isEn)}</span>
     },
     {
       key: "status",
       header: t("admin.withdrawals.colStatus"),
-      render: (row) => (
-        <div>
-          <StatusChip label={row.status} tone={statusTone(row.status)} />
-          {row.rejectReason ? (
-            <p className="mt-1 text-xs text-muted-foreground">{row.rejectReason}</p>
-          ) : null}
-        </div>
-      )
+      render: renderStatus
     },
     {
       key: "createdAt",
@@ -147,25 +199,7 @@ export default function AdminWithdrawalsPage() {
     {
       key: "actions",
       header: t("admin.withdrawals.colActions"),
-      render: (row) => (
-        <div className="flex flex-wrap gap-2">
-          {row.status === "PENDING" ? (
-            <>
-              <Button size="sm" loading={busyId === row.id && actionMutation.isPending} onClick={() => void runAction(row.id, "approve")}>
-                {t("admin.withdrawals.approve")}
-              </Button>
-              <Button size="sm" variant="secondary" loading={busyId === row.id && actionMutation.isPending} onClick={() => void runAction(row.id, "reject")}>
-                {t("admin.withdrawals.reject")}
-              </Button>
-            </>
-          ) : null}
-          {row.status === "APPROVED" ? (
-            <Button size="sm" loading={busyId === row.id && actionMutation.isPending} onClick={() => void runAction(row.id, "mark-paid")}>
-              {t("admin.withdrawals.markPaid")}
-            </Button>
-          ) : null}
-        </div>
-      )
+      render: renderActions
     }
   ];
 
@@ -193,6 +227,10 @@ export default function AdminWithdrawalsPage() {
         />
       </div>
 
+      <p className="max-w-2xl border-l-2 border-border pl-3 text-sm font-medium text-foreground">
+        {t("admin.withdrawals.manualNotice")}
+      </p>
+
       {error ? <AdminErrorAlert message={error} /> : null}
 
       {!error && rows.length === 0 ? (
@@ -203,13 +241,35 @@ export default function AdminWithdrawalsPage() {
       ) : null}
 
       {rows.length > 0 ? (
-        <DataTable
-          columns={withdrawalColumns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          emptyLabel={t("admin.withdrawals.empty")}
-          ariaLabel={t("admin.withdrawals.title")}
-        />
+        <>
+          {/* Sous 768 px : une carte par demande, jamais de défilement horizontal. */}
+          <ul className="space-y-3 md:hidden" aria-label={t("admin.withdrawals.title")}>
+            {rows.map((row) => (
+              <li key={row.id} className="space-y-3 rounded-md border border-border bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{row.tenant.displayName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(row.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+                    </p>
+                  </div>
+                  <p className="shrink-0 font-semibold tabular-nums">{formatCfa(row.amountCfa, isEn)}</p>
+                </div>
+                {renderStatus(row)}
+                {renderActions(row)}
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block">
+            <DataTable
+              columns={withdrawalColumns}
+              rows={rows}
+              rowKey={(row) => row.id}
+              emptyLabel={t("admin.withdrawals.empty")}
+              ariaLabel={t("admin.withdrawals.title")}
+            />
+          </div>
+        </>
       ) : null}
     </AdminPageShell>
   );
