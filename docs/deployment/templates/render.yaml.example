@@ -1,0 +1,33 @@
+# Modèle non testé. Copier en render.yaml (exclu par le .gitignore).
+# Aucun hébergeur n'est retenu : ce fichier illustre un service API toujours actif
+# (pas de mise en veille : le rapprochement des paiements et les webhooks en dépendent).
+services:
+  - type: web
+    name: shadoma-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # un plan sans mise en veille
+    healthCheckPath: /api/v1/health
+    preDeployCommand: npm run db:migrate:deploy
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: API_JWT_SECRET
+        sync: false
+      - key: API_ORGANIZER_SECRET_KEY
+        sync: false
+      - key: API_VAULT_SECRET_KEY
+        sync: false
+      - key: API_MAINTENANCE_CRON_SECRET
+        sync: false
+      - key: API_OPS_TOKEN
+        sync: false
+      - key: MAIL_RESEND_API_KEY
+        sync: false
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: API_CORS_ORIGINS
+        sync: false
+      # Clés PSP, Cloudinary, OAuth, Sentry : voir .env.example

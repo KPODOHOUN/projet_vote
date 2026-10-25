@@ -12,10 +12,10 @@ test-results/
 Dockerfile*
 docker-compose*.yml
 docker-entrypoint*.sh
-package-lock.json
 nohup.out
 .eslintcache
 next-env.d.ts
 render.yaml
 vercel.json
 fix-lint.js
+!.env.example
