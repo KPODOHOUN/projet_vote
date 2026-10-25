@@ -13,17 +13,18 @@
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",
-    "@sentry/nextjs": "^10.51.0",
+    "@sentry/nextjs": "^10.76.2",
     "@tanstack/react-query": "^5.101.4",
     "@votezpro/shared": "0.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
-    "next": "^15.0.0",
+    "next": "^15.5.28",
     "radix-ui": "^1.6.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "three": "^0.184.0"
@@ -34,8 +35,8 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "eslint-config-next": "^15.5.19",
-    "postcss": "^8.4.31",
+    "eslint-config-next": "^15.5.28",
+    "postcss": "^8.5.31",
     "tailwindcss": "^4.2.4",
     "typescript": "^5.8.0"
   }
