@@ -73,6 +73,18 @@ enum WalletLedgerKind {
   HELD_RELEASE
 }
 
+/// ADR-021 : sens de l'écriture (montant toujours positif).
+enum LedgerDirection {
+  CREDIT
+  DEBIT
+}
+
+/// ADR-021 : compartiment touché. HELD_RELEASE = transfert, écrit CREDIT WITHDRAWABLE.
+enum LedgerBucket {
+  HELD
+  WITHDRAWABLE
+}
+
 enum WithdrawalStatus {
   PENDING
   APPROVED
@@ -245,6 +257,9 @@ model WalletLedgerEntry {
   walletId    String
   kind        WalletLedgerKind
   amountCfa   Int
+  /// NULL = ligne antérieure à ADR-021 dont le sens n'a pas pu être déduit.
+  direction   LedgerDirection?
+  bucket      LedgerBucket?
   eventId     String?
   paymentId   String?
   withdrawalId String?
