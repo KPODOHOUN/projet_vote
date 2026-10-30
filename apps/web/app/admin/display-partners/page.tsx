@@ -127,7 +127,7 @@ export default function AdminDisplayPartnersPage() {
       <AdminPageHeader
         eyebrow={isEn ? "Partners" : "Partenaires"}
         title={isEn ? "Display partners" : "Partenaires affichés"}
-        description={isEn ? "Partners shown in the carousel on the public website." : "Partenaires affichés dans le carousel sur le site public."}
+        description={isEn ? "Logos shown on the public site." : "Les logos affichés sur le site public."}
         actions={<Button onClick={openCreate}>{isEn ? "Add partner" : "Ajouter un partenaire"}</Button>}
       />
 

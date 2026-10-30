@@ -9,6 +9,8 @@ export type PlatformVote = {
   createdAt: string;
   cancelledAt: string | null;
   cancelledReason: string | null;
+  event: { title: string };
+  candidate: { fullName: string; number: number };
 };
 
 export type PlatformVotesResponse = {

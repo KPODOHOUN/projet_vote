@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PaymentStatus, UserRole } from "@prisma/client";
+import { PaymentStatus, UserRole, TicketStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { PaymentVerifyService } from "./payment-verify.service";
 
@@ -137,6 +137,10 @@ export class PaymentReconciliationService {
         data: { status: PaymentStatus.FAILED }
       });
       if (updated.count === 0) return;
+      await trx.ticket.updateMany({
+        where: { paymentTransactionId: txId, status: TicketStatus.RESERVED },
+        data: { status: TicketStatus.CANCELLED }
+      });
       await trx.auditLog.create({
         data: {
           tenantId,

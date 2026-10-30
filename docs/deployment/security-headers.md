@@ -2,7 +2,8 @@
 
 Définis dans `apps/web/next.config.ts` (`headers()`), appliqués à toutes les routes :
 `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options: SAMEORIGIN`
-et une CSP en **Report-Only** (`Content-Security-Policy-Report-Only`).
+et une CSP **appliquée** en production (`Content-Security-Policy`), en **Report-Only** en
+développement. `CSP_REPORT_ONLY=true` (figée au build) repasse en observation sans changer le code.
 
 L'API a déjà Helmet.
 
@@ -19,7 +20,13 @@ Le collecteur reçoit des POST JSON (`application/csp-report` pour `report-uri`,
 n'est fourni par ce dépôt : utiliser celui de l'outil d'observabilité retenu (Sentry accepte
 les rapports CSP sur son endpoint `security`).
 
-## Passage de la CSP en mode bloquant
+## Mode bloquant (actif)
+
+Activé le 27/10/2026, avant toute mise en production : le build de production local a été parcouru
+(visiteur, organisateur, équipe, admin) sans violation. Si une violation légitime apparaît en
+production, reconstruire avec `CSP_REPORT_ONLY=true`, corriger la directive, puis revenir.
+
+### Procédure d'origine (pour mémoire)
 
 1. Déployer en Report-Only et ouvrir la console du navigateur sur les parcours clés :
    Home, `/e/[slug]`, profil candidat + paiement, dashboard (upload photo Cloudinary), admin.

@@ -1,143 +1,81 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { OfferSettingsService } from "./offer-settings.service";
-import { OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY, OFFER2_PER_VOTE_COMMISSION_BPS_KEY } from "../common/platform-settings";
+import { COMMISSION_DEFAULT_BPS_KEY, DEFAULT_COMMISSION_BPS } from "../common/platform-settings";
 
 const prisma = new PrismaService();
 const offerSettings = new OfferSettingsService(prisma);
+const admin = (tenantId: string) => ({ userId: "admin-test", tenantId, email: "admin@test.bj", role: UserRole.PLATFORM_ADMIN });
+const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-async function enablePerVoteCommission(defaultBps: number) {
-  await prisma.client.platformSetting.upsert({
-    where: { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY },
-    create: { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY, value: "true", updatedByUserId: "test" },
-    update: { value: "true" }
-  });
-  await prisma.client.platformSetting.upsert({
-    where: { key: OFFER2_PER_VOTE_COMMISSION_BPS_KEY },
-    create: { key: OFFER2_PER_VOTE_COMMISSION_BPS_KEY, value: String(defaultBps), updatedByUserId: "test" },
-    update: { value: String(defaultBps) }
-  });
-}
-
-test("resolveEscrowCommissionBps: utilise le taux plateforme par défaut sans override", async () => {
-  await enablePerVoteCommission(800); // 8%
-  const tenant = await prisma.client.tenant.create({
-    data: { slug: `commis-none-${Date.now().toString(36)}`, displayName: "No Override" }
-  });
+async function seedEvent(eventCommissionBps: number | null = null) {
+  const tenant = await prisma.client.tenant.create({ data: { slug: `fin-${uid()}`, displayName: "Finance" } });
   const event = await prisma.client.event.create({
     data: {
       tenantId: tenant.id,
-      title: "Event no override",
-      slug: `ev-none-${Date.now().toString(36)}`,
-      startsAt: new Date(),
-      endsAt: new Date(Date.now() + 86_400_000)
-    }
-  });
-  const bps = await offerSettings.resolveEscrowCommissionBps(event.id);
-  assert.equal(bps, 800);
-});
-
-test("resolveEscrowCommissionBps: l'override tenant prime sur le défaut plateforme", async () => {
-  await enablePerVoteCommission(800);
-  const tenant = await prisma.client.tenant.create({
-    data: {
-      slug: `commis-tenant-${Date.now().toString(36)}`,
-      displayName: "Tenant Override",
-      commissionBps: 600
-    }
-  });
-  const event = await prisma.client.event.create({
-    data: {
-      tenantId: tenant.id,
-      title: "Event tenant override",
-      slug: `ev-tenant-${Date.now().toString(36)}`,
-      startsAt: new Date(),
-      endsAt: new Date(Date.now() + 86_400_000)
-    }
-  });
-  const bps = await offerSettings.resolveEscrowCommissionBps(event.id);
-  assert.equal(bps, 600);
-});
-
-test("resolveEscrowCommissionBps: l'override event prime sur le tenant et le défaut", async () => {
-  await enablePerVoteCommission(800);
-  const tenant = await prisma.client.tenant.create({
-    data: {
-      slug: `commis-event-${Date.now().toString(36)}`,
-      displayName: "Event Override",
-      commissionBps: 600
-    }
-  });
-  const event = await prisma.client.event.create({
-    data: {
-      tenantId: tenant.id,
-      title: "Event override",
-      slug: `ev-override-${Date.now().toString(36)}`,
+      title: "Concours",
+      slug: `ev-${uid()}`,
       startsAt: new Date(),
       endsAt: new Date(Date.now() + 86_400_000),
-      commissionBps: 450
+      commissionBps: eventCommissionBps
     }
   });
-  const bps = await offerSettings.resolveEscrowCommissionBps(event.id);
-  assert.equal(bps, 450);
+  return { tenant, event };
+}
+
+test("taux par défaut : 12 % tant qu'aucun réglage ni taux négocié n'existe", async () => {
+  await prisma.client.platformSetting.deleteMany({ where: { key: COMMISSION_DEFAULT_BPS_KEY } });
+  assert.equal(DEFAULT_COMMISSION_BPS, 1_200);
+  const { event } = await seedEvent();
+  assert.equal(await offerSettings.resolveCommissionBps(event.id), 1_200);
+  assert.equal((await offerSettings.getSettings()).commissionDefaultBps, 1_200);
 });
 
-test("resolveEscrowCommissionBps: retourne 0 si la commission par vote est désactivée", async () => {
-  await prisma.client.platformSetting.upsert({
-    where: { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY },
-    create: { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY, value: "false", updatedByUserId: "test" },
-    update: { value: "false" }
+test("taux négocié : appliqué à partir de sa date d'effet, jamais avant", async () => {
+  const { tenant, event } = await seedEvent();
+  await prisma.client.commissionRate.create({
+    data: { tenantId: tenant.id, bps: 900, effectiveFrom: new Date(Date.now() - 60_000), reason: "Accord", createdByUserId: "admin" }
   });
-  const tenant = await prisma.client.tenant.create({
-    data: { slug: `commis-disabled-${Date.now().toString(36)}`, displayName: "Disabled" }
+  await prisma.client.commissionRate.create({
+    data: { tenantId: tenant.id, bps: 700, effectiveFrom: new Date(Date.now() + 7 * 86_400_000), reason: "Accord futur", createdByUserId: "admin" }
   });
-  const event = await prisma.client.event.create({
-    data: {
-      tenantId: tenant.id,
-      title: "Event disabled",
-      slug: `ev-disabled-${Date.now().toString(36)}`,
-      startsAt: new Date(),
-      endsAt: new Date(Date.now() + 86_400_000)
-    }
-  });
-  const bps = await offerSettings.resolveEscrowCommissionBps(event.id);
-  assert.equal(bps, 0);
+  assert.equal(await offerSettings.resolveCommissionBps(event.id), 900, "le taux futur ne s'applique pas encore");
+  const later = await offerSettings.resolveTenantCommissionBps(tenant.id, new Date(Date.now() + 8 * 86_400_000));
+  assert.deepEqual(later, { bps: 700, source: "tenant" });
 });
 
-test("computeEscrowVoteCommissionCfaFromBps: floor sur montant × bps / 10000", () => {
-  assert.equal(offerSettings.computeEscrowVoteCommissionCfaFromBps(1_000, 800), 80);
-  assert.equal(offerSettings.computeEscrowVoteCommissionCfaFromBps(1_000, 0), 0);
-  assert.equal(offerSettings.computeEscrowVoteCommissionCfaFromBps(333, 800), 26);
+test("le taux figé par le contrat du concours l'emporte sur le taux négocié", async () => {
+  const { tenant, event } = await seedEvent(1_100);
+  await prisma.client.commissionRate.create({
+    data: { tenantId: tenant.id, bps: 500, effectiveFrom: new Date(Date.now() - 60_000), reason: "Accord", createdByUserId: "admin" }
+  });
+  assert.equal(await offerSettings.resolveCommissionBps(event.id), 1_100);
+  const described = await offerSettings.describeEventCommission(event.id);
+  assert.equal(described.source, "event");
+  assert.equal(described.tenantBps, 500);
 });
 
-test("describeEscrowCommission: taux effectif, source, bornes et gel", async () => {
-  await enablePerVoteCommission(800);
-  const suffix = Date.now().toString(36);
-  const tenant = await prisma.client.tenant.create({
-    data: { slug: `commis-desc-${suffix}`, displayName: "Describe", commissionBps: 600 }
-  });
-  const draft = await prisma.client.event.create({
-    data: { tenantId: tenant.id, title: "Draft", slug: `ev-desc-d-${suffix}`, startsAt: new Date(), endsAt: new Date(Date.now() + 86_400_000) }
-  });
-  const fromTenant = await offerSettings.describeEscrowCommission(draft.id);
-  assert.deepEqual(
-    { effectiveBps: fromTenant.effectiveBps, source: fromTenant.source, frozen: fromTenant.frozen },
-    { effectiveBps: 600, source: "tenant", frozen: false }
-  );
-  assert.equal(fromTenant.floorBps, 400);
-  assert.equal(fromTenant.ceilingBps, 1_200);
-  assert.equal(fromTenant.defaultBps, 800);
+test("calcul : francs CFA entiers, arrondi à l'unité inférieure, jamais négatif", () => {
+  assert.equal(offerSettings.computeCommissionCfa(1_000, 1_200), 120);
+  assert.equal(offerSettings.computeCommissionCfa(205, 1_200), 24); // 24,6 → 24
+  assert.equal(offerSettings.computeCommissionCfa(1, 1_200), 0);
+  assert.equal(offerSettings.computeCommissionCfa(0, 1_200), 0);
+  assert.equal(offerSettings.computeCommissionCfa(1_000, 0), 0);
+});
 
-  const active = await prisma.client.event.create({
-    data: {
-      tenantId: tenant.id, title: "Active", slug: `ev-desc-a-${suffix}`, status: "ACTIVE", commissionBps: 900,
-      startsAt: new Date(), endsAt: new Date(Date.now() + 86_400_000)
-    }
+test("réglages : un admin ne sort pas de la fourchette, chaque changement est journalisé", async () => {
+  const { tenant } = await seedEvent();
+  await assert.rejects(offerSettings.updateSettings(admin(tenant.id), { commissionDefaultBps: 2_500 }), /super-admin/);
+  const updated = await offerSettings.updateSettings(admin(tenant.id), { commissionDefaultBps: 1_000, heldBps: 4_000 });
+  assert.equal(updated.commissionDefaultBps, 1_000);
+  assert.equal(updated.heldBps, 4_000);
+  const audit = await prisma.client.auditLog.findFirst({
+    where: { tenantId: tenant.id, action: "platform.finance_settings_updated" },
+    orderBy: { createdAt: "desc" }
   });
-  const fromEvent = await offerSettings.describeEscrowCommission(active.id);
-  assert.deepEqual(
-    { effectiveBps: fromEvent.effectiveBps, source: fromEvent.source, frozen: fromEvent.frozen },
-    { effectiveBps: 900, source: "event", frozen: true }
-  );
+  assert.ok(audit, "modification journalisée");
+  // Remise à l'état par défaut pour les autres tests.
+  await prisma.client.platformSetting.deleteMany({ where: { key: { in: [COMMISSION_DEFAULT_BPS_KEY, "settlement_held_bps"] } } });
 });

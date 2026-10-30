@@ -11,24 +11,22 @@ import { PaymentsModule } from "./payments/payments.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { VotesModule } from "./votes/votes.module";
 import { AdminModule } from "./admin/admin.module";
-import { OrganizerSecretsModule } from "./organizer-secrets/organizer-secrets.module";
 import { MaintenanceModule } from "./maintenance/maintenance.module";
 import { ObservabilityModule } from "./observability/observability.module";
 import { PrivacyModule } from "./privacy/privacy.module";
 import { PlatformControlModule } from "./platform-control/platform-control.module";
 import { InvitationsModule } from "./invitations/invitations.module";
-import { PartnersModule } from "./partners/partners.module";
 import { PayoutsModule } from "./payouts/payouts.module";
 import { AccountModule } from "./account/account.module";
 import { SearchModule } from "./search/search.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
-import { SubscriptionsModule } from "./subscriptions/subscriptions.module";
 import { TicketsModule } from "./tickets/tickets.module";
 import { DisplayPartnersModule } from "./display-partners/display-partners.module";
 import { ChatModule } from "./chat/chat.module";
 import { OffersModule } from "./offers/offers.module";
+import { ContractsModule } from "./contracts/contracts.module";
 
 // Shared Redis store when API_REDIS_URL is configured (limits hold across all
 // instances), else the default per-instance in-memory store. The login lockout
@@ -76,12 +74,10 @@ const throttleProviders =
     VotesModule,
     PaymentsModule,
     AdminModule,
-    OrganizerSecretsModule,
     MaintenanceModule,
     ObservabilityModule,
     PrivacyModule,
     PlatformControlModule,
-    PartnersModule,
     InvitationsModule,
     PayoutsModule,
     AccountModule,
@@ -89,11 +85,11 @@ const throttleProviders =
     NotificationsModule,
     UploadsModule,
     AnalyticsModule,
-    SubscriptionsModule,
     TicketsModule,
     DisplayPartnersModule,
     ChatModule,
-    OffersModule
+    OffersModule,
+    ContractsModule
   ],
   controllers: [HealthController],
   providers: throttleProviders

@@ -19,6 +19,7 @@ import { getApiBaseUrl } from "@/lib/api-base-url";
 
 type CandidateProfile = {
   organizer: { displayName: string; slug: string };
+  paymentNetworks?: string[];
   event: {
     slug: string;
     title: string;
@@ -91,7 +92,7 @@ export default async function CandidateProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  const { organizer, event, candidate } = data;
+  const { organizer, event, candidate, paymentNetworks } = data;
   // Rendu no-store : la phase est recalculée à chaque requête (7.11-c).
   const phase = getVotePhase(event);
   const t9n = (key: MessageKey) => translate(locale, key);
@@ -140,6 +141,7 @@ export default async function CandidateProfilePage({ params }: PageProps) {
                 candidateName={candidate.fullName}
                 voteUnitPriceCfa={event.voteUnitPriceCfa}
                 initialVoteCount={candidate.voteCount}
+                paymentNetworks={paymentNetworks}
               />
             ) : (
               <PhaseNotice

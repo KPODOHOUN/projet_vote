@@ -80,7 +80,7 @@ export function DashboardSidebar() {
         onClick={() => setIsMobileOpen(!isMobileOpen)}
         aria-label={isMobileOpen ? t("nav.closeMenu") : t("nav.openMenu")}
         aria-expanded={isMobileOpen}
-        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-foreground hover:bg-accent lg:hidden"
+        className="fixed left-4 top-2.5 z-50 flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-foreground hover:bg-accent lg:hidden"
       >
         <Menu className="h-5 w-5" aria-hidden="true" />
       </button>

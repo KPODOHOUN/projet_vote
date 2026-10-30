@@ -9,16 +9,12 @@ import { apiFetch, ApiError } from "../../lib/api";
 import { setStoredToken } from "../../lib/auth";
 import { showToast } from "../../lib/toast";
 import { trackEvent } from "../../lib/analytics";
-import { rememberOrgCode } from "../../lib/organizer-storage";
-import { slugifyTitle } from "../../lib/slugify";
 import { useI18n } from "../../lib/i18n-provider";
 import { validateStrongPassword } from "../../lib/password-policy";
 import { sanitizePhoneInput } from "../../lib/phone";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { Button, Input, FormError, Checkbox } from "@/components/ui";
 import { OAuthButtons } from "./oauth-buttons";
-
-type OfferType = "EXTERNAL" | "ESCROW";
 
 type RegisterResponse =
   | { accessToken: string }
@@ -30,16 +26,15 @@ type RegisterResponse =
     };
 
 type FieldErrors = {
-  tenantDisplayName?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
+  phone?: string | undefined;
   email?: string | undefined;
   password?: string | undefined;
   passwordConfirm?: string | undefined;
-  offerType?: string | undefined;
 };
 
-const SLUG_PATTERN = /^[a-z0-9-]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type RegisterFormProps = {
   /** Called after a successful account creation instead of redirecting (modal use). */
@@ -55,44 +50,57 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
   const { t, locale } = useI18n();
   const isEn = locale === "en";
 
-  const [tenantDisplayName, setTenantDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [showPhone, setShowPhone] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  // Escrow seul (D10) ; la valeur part toujours dans le payload d'inscription.
-  const offerType: OfferType = "ESCROW";
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isLoading, setIsLoading] = useState(false);
+  // Deux étapes : 1. qui vous êtes, 2. votre mot de passe. Un seul envoi à la fin.
+  const [step, setStep] = useState<1 | 2>(1);
 
-  const displayNameRef = useRef<HTMLInputElement>(null);
+  const firstNameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const required = t("auth.register.required");
 
-  const deriveOrgCode = (name: string): string => slugifyTitle(name).trim().toLowerCase();
-
-  const validate = () => {
+  // Inscription : seulement ce qui sert au compte. Les informations du contrat
+  // sont demandées au moment de signer le premier concours.
+  const validateIdentity = () => {
     const next: FieldErrors = {};
-    const orgCode = deriveOrgCode(tenantDisplayName);
-    if (!tenantDisplayName.trim()) next.tenantDisplayName = required;
-    else if (orgCode.length < 3 || !SLUG_PATTERN.test(orgCode)) next.tenantDisplayName = t("auth.register.orgNameInvalid");
     if (!firstName.trim()) next.firstName = required;
     if (!lastName.trim()) next.lastName = required;
+    if (phone.replace(/\D/g, "").length < 8) next.phone = phone.trim() ? t("auth.register.phoneInvalid") : required;
     if (!email.trim()) next.email = required;
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = t("auth.register.emailInvalid");
+    else if (!EMAIL_PATTERN.test(email)) next.email = t("auth.register.emailInvalid");
+    return next;
+  };
+
+  const goToSecurity = () => {
+    const errors = validateIdentity();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      if (errors.email && !errors.firstName) emailRef.current?.focus();
+      else firstNameRef.current?.focus();
+      return;
+    }
+    setError("");
+    setStep(2);
+    window.setTimeout(() => passwordRef.current?.focus(), 50);
+  };
+
+  const validate = () => {
+    const next: FieldErrors = validateIdentity();
     const passwordError = validateStrongPassword(password, isEn);
     if (passwordError) next.password = passwordError;
     if (!passwordConfirm) next.passwordConfirm = required;
     else if (passwordConfirm !== password) next.passwordConfirm = t("auth.register.passwordMismatch");
-    if (offerType !== "ESCROW") next.offerType = t("auth.register.offerOnlyEscrow");
     return next;
   };
 
@@ -100,10 +108,15 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
     event.preventDefault();
     setError("");
 
+    if (step === 1) {
+      goToSecurity();
+      return;
+    }
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      if (errors.tenantDisplayName) displayNameRef.current?.focus();
+      if (errors.firstName || errors.lastName || errors.phone || errors.email) setStep(1);
+      if (errors.firstName) firstNameRef.current?.focus();
       else if (errors.email) emailRef.current?.focus();
       else if (errors.password || errors.passwordConfirm) passwordRef.current?.focus();
       return;
@@ -115,19 +128,15 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
     setFieldErrors({});
     setIsLoading(true);
     try {
-      const tenantSlug = deriveOrgCode(tenantDisplayName);
       const result = await apiFetch<RegisterResponse>("/auth/register", {
         method: "POST",
         body: JSON.stringify({
-          tenantSlug,
-          tenantDisplayName: tenantDisplayName.trim(),
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
           email: email.trim(),
           password,
           passwordConfirm,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          ...(phone.trim() ? { phone: phone.trim() } : {}),
-          offerType,
           acceptPrivacyPolicy: true
         })
       });
@@ -154,7 +163,6 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
       }
       if ("accessToken" in result) {
         setStoredToken(result.accessToken);
-        rememberOrgCode(tenantSlug);
         showToast.success(t("auth.register.successToast"));
         void trackEvent("register");
         if (onSuccess) {
@@ -165,7 +173,9 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
       }
     } catch (caughtError) {
       if (caughtError instanceof ApiError && caughtError.status === 409) {
-        setError(t("auth.register.orgTaken"));
+        // Un compte existe déjà avec cet email : l'email est à l'étape 1.
+        setStep(1);
+        setFieldErrors((p) => ({ ...p, email: t("auth.register.emailTaken") }));
       } else {
         setError(caughtError instanceof Error ? caughtError.message : t("auth.register.failed"));
       }
@@ -188,26 +198,23 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
           <p className="mb-8 text-muted-foreground">{t("auth.register.subtitle")}</p>
         </>
       ) : null}
+      <div className="mb-6" aria-live="polite">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-semibold text-foreground">
+            {step === 1 ? t("auth.register.stepIdentity") : t("auth.register.stepSecurity")}
+          </p>
+          <p className="text-xs font-medium text-muted-foreground">{t("auth.register.stepOf", { step, total: 2 })}</p>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-1.5" aria-hidden="true">
+          <span className="h-1 rounded-full bg-primary" />
+          <span className={`h-1 rounded-full transition-colors ${step === 2 ? "bg-primary" : "bg-muted"}`} />
+        </div>
+      </div>
       <form onSubmit={onSubmit} className="space-y-5" noValidate>
-        <div className="space-y-4">
-          <Input
-            ref={displayNameRef}
-            id="tenantDisplayName"
-            label={t("auth.register.orgName")}
-            helpText={t("auth.register.orgNameHelp")}
-            value={tenantDisplayName}
-            onChange={(event) => setTenantDisplayName(event.target.value)}
-            onBlur={() =>
-              setFieldErrors((p) => ({ ...p, tenantDisplayName: tenantDisplayName.trim() ? undefined : required }))
-            }
-            placeholder={isEn ? "Demo Vote" : "Vote Demo"}
-            autoComplete="organization"
-            state={fieldErrors.tenantDisplayName ? "error" : "default"}
-            errorText={fieldErrors.tenantDisplayName}
-            required
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className={step === 1 ? "space-y-4" : "hidden"}>
+          <div className="grid grid-cols-2 gap-3">
             <Input
+              ref={firstNameRef}
               id="firstName"
               label={t("auth.register.firstName")}
               value={firstName}
@@ -240,7 +247,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
                 ...p,
                 email: !email.trim()
                   ? required
-                  : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+                  : EMAIL_PATTERN.test(email)
                     ? undefined
                     : t("auth.register.emailInvalid")
               }))
@@ -250,39 +257,21 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
             errorText={fieldErrors.email}
             required
           />
-          {/* Téléphone optionnel replié : réduit la hauteur du formulaire
-              initial dans la modale (friction) sans retirer le champ. */}
-          {showPhone ? (
-            <div className="space-y-1.5">
-              <Input
-                id="phone"
-                label={t("auth.register.phone")}
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
-                autoComplete="tel"
-                helpText={t("auth.register.phoneHelp")}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPhone(false);
-                  setPhone("");
-                }}
-                className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {t("auth.register.removePhone")}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowPhone(true)}
-              className="text-sm font-medium text-primary transition-colors hover:underline"
-            >
-              {t("auth.register.addPhone")}
-            </button>
-          )}
+          <Input
+            id="phone"
+            label={t("auth.register.phone")}
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
+            autoComplete="tel"
+            helpText={t("auth.register.phoneHelp")}
+            state={fieldErrors.phone ? "error" : "default"}
+            errorText={fieldErrors.phone}
+            required
+          />
+        </div>
+
+        <div className={step === 2 ? "space-y-4" : "hidden"}>
           <div className="relative">
             <Input
               ref={passwordRef}
@@ -305,7 +294,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
             />
             <button
               type="button"
-              className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
+              className="absolute right-1 top-[30px] flex size-9 items-center justify-center rounded-md text-muted-foreground sm:top-[28px] transition-colors hover:text-foreground"
               onClick={() => setShowPassword((v) => !v)}
               aria-pressed={showPassword}
               aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
@@ -325,14 +314,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
             required
           />
 
-          {/* Offre Escrow seule (D10) : affichée, pas choisie. */}
-          <div className="rounded-md border border-border bg-muted/40 p-3.5">
-            <p className="text-sm font-semibold text-slate-900">{t("auth.register.offerEscrowTitle")}</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{t("auth.register.offerEscrowDesc")}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-row items-start gap-3">
+          <div className="flex flex-row items-start gap-3 pt-1">
           <Checkbox
             id="acceptPrivacy"
             checked={acceptPrivacy}
@@ -346,23 +328,32 @@ export function RegisterForm({ onSuccess, onSwitchToLogin, hideHeading = false }
             </Link>
             {t("auth.register.privacySuffix")}
           </label>
+          </div>
         </div>
 
         <FormError>{error}</FormError>
 
-        <Button
-          type="submit"
-          loading={isLoading}
-          disabled={!acceptPrivacy}
-          className="h-12 w-full text-md font-bold shadow-lg"
-        >
-          {t("auth.register.submit")}
-        </Button>
+        {step === 1 ? (
+          <Button type="submit" size="lg" className="w-full font-semibold">
+            {t("auth.register.continue")}
+          </Button>
+        ) : (
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <Button type="button" variant="outline" size="lg" className="sm:w-auto" onClick={() => setStep(1)}>
+              {t("auth.register.back")}
+            </Button>
+            <Button type="submit" size="lg" loading={isLoading} disabled={!acceptPrivacy} className="flex-1 font-semibold">
+              {t("auth.register.submit")}
+            </Button>
+          </div>
+        )}
       </form>
 
-      <div className="mt-6">
-        <OAuthButtons />
-      </div>
+      {step === 1 ? (
+        <div className="mt-6">
+          <OAuthButtons />
+        </div>
+      ) : null}
 
       <div className="mt-6 flex items-center justify-between border-t border-border pt-6 text-sm">
         <span className="text-muted-foreground">{t("auth.register.hasAccount")}</span>

@@ -33,8 +33,8 @@ const STEPS = [
     icon: CreditCard,
     titleFr: "Encaissez via Mobile Money",
     titleEn: "Collect via Mobile Money",
-    descFr: "FeexPay, KkiaPay, FedaPay ou SebPay (bientôt).",
-    descEn: "FeexPay, KkiaPay, FedaPay or SebPay (soon)."
+    descFr: "SHADOMA encaisse les paiements MTN et Moov via FeexPay ou FedaPay.",
+    descEn: "SHADOMA collects MTN and Moov payments via FeexPay or FedaPay."
   }
 ] as const;
 

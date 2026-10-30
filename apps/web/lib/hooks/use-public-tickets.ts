@@ -14,7 +14,7 @@ export type PublicTicketType = {
   _count: { tickets: number };
 };
 
-/** Types de billets publics d'un évènement (GET /public/events/:slug/ticket-types). */
+/** Types de billets publics d'un événement (GET /public/events/:slug/ticket-types). */
 export function usePublicTicketTypes(slug: string) {
   return useQuery({
     queryKey: ["public-ticket-types", slug],

@@ -10,6 +10,7 @@ import { useI18n } from "../../lib/i18n-provider";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
 import { Button, Card, FormError, Input } from "@/components/ui";
+import { ArrowLeft } from "lucide-react";
 
 type ForgotPasswordResponse = {
   success: boolean;
@@ -72,7 +73,8 @@ export default function ForgotPasswordPage() {
           </Button>
         </form>
         <p className="mt-8 text-center text-sm">
-          <Link href={authLoginUrl()} className="font-semibold text-primary hover:underline">
+          <Link href={authLoginUrl()} className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
+            <ArrowLeft className="size-4" aria-hidden="true" />
             {t("authpages.47")}
           </Link>
         </p>

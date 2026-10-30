@@ -16,3 +16,13 @@ export function canManageTeam(role: UserRole | string | null | undefined): boole
 export function canManagePaymentSecrets(role: UserRole | string | null | undefined): boolean {
   return role === "ORGANIZER_OWNER" || isPlatformOperatorRole(role);
 }
+
+/** Terminer ou supprimer un événement : owner + opérateur (miroir des gardes API owner-only). */
+export function canManageEventLifecycle(role: UserRole | string | null | undefined): boolean {
+  return role === "ORGANIZER_OWNER" || isPlatformOperatorRole(role);
+}
+
+/** Demander un retrait, gérer le numéro de retrait : owner uniquement côté organisateur. */
+export function canWithdraw(role: UserRole | string | null | undefined): boolean {
+  return role === "ORGANIZER_OWNER" || isPlatformOperatorRole(role);
+}

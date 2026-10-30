@@ -4,26 +4,14 @@ import * as assert from "node:assert/strict";
 import { EventStatus, PaymentProvider } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../../test-utils/db";
-import { OrganizerSecretsService } from "../../organizer-secrets/organizer-secrets.service";
 import { PlatformSecretsService } from "../../platform-control/platform-secrets.service";
-import { FEEXPAY_API_SECRET_KEY, FEDAPAY_API_SECRET_KEY } from "../../common/payment-secrets";
 import { env } from "../../config/env";
 import { PspRegistry } from "./psp.registry";
 import { FeexpayGateway } from "./feexpay.gateway";
 import { FedapayGateway } from "./fedapay.gateway";
-import { KkiapayGateway } from "./kkiapay.gateway";
 
 const prismaService = new PrismaService();
-const secrets = new OrganizerSecretsService(prismaService);
-const platformSecrets = new PlatformSecretsService(prismaService);
-const registry = new PspRegistry(
-  prismaService,
-  secrets,
-  platformSecrets,
-  new FeexpayGateway(),
-  new FedapayGateway(),
-  new KkiapayGateway()
-);
+const registry = new PspRegistry(prismaService, new PlatformSecretsService(prismaService), new FeexpayGateway(), new FedapayGateway());
 
 before(() => assertTestDatabase());
 beforeEach(() => resetDatabase());
@@ -47,79 +35,27 @@ async function seed(opts: { tenantProvider?: PaymentProvider | null; eventProvid
   return { tenant, event };
 }
 
-test("get() returns the gateway whose .provider matches", () => {
+test("get() renvoie la passerelle du prestataire ; un prestataire retiré n'en a pas", () => {
   assert.equal(registry.get(PaymentProvider.FEEXPAY).provider, PaymentProvider.FEEXPAY);
   assert.equal(registry.get(PaymentProvider.FEDAPAY).provider, PaymentProvider.FEDAPAY);
-  assert.equal(registry.get(PaymentProvider.KKIAPAY).provider, PaymentProvider.KKIAPAY);
+  assert.throws(() => registry.get(PaymentProvider.KKIAPAY), /Aucun adaptateur/);
 });
 
-test("resolveProvider: event override wins over tenant and default", async () => {
+test("resolveProvider : le choix du concours l'emporte sur celui de l'organisateur et sur le défaut", async () => {
   const { tenant, event } = await seed({ tenantProvider: PaymentProvider.FEEXPAY, eventProvider: PaymentProvider.FEDAPAY });
-  const p = await registry.resolveProvider({ eventId: event.id, tenantId: tenant.id });
-  assert.equal(p, PaymentProvider.FEDAPAY);
+  assert.equal(await registry.resolveProvider({ eventId: event.id, tenantId: tenant.id }), PaymentProvider.FEDAPAY);
 });
 
-test("resolveProvider: tenant default applies when event has no override", async () => {
-  const { tenant, event } = await seed({ tenantProvider: PaymentProvider.KKIAPAY, eventProvider: null });
-  const p = await registry.resolveProvider({ eventId: event.id, tenantId: tenant.id });
-  assert.equal(p, PaymentProvider.KKIAPAY);
+test("resolveProvider : choix de l'organisateur, sinon défaut de la plateforme", async () => {
+  const pinned = await seed({ tenantProvider: PaymentProvider.FEDAPAY });
+  assert.equal(await registry.resolveProvider({ eventId: pinned.event.id, tenantId: pinned.tenant.id }), PaymentProvider.FEDAPAY);
+  assert.equal(await registry.resolveProvider({ tenantId: pinned.tenant.id }), PaymentProvider.FEDAPAY);
+  const free = await seed({});
+  assert.equal(await registry.resolveProvider({ eventId: free.event.id, tenantId: free.tenant.id }), env.DEFAULT_PSP_PROVIDER);
 });
 
-test("resolveProvider: platform default (FEEXPAY) when neither event nor tenant pins one", async () => {
-  const { tenant, event } = await seed({ tenantProvider: null, eventProvider: null });
-  const p = await registry.resolveProvider({ eventId: event.id, tenantId: tenant.id });
-  assert.equal(p, PaymentProvider.FEEXPAY);
-});
-
-test("resolveProvider: without eventId falls back to tenant then default", async () => {
-  const { tenant } = await seed({ tenantProvider: PaymentProvider.FEDAPAY, eventProvider: null });
-  const p = await registry.resolveProvider({ tenantId: tenant.id });
-  assert.equal(p, PaymentProvider.FEDAPAY);
-});
-
-test("resolveCredentials returns per-provider creds", () => {
-  assert.ok(registry.resolveCredentials(PaymentProvider.FEEXPAY).apiKey.length > 0);
-  assert.ok(registry.resolveCredentials(PaymentProvider.FEDAPAY).apiKey.length > 0);
-  assert.ok(registry.resolveCredentials(PaymentProvider.KKIAPAY).apiKey.length > 0);
-});
-
-test("resolveVotePayinCredentials: clé organisateur pour les votes, pas pour l'activation", async () => {
-  const { tenant, event } = await seed({ tenantProvider: null, eventProvider: null });
-  const secrets = new OrganizerSecretsService(prismaService);
-  const owner = { userId: "u1", tenantId: tenant.id, email: "o@t.bj", role: "ORGANIZER_OWNER" as const };
-  await secrets.saveSecret(owner, { key: FEEXPAY_API_SECRET_KEY, value: "fp_live_organizer_key_123" });
-
-  const voteCreds = await registry.resolveVotePayinCredentials({
-    eventId: event.id,
-    tenantId: tenant.id
-  });
-  assert.equal(voteCreds.apiKey, "fp_live_organizer_key_123");
-
-  const activationCreds = await registry.resolvePlatformCredentials(PaymentProvider.FEEXPAY);
-  assert.equal(activationCreds.apiKey, env.FEEXPAY_API_KEY);
-  assert.notEqual(activationCreds.apiKey, voteCreds.apiKey);
-});
-
-test("resolveVotePayinCredentials route la clé orga FedaPay", async () => {
-  const { tenant, event } = await seed({ tenantProvider: PaymentProvider.FEDAPAY });
-  const owner = { userId: "u", tenantId: tenant.id, email: "o@t.bj", role: "ORGANIZER_OWNER" as const };
-  await secrets.saveSecret(owner, { key: FEDAPAY_API_SECRET_KEY, value: "sk_orga_fedapay" });
-
-  const creds = await registry.resolveVotePayinCredentials({ eventId: event.id, tenantId: tenant.id });
-  assert.equal(creds.apiKey, "sk_orga_fedapay");
-});
-
-test("resolveVotePayinCredentials: évènement partenaire → clé plateforme", async () => {
-  const { tenant, event } = await seed({ tenantProvider: null, eventProvider: null });
-  const owner = { userId: "u1", tenantId: tenant.id, email: "o@t.bj", role: "ORGANIZER_OWNER" as const };
-  await secrets.saveSecret(owner, { key: FEEXPAY_API_SECRET_KEY, value: "fp_live_organizer_key_123" });
-  await prisma.event.update({ where: { id: event.id }, data: { isPartnerEvent: true } });
-
-  const voteCreds = await registry.resolveVotePayinCredentials({
-    eventId: event.id,
-    tenantId: tenant.id
-  });
-  const platformCreds = await registry.resolvePlatformCredentials(PaymentProvider.FEEXPAY);
-  assert.equal(voteCreds.apiKey, platformCreds.apiKey);
-  assert.notEqual(voteCreds.apiKey, "fp_live_organizer_key_123");
+test("identifiants : toujours le compte de la plateforme (SHADOMA encaisse tout)", async () => {
+  assert.equal((await registry.resolvePlatformCredentials(PaymentProvider.FEDAPAY)).apiKey, env.FEDAPAY_API_KEY);
+  assert.equal((await registry.resolvePlatformCredentials(PaymentProvider.FEEXPAY)).apiKey, env.FEEXPAY_API_KEY);
+  await assert.rejects(registry.resolvePlatformCredentials(PaymentProvider.KKIAPAY), /Aucun compte de paiement/);
 });

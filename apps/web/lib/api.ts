@@ -15,7 +15,8 @@ async function runRefresh(): Promise<string | null> {
     if (!res.ok) {
       return null;
     }
-    const data = (await res.json()) as { accessToken: string };
+    const data = (await res.json()) as { accessToken: string | null };
+    if (!data.accessToken) return null;
     setStoredToken(data.accessToken);
     return data.accessToken;
   } catch {

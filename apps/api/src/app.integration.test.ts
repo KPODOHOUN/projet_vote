@@ -11,15 +11,11 @@ import { assertTestDatabase, prisma, resetDatabase } from "./test-utils/db";
 import type { FeexpayInitRequest, FeexpayInitResult, FeexpayStatusPayload } from "./payments/feexpay/feexpay.types";
 import { FeexpayGateway } from "./payments/psp/feexpay.gateway";
 import { parseStrictProviderAmount } from "./payments/psp/parse-provider-amount";
-import type { PspCredentials, PspStatusResult } from "./payments/psp/psp.types";
+import type { PspCredentials, PspPayinInitInput, PspPayinInitResult, PspStatusResult } from "./payments/psp/psp.types";
 import { AuthService } from "./auth/auth.service";
 import { UserRole } from "@prisma/client";
 import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter";
-import {
-  OFFER2_PER_VOTE_COMMISSION_BPS_KEY,
-  OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY
-} from "./common/platform-settings";
 
 
 /**
@@ -42,6 +38,11 @@ class IntegrationFakeFeexpay {
 class IntegrationFakeFeexpayGateway extends FeexpayGateway {
   constructor(private readonly fake: IntegrationFakeFeexpay) {
     super();
+  }
+
+  async initPayin(input: PspPayinInitInput, _creds: PspCredentials): Promise<PspPayinInitResult> {
+    const init = await this.fake.initRequestToPay({ amountCfa: input.amountCfa } as FeexpayInitRequest);
+    return { reference: init.reference, status: "PENDING", amountCfa: input.amountCfa };
   }
 
   async fetchPayinStatus(reference: string, _creds: PspCredentials): Promise<PspStatusResult> {
@@ -101,11 +102,12 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   const registerResponse = await request(app.getHttpServer())
     .post("/api/v1/auth/register")
     .send({
-      tenantSlug: "demo-vote",
-      tenantDisplayName: "Demo Vote",
+      firstName: "Awa",
+      lastName: "Demo",
+      phone: "0197000001",
       email: "owner@demovote.africa",
+      organizationName: "Demo Vote",
       password: "SecurePass123!",
-      offerType: "ESCROW",
       acceptPrivacyPolicy: true
     });
 
@@ -122,6 +124,8 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.equal(meResponse.status, 200);
   const tenantId = meResponse.body.tenantId as string;
   assert.ok(tenantId.length > 5);
+  // Le lien public de l'organisation est généré, jamais choisi.
+  const tenantSlug = (await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } })).slug;
 
   // The admin surface (/admin/*) is restricted to platform operators (RBAC
   // hardening). verifyAccessToken re-reads the role from the database, so the
@@ -144,16 +148,17 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   });
   const platformAdminHeader = `Bearer ${platformAdminToken}`;
 
-  // SECURITY: re-registering on an existing tenant slug must be rejected (409),
-  // never silently attach a new ORGANIZER_OWNER to someone else's tenant.
+  // Un email = un compte : réutiliser l'adresse d'un organisateur est refusé (409),
+  // jamais rattaché en silence à l'organisation d'un autre.
   const duplicateSlugRegister = await request(app.getHttpServer())
     .post("/api/v1/auth/register")
     .send({
-      tenantSlug: "demo-vote",
-      tenantDisplayName: "Impersonator",
-      email: "attacker@evil.africa",
+      firstName: "Faux",
+      lastName: "Compte",
+      phone: "0197000002",
+      email: "owner@demovote.africa",
+      organizationName: "Impersonator",
       password: "SecurePass123!",
-      offerType: "ESCROW",
       acceptPrivacyPolicy: true
     });
   assert.equal(duplicateSlugRegister.status, 409);
@@ -168,19 +173,6 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   accessToken = refreshResponse.body.accessToken as string;
   cookies = refreshResponse.headers["set-cookie"];
   authHeader = `Bearer ${accessToken}`;
-
-  const upsertSecretResponse = await request(app.getHttpServer())
-    .post("/api/v1/organizer/secrets")
-    .set("Authorization", authHeader)
-    .send({ key: "feexpay_api_secret", value: "my-super-sensitive-secret" });
-  assert.equal(upsertSecretResponse.status, 201);
-  assert.equal(upsertSecretResponse.body.key, "feexpay_api_secret");
-
-  const getSecretResponse = await request(app.getHttpServer())
-    .get("/api/v1/organizer/secrets/feexpay_api_secret")
-    .set("Authorization", authHeader);
-  assert.equal(getSecretResponse.status, 200);
-  assert.equal(getSecretResponse.body.value, "my-super-sensitive-secret");
 
   const now = new Date();
   const eventStartsAt = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -227,14 +219,6 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.equal(listEventsResponse.status, 200);
   assert.equal(listEventsResponse.body.length, 1);
 
-  // Activate the event before voting (events start as DRAFT)
-  const activateEventResponse = await request(app.getHttpServer())
-    .patch(`/api/v1/events/${eventId}`)
-    .set("Authorization", authHeader)
-    .send({ status: "ACTIVE" });
-  assert.equal(activateEventResponse.status, 200);
-  assert.equal(activateEventResponse.body.status, "ACTIVE");
-
   const createCandidateResponse = await request(app.getHttpServer())
     .post(`/api/v1/events/${eventId}/candidates`)
     .set("Authorization", authHeader)
@@ -246,6 +230,52 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
 
   assert.equal(createCandidateResponse.status, 201);
   assert.equal(createCandidateResponse.body.number, 7);
+
+  // Un concours ne passe jamais en ligne par simple modification…
+  const patchToActive = await request(app.getHttpServer())
+    .patch(`/api/v1/events/${eventId}`)
+    .set("Authorization", authHeader)
+    .send({ status: "ACTIVE" });
+  assert.equal(patchToActive.status, 409);
+
+  // … mais par la signature du contrat généré par la plateforme.
+  const contractResponse = await request(app.getHttpServer())
+    .post(`/api/v1/events/${eventId}/contract`)
+    .set("Authorization", authHeader)
+    .send({
+      firstName: "Awa",
+      lastName: "Demo",
+      phone: "0197000001",
+      address: "Rue 12, Cotonou",
+      idDocumentType: "CNI",
+      idDocumentNumber: "AB123456",
+      organizationName: "Demo Vote"
+    });
+  assert.equal(contractResponse.status, 201);
+  const contractId = contractResponse.body.id as string;
+  const codeResponse = await request(app.getHttpServer())
+    .post(`/api/v1/events/${eventId}/contract/${contractId}/code`)
+    .set("Authorization", authHeader);
+  assert.equal(codeResponse.status, 201);
+  assert.match(String(codeResponse.body.devCode), /^\d{6}$/);
+  const signResponse = await request(app.getHttpServer())
+    .post(`/api/v1/events/${eventId}/contract/${contractId}/sign`)
+    .set("Authorization", authHeader)
+    .send({
+      contentHash: contractResponse.body.contentHash,
+      signerName: "Awa Demo",
+      accept: true,
+      code: codeResponse.body.devCode
+    });
+  assert.equal(signResponse.status, 201);
+  const publishedEvent = await prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+  assert.equal(publishedEvent.status, "ACTIVE");
+  assert.equal(publishedEvent.commissionBps, 1200);
+  const signedPdf = await request(app.getHttpServer())
+    .get(`/api/v1/events/${eventId}/contract/${contractId}/pdf`)
+    .set("Authorization", authHeader);
+  assert.equal(signedPdf.status, 200);
+  assert.equal(signedPdf.headers["content-type"], "application/pdf");
 
   // Phase 2 — endpoint de signature d'upload : gardé par auth, 503 si Cloudinary
   // non configuré (cas par défaut en test → prouve le wiring + le guard).
@@ -261,7 +291,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   const castVoteResponse = await request(app.getHttpServer())
     .post("/api/v1/votes/cast")
     .send({
-      tenantSlug: "demo-vote",
+      tenantSlug,
       eventSlug: "finale-2026",
       candidateNumber: 7,
       quantity: 1,
@@ -275,38 +305,54 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   const wrongAmountVote = await request(app.getHttpServer())
     .post("/api/v1/votes/cast")
     .send({
-      tenantSlug: "demo-vote",
+      tenantSlug,
       eventSlug: "finale-2026",
       candidateNumber: 7,
       voterPhone: "22999003344"
     });
   assert.equal(wrongAmountVote.status, 400);
 
-  const initPaymentResponse = await request(app.getHttpServer())
-    .post("/api/v1/payments/init")
-    .set("Authorization", authHeader)
-    .send({
-      tenantId,
-      eventId: eventId,
-      amountCfa: 1000,
-      idempotencyKey: "idem-key-1234567890",
-      requestFingerprint: "fingerprint-001"
-    });
+  const voteId = castVoteResponse.body.id as string;
+  const publicInit = (overrides: Record<string, unknown> = {}) =>
+    request(app.getHttpServer())
+      .post("/api/v1/payments/public/init")
+      .send({
+        tenantSlug,
+        eventSlug: "finale-2026",
+        voteId,
+        amountCfa: 500,
+        idempotencyKey: "idem-key-1234567890",
+        payerPhone: "0199001122",
+        operator: "mtn",
+        ...overrides
+      });
 
+  // Le réseau Mobile Money est obligatoire ; après un refus, le même vote ne
+  // peut pas être repayé (409, jamais une erreur serveur) : le votant recommence.
+  const refusedVote = await request(app.getHttpServer())
+    .post("/api/v1/votes/cast")
+    .send({ tenantSlug, eventSlug: "finale-2026", candidateNumber: 7, quantity: 1, voterPhone: "22999007788" });
+  assert.equal(refusedVote.status, 201);
+  const noNetworkInit = await publicInit({ voteId: refusedVote.body.id, operator: undefined, idempotencyKey: "idem-key-no-network-0001" });
+  assert.equal(noNetworkInit.status, 400);
+  const retrySameVote = await publicInit({ voteId: refusedVote.body.id, idempotencyKey: "idem-key-no-network-0002" });
+  assert.equal(retrySameVote.status, 409);
+
+  const initPaymentResponse = await publicInit();
   assert.equal(initPaymentResponse.status, 201);
   assert.equal(initPaymentResponse.body.status, "PENDING");
+  assert.equal(typeof initPaymentResponse.body.statusToken, "string");
   const transactionId = initPaymentResponse.body.transactionId as string;
 
-  // --- Tenant isolation: a second tenant must NOT be able to initiate a
-  // payment scoped to the first tenant (cross-tenant write / IDOR). ---
+  // --- Isolation entre organisateurs ---
   const attackerRegister = await request(app.getHttpServer())
     .post("/api/v1/auth/register")
     .send({
-      tenantSlug: "rival-vote",
-      tenantDisplayName: "Rival Vote",
+      firstName: "Rival",
+      lastName: "Vote",
+      phone: "0197000003",
       email: "owner@rivalvote.africa",
       password: "SecurePass123!",
-      offerType: "ESCROW",
       acceptPrivacyPolicy: true
     });
   assert.equal(attackerRegister.status, 201);
@@ -317,6 +363,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.equal(attackerMe.status, 200);
   const attackerTenantId = attackerMe.body.tenantId as string;
   assert.notEqual(attackerTenantId, tenantId);
+  const attackerSlug = (await prisma.tenant.findUniqueOrThrow({ where: { id: attackerTenantId } })).slug;
 
   // ADR-016: event slugs are GLOBALLY unique — another organizer cannot reuse
   // an existing event slug (409).
@@ -331,56 +378,35 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
     });
   assert.equal(duplicateEventSlug.status, 409);
 
-  // Forging the victim tenantId in the body must be rejected (403).
-  const crossTenantByTenantId = await request(app.getHttpServer())
-    .post("/api/v1/payments/init")
+  // Un autre organisateur ne peut pas payer des votes sur le concours d'autrui (404).
+  const crossTenantTopup = await request(app.getHttpServer())
+    .post("/api/v1/payments/organizer/topup")
     .set("Authorization", attackerAuthHeader)
     .send({
-      tenantId,
       eventId,
-      amountCfa: 1000,
-      idempotencyKey: "idem-key-attacker-tenant-0001",
-      requestFingerprint: "fingerprint-attacker-001"
+      candidateId: createCandidateResponse.body.id,
+      votesCount: 2,
+      idempotencyKey: "idem-key-attacker-topup-0001",
+      payerPhone: "0199003344",
+      operator: "mtn"
     });
-  assert.equal(crossTenantByTenantId.status, 403);
+  assert.equal(crossTenantTopup.status, 404);
 
-  // Pairing own tenantId with the victim's eventId must not resolve (404).
-  const crossTenantByEventId = await request(app.getHttpServer())
-    .post("/api/v1/payments/init")
-    .set("Authorization", attackerAuthHeader)
-    .send({
-      tenantId: attackerTenantId,
-      eventId,
-      amountCfa: 1000,
-      idempotencyKey: "idem-key-attacker-event-0001",
-      requestFingerprint: "fingerprint-attacker-002"
-    });
-  assert.equal(crossTenantByEventId.status, 404);
+  // Associer son propre lien d'organisation au vote d'un autre ne résout rien.
+  const crossTenantPublic = await publicInit({ tenantSlug: attackerSlug, idempotencyKey: "idem-key-attacker-public-0001" });
+  assert.equal(crossTenantPublic.status, 401);
 
-  const idempotentPaymentResponse = await request(app.getHttpServer())
-    .post("/api/v1/payments/init")
-    .set("Authorization", authHeader)
-    .send({
-      tenantId,
-      eventId: eventId,
-      amountCfa: 1000,
-      idempotencyKey: "idem-key-1234567890",
-      requestFingerprint: "fingerprint-001"
-    });
-
+  // Rejouer la même demande renvoie la même transaction, sans nouvelle demande de paiement.
+  const idempotentPaymentResponse = await publicInit();
   assert.equal(idempotentPaymentResponse.status, 201);
   assert.equal(idempotentPaymentResponse.body.transactionId, transactionId);
 
-  const conflictedPaymentResponse = await request(app.getHttpServer())
-    .post("/api/v1/payments/init")
-    .set("Authorization", authHeader)
-    .send({
-      tenantId,
-      eventId: eventId,
-      amountCfa: 1500,
-      idempotencyKey: "idem-key-1234567890",
-      requestFingerprint: "fingerprint-002"
-    });
+  // La même clé pour un autre paiement est refusée (409).
+  const secondVote = await request(app.getHttpServer())
+    .post("/api/v1/votes/cast")
+    .send({ tenantSlug, eventSlug: "finale-2026", candidateNumber: 7, quantity: 2, voterPhone: "22999005566" });
+  assert.equal(secondVote.status, 201);
+  const conflictedPaymentResponse = await publicInit({ voteId: secondVote.body.id, amountCfa: 1000 });
   assert.equal(conflictedPaymentResponse.status, 409);
 
   // ADR-017: a webhook for an UNKNOWN reference is acknowledged with 200/201
@@ -399,15 +425,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   });
   assert.equal(stillPending?.status, "PENDING");
 
-  // Platform commission (10% = 1000 bps) is captured at payment confirmation.
-  // The tenant is ESCROW: its rate comes from the per-vote offer settings,
-  // not from the legacy `commission_bps` key.
-  await prisma.platformSetting.createMany({
-    data: [
-      { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY, value: "true", updatedByUserId: "system" },
-      { key: OFFER2_PER_VOTE_COMMISSION_BPS_KEY, value: "1000", updatedByUserId: "system" }
-    ]
-  });
+  // Commission par défaut (12 %) prélevée à la confirmation du paiement.
 
   // ADR-017 happy path: bind a Feexpay reference to the transaction, script
   // a SUCCESSFUL pull at the exact amount, then trigger the webhook. The
@@ -418,7 +436,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   });
   fakeFeexpay.scripted.set("fp_123", {
     status: "SUCCESSFUL",
-    amount: "1000",
+    amount: "500",
     currency: "XOF"
   });
   const processPaymentSuccessResponse = await request(app.getHttpServer())
@@ -427,11 +445,12 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.equal(processPaymentSuccessResponse.status, 201);
   assert.equal(processPaymentSuccessResponse.body.outcome, "applied");
 
-  // Commission captured: 10% of 1000 FCFA = 100.
+  // Commission prélevée : 12 % de 500 F CFA = 60, le reste revient à l'organisateur.
   const settledTx = await prisma.paymentTransaction.findUnique({
     where: { idempotencyKey: "idem-key-1234567890" }
   });
-  assert.equal(settledTx?.commissionCfa, 100);
+  assert.equal(settledTx?.commissionCfa, 60);
+  assert.equal(settledTx?.id, transactionId);
 
   // RBAC hardening: an organizer must NOT reach the admin surface anymore.
   const organizerAuditLogsForbidden = await request(app.getHttpServer())
@@ -447,23 +466,8 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.ok(listAuditLogsResponse.body.items.length >= 4);
   assert.equal(listAuditLogsResponse.body.items[0].tenantId, tenantId);
 
-  const invalidFeatureFlagResponse = await request(app.getHttpServer())
-    .post("/api/v1/admin/feature-flags")
-    .set("Authorization", platformAdminHeader)
-    .send({
-      key: "!!",
-      enabled: true,
-      rolloutPercent: 100
-    });
-  assert.equal(invalidFeatureFlagResponse.status, 400);
-
   const unauthorizedJobsResponse = await request(app.getHttpServer()).get("/api/v1/admin/jobs/overview");
   assert.equal(unauthorizedJobsResponse.status, 401);
-
-  const invalidSubscriptionsQueryResponse = await request(app.getHttpServer())
-    .get("/api/v1/admin/subscriptions/overview?from=invalid-date")
-    .set("Authorization", platformAdminHeader);
-  assert.equal(invalidSubscriptionsQueryResponse.status, 400);
 
   const privacyExportResponse = await request(app.getHttpServer())
     .get("/api/v1/privacy/export")
@@ -474,17 +478,25 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
     true
   );
 
-  const privacyDeleteResponse = await request(app.getHttpServer())
+  // Effacement : confirmation obligatoire, et refusé tant que le responsable
+  // a un événement en cours (fonds et votants ne doivent pas être abandonnés).
+  const privacyDeleteUnconfirmed = await request(app.getHttpServer())
     .delete("/api/v1/privacy/delete")
-    .set("Authorization", authHeader);
-  assert.equal(privacyDeleteResponse.status, 200);
-  assert.equal(privacyDeleteResponse.body.success, true);
+    .set("Authorization", authHeader)
+    .send({});
+  assert.equal(privacyDeleteUnconfirmed.status, 401);
+  const privacyDeleteWhileLive = await request(app.getHttpServer())
+    .delete("/api/v1/privacy/delete")
+    .set("Authorization", authHeader)
+    .send({ currentPassword: "SecurePass123!" });
+  assert.equal(privacyDeleteWhileLive.status, 400);
+  assert.match(String(privacyDeleteWhileLive.body.message), /événements en cours/);
 
   const maintenanceCronPayload = {
     auditLogsRetentionDays: 7,
     idempotencyRetentionDays: 1,
     revokedSessionsRetentionDays: 1,
-    tenantSlug: "demo-vote"
+    tenantSlug
   };
   const maintenanceCronSignature = createHmac(
     "sha256",

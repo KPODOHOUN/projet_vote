@@ -1,8 +1,10 @@
 import "reflect-metadata";
 import { test, before, after } from "node:test";
 import * as assert from "node:assert/strict";
-import { TenantOfferType, UserRole, WalletLedgerKind, WithdrawalStatus } from "@prisma/client";
+import { UserRole, WalletLedgerKind, WithdrawalStatus } from "@prisma/client";
 import type { AuthUser } from "../auth/auth.types";
+import { NotificationsService } from "../notifications/notifications.service";
+import { PayoutDestinationService } from "../payouts/payout-destination.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
 import { WalletService } from "./wallet.service";
@@ -10,7 +12,12 @@ import { WithdrawalsService } from "./withdrawals.service";
 
 const prismaService = new PrismaService();
 const wallet = new WalletService(prismaService);
-const withdrawals = new WithdrawalsService(prismaService, wallet);
+const withdrawals = new WithdrawalsService(
+  prismaService,
+  wallet,
+  new NotificationsService(prismaService),
+  new PayoutDestinationService(prismaService)
+);
 
 before(async () => {
   assertTestDatabase();
@@ -27,7 +34,6 @@ async function seedOrganizer(withdrawableCfa: number) {
     data: {
       slug: `wd-${suffix}`,
       displayName: "Retraits",
-      offerType: TenantOfferType.ESCROW,
       payoutNetwork: "MTN",
       payoutPhoneEnc: "iv:tag:cipher",
       payoutPhoneLast4: "3456"

@@ -5,15 +5,21 @@ import { apiFetch } from "@/lib/api";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Settings2, Shield, Key, Plus, Trash2 } from "lucide-react";
-import { Button, Card, Input, KpiCard, LoadingState } from "@/components/ui";
-import { AdminErrorAlert, AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
+import { KeyRound, Shield, Key, Plus, Trash2 } from "lucide-react";
+import { Button, Card, Input, LoadingState } from "@/components/ui";
+import {
+  AdminErrorAlert,
+  AdminPageHeader,
+  AdminPageShell,
+  AdminStatGrid,
+  AdminStatTile
+} from "@/components/admin/admin-shell";
 import { getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
+import { roleLabel } from "../../../lib/admin-labels";
 import {
   getPlatformSettings,
   savePlatformFeexpayCredentials,
-  updatePlatformSettings,
   type PlatformSettingsResponse
 } from "../../../lib/platform-settings";
 import { showToast } from "../../../lib/toast";
@@ -23,13 +29,10 @@ export default function DashboardAdminSettingsPage() {
   const { locale } = useI18n();
   const isEn = locale === "en";
   const [data, setData] = useState<PlatformSettingsResponse | null>(null);
-  const [commissionPercent, setCommissionPercent] = useState("");
-  const [activationFeeCfa, setActivationFeeCfa] = useState("");
   const [feexpayApiKey, setFeexpayApiKey] = useState("");
   const [feexpayShopId, setFeexpayShopId] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isSavingFeexpay, setIsSavingFeexpay] = useState(false);
 
   // Admin management
@@ -132,8 +135,6 @@ export default function DashboardAdminSettingsPage() {
       try {
         const response = await getPlatformSettings(token);
         setData(response);
-        setCommissionPercent(String(response.commissionBps / 100));
-        setActivationFeeCfa(String(response.activationFeeCfa));
         setFeexpayShopId(response.feexpayShopId);
       } catch (caughtError) {
         setError(
@@ -148,45 +149,6 @@ export default function DashboardAdminSettingsPage() {
       }
     })();
   }, [router, isEn]);
-
-  async function onSaveSettings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const token = getStoredToken();
-    if (!token) return;
-    // Un champ vide n'est jamais enregistré en 0 ; un 0 explicite est confirmé.
-    const normalizedCommission = commissionPercent.trim().replace(",", ".");
-    const commission = Number.parseFloat(normalizedCommission);
-    if (normalizedCommission === "" || !Number.isFinite(commission) || commission < 0 || commission > 100) {
-      setError(isEn ? "Enter a commission between 0 and 100 %." : "Saisissez une commission entre 0 et 100 %.");
-      return;
-    }
-    if (
-      commission === 0 &&
-      !window.confirm(isEn ? "Save a 0 % default commission?" : "Enregistrer une commission par défaut de 0 % ?")
-    ) {
-      return;
-    }
-    setIsSavingSettings(true);
-    setError("");
-    try {
-      const response = await updatePlatformSettings(token, {
-        commissionBps: Math.round(commission * 100),
-        activationFeeCfa: Number.parseInt(activationFeeCfa, 10)
-      });
-      setData(response);
-      showToast.success(isEn ? "Settings saved." : "Réglages enregistrés.");
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : isEn
-            ? "Save failed."
-            : "Enregistrement impossible."
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
 
   async function onSaveFeexpay(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -232,8 +194,8 @@ export default function DashboardAdminSettingsPage() {
         title={isEn ? "Platform settings" : "Réglages plateforme"}
         description={
           isEn
-            ? "Launch fee, commission, and SHADOMA payment account for organizer launch payments."
-            : "Forfait de lancement, commission et compte de paiement SHADOMA pour les mises en ligne."
+            ? "SHADOMA's payment account. Commission and reserve are set under Money."
+            : "Compte de paiement de SHADOMA. La commission et la réserve se règlent dans Argent."
         }
       />
 
@@ -243,47 +205,13 @@ export default function DashboardAdminSettingsPage() {
         <LoadingState variant="rows" count={3} label={isEn ? "Loading…" : "Chargement…"} />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <KpiCard
+          <AdminStatGrid columns="grid-cols-1 sm:grid-cols-2">
+            <AdminStatTile
               label={isEn ? "Payment account" : "Compte de paiement"}
               value={setup?.feexpayConfigured ? (isEn ? "Ready" : "Prêt") : isEn ? "Not set" : "Non configuré"}
             />
-            <KpiCard
-              label={isEn ? "Launch fee" : "Forfait de lancement"}
-              value={`${data?.activationFeeCfa?.toLocaleString(isEn ? "en-GB" : "fr-FR") ?? "0"} FCFA`}
-            />
-          </div>
-
-          <Card className="border border-border p-6 space-y-5">
-            <div className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-primary" aria-hidden="true" />
-              <h3 className="text-lg font-semibold text-foreground">
-                {isEn ? "Pricing" : "Tarification"}
-              </h3>
-            </div>
-            <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={onSaveSettings}>
-              <Input
-                id="commissionPercent"
-                label={isEn ? "Default commission (%)" : "Commission par défaut (%)"}
-                helpText={isEn ? "e.g. 5 for 5%" : "ex. 5 pour 5 %"}
-                value={commissionPercent}
-                onChange={(e) => setCommissionPercent(e.target.value)}
-                required
-              />
-              <Input
-                id="activationFeeCfa"
-                label={isEn ? "Launch fee (FCFA)" : "Forfait de lancement (FCFA)"}
-                value={activationFeeCfa}
-                onChange={(e) => setActivationFeeCfa(e.target.value)}
-                required
-              />
-              <div className="md:col-span-2">
-                <Button type="submit" loading={isSavingSettings}>
-                  {isEn ? "Save pricing" : "Enregistrer la tarification"}
-                </Button>
-              </div>
-            </form>
-          </Card>
+            <AdminStatTile label={isEn ? "Commission & reserve" : "Commission et réserve"} value={isEn ? "Money section" : "Rubrique Argent"} href="/admin/offers" />
+          </AdminStatGrid>
 
           <Card className="border border-primary/20 bg-primary/5 p-6 space-y-5">
             <div className="flex items-center gap-2">
@@ -294,8 +222,8 @@ export default function DashboardAdminSettingsPage() {
             </div>
             <p className="text-sm text-muted-foreground">
               {isEn
-                ? "Used for organizer launch fees. Voter payments use each organizer's own account."
-                : "Utilisé pour les forfaits de lancement. Les votes passent par le compte de chaque organisateur."}
+                ? "SHADOMA collects every payment (votes and tickets) on this account, then pays organizers their share."
+                : "SHADOMA encaisse tous les paiements (votes et billets) sur ce compte, puis reverse leur part aux organisateurs."}
             </p>
             <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={onSaveFeexpay}>
               <Input
@@ -335,9 +263,12 @@ export default function DashboardAdminSettingsPage() {
                   <div key={a.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
                     <div>
                       <p className="text-sm font-medium text-foreground">{a.email}</p>
-                      <p className="text-xs text-muted-foreground">{a.role} · {new Date(a.createdAt).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isEn ? "Added on " : "Ajouté le "}
+                        {new Date(a.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}
+                      </p>
                     </div>
-                    <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">{a.role === "PLATFORM_SUPER_ADMIN" ? "Super Admin" : "Admin"}</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">{roleLabel(a.role, isEn)}</span>
                   </div>
                 ))}
               </div>
@@ -387,8 +318,8 @@ export default function DashboardAdminSettingsPage() {
                       <p className="text-xs font-mono text-muted-foreground">{k.keyPrefix}...{k.revokedAt ? ` (${isEn ? "revoked" : "révoquée"})` : ""}</p>
                     </div>
                     {!k.revokedAt && (
-                      <Button size="sm" variant="ghost" onClick={() => revokeApiKey(k.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                      <Button size="sm" variant="ghost" aria-label={isEn ? `Revoke key ${k.label}` : `Révoquer la clé ${k.label}`} onClick={() => revokeApiKey(k.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
                       </Button>
                     )}
                   </div>

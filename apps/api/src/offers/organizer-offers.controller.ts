@@ -36,18 +36,6 @@ export class OrganizerOffersController {
     return this.offers.getOffer(user);
   }
 
-  @Post("offer/switch")
-  @Roles(...OWNER_ROLES)
-  switchOffer(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.offers.switchOffer(user, body);
-  }
-
-  @Post("offer/fedapay-subaccount")
-  @Roles(...OWNER_ROLES)
-  submitFedaPaySubAccount(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.offers.submitFedaPaySubAccount(user, body);
-  }
-
   @Get("wallet")
   getWallet(@CurrentUser() user: AuthUser) {
     return this.wallet.getWallet(user.tenantId);

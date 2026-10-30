@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Shield } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Shield } from "lucide-react";
 import { apiFetch, ApiError } from "../lib/api";
 import { setStoredToken } from "../lib/auth";
 import { showToast } from "../lib/toast";
@@ -114,9 +114,10 @@ export function AdminLoginForm() {
             />
             <button
               type="button"
-              className="absolute right-3 top-9 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-1 top-[30px] flex size-9 items-center justify-center rounded-md text-muted-foreground sm:top-[28px] hover:text-foreground transition-colors"
               onClick={() => setShowPassword((v) => !v)}
               tabIndex={-1}
+              aria-label={showPassword ? (isEn ? "Hide password" : "Masquer le mot de passe") : isEn ? "Show password" : "Afficher le mot de passe"}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
@@ -127,9 +128,10 @@ export function AdminLoginForm() {
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-foreground transition-colors">
-            {isEn ? "← Back to SHADOMA" : "← Retour sur SHADOMA"}
+        <p className="mt-6 text-center">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            {isEn ? "Back to SHADOMA" : "Retour sur SHADOMA"}
           </Link>
         </p>
       </div>

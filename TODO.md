@@ -1,49 +1,23 @@
-# TODO — Système d'abonnement + Commission
+# TODO — points ouverts avant la mise en production
 
-> **⚠️ PARKÉ depuis le 29/07/2026 (ADR-019).** Tout ce qui suit a bien été livré tel que décrit, mais n'est **plus le modèle de monétisation actif**. L'offre Escrow (commission par vote, portefeuille held/withdrawable — voir [ADR-020](docs/adr/ADR-020-settlement-finance-model.md)) l'a remplacé pour la bêta. Le code reste en place (voir `docs/superpowers/specs/2026-08-28-settlement-module-map.md` pour le statut détaillé par module) mais n'est plus dans le parcours produit actif — gardé pour référence/migration, pas comme feuille de route en cours.
+Le système d'abonnement, le forfait d'activation et l'offre EXTERNAL ont été supprimés le 29/10/2026
+(ADR-022) ; leurs données sont archivées dans `LegacyArchive`.
 
-## ✅ Phase 1 — Schéma Prisma (base de données)
+## Bloquant pour signer des contrats en production
 
-- [x] Créer le modèle `Plan` dans schema.prisma → ✅ `Plan` model with name, slug, priceCfa, maxEvents, commissionRate, isActive, sortOrder, features
-- [x] Ajouter `planId` optionnel dans `AccountSubscription` → ✅ avec relation vers `Plan`
-- [x] Créer la migration Prisma → `20260725000000_add_plan_model`
-- [x] Seed des 4 plans (Free, Starter, Pro, Enterprise)
+- [ ] Renseigner les informations légales de SHADOMA (variables d'environnement de l'API) :
+      `PLATFORM_LEGAL_NAME`, `PLATFORM_LEGAL_FORM`, `PLATFORM_LEGAL_ADDRESS`,
+      `PLATFORM_LEGAL_REGISTRATION` (RCCM / IFU), `PLATFORM_LEGAL_REPRESENTATIVE`,
+      `PLATFORM_LEGAL_EMAIL`, `CONTRACT_JURISDICTION` (ex. « Tribunal de commerce de Cotonou »).
+      Tant qu'elles manquent, la signature est refusée en production.
+- [ ] Faire relire le modèle de contrat (`apps/api/src/contracts/contract-template.ts`, version
+      `2026-10-30.1`) par un juriste béninois, puis passer `CONTRACT_TEMPLATE_LEGALLY_REVIEWED=true`.
+- [ ] Configurer l'envoi d'emails (`MAIL_RESEND_API_KEY`) : sans lui, le code de signature ne part pas
+      et la signature est impossible en production.
 
-## ✅ Phase 2 — Backend : Service Plans (Admin CRUD)
+## Déploiement
 
-- [x] Créer `plans.module.ts`, `plans.controller.ts`, `plans.service.ts` → ✅ CRUD complet
-- [x] Routes CRUD pour les plans → ✅ `GET /admin/plans`, `POST`, `PUT /:id`, `DELETE /:id`
-- [x] Intégrer dans `AdminModule` → ✅
-
-## ✅ Phase 3 — Backend : Endpoint public + commission + maxEvents
-
-- [x] Route publique `GET /plans` → ✅ dans `plans-public.controller.ts`
-- [x] Modifier `resolveCommissionCfa()` pour utiliser `plan.commissionRate` → ✅ dans `payment-verify.service.ts`
-- [x] Modifier `activateSubscriptionFromPayment()` pour lier au plan → ✅
-- [x] Ajouter `canCreateEvent()` dans PlansService → ✅ avec vérification maxEvents
-    
-## ✅ Phase 4 — Backend : Limite d'événements
-
-- [x] Modifier `assertSubscriptionForEventCreation()` pour utiliser `plansService.canCreateEvent()` → ✅
-- [x] Importer `PlansModule` dans `EventsModule` → ✅
-- [x] Ajouter `PlansService` dans EventsService constructor → ✅
-
-## ✅ Phase 5 — Frontend : Page Pricing publique
-
-- [x] Créer `/pricing/page.tsx` avec tableau comparatif → ✅ Interface complète avec cartes
-
-## ✅ Phase 6 — Frontend : Admin Dashboard Plans
-
-- [x] Créer `/admin/plans/page.tsx` avec CRUD → ✅ Tableau + Modal création/édition
-- [x] Ajouter "Plans" dans la sidebar admin → ✅
-
-## ✅ Phase 7 — Frontend : Modal Upgrade
-
-- [x] Créer composant `plan-upgrade-modal.tsx` → ✅ Modal avec sélection de plans payants
-- [x] Intégrer dans le flow de création d'événement → ✅ Composant prêt à être utilisé
-
-## ✅ Phase 8 — Dashboard utilisateur : section abonnement
-
-- [x] Exposer `GET /subscriptions/usage` (plansService.getUsageStats) → ✅ dans `subscriptions.controller.ts`
-- [x] Hook React Query `useSubscriptionUsage()` → ✅ `lib/hooks/use-subscription.ts`
-- [x] Afficher le plan actuel, commission, limite d'événements → ✅ carte "Votre utilisation" dans `/dashboard/subscription` (progression eventsUsed/eventsLimit, alerte limite atteinte, CTA /pricing)
+- [ ] Appliquer les migrations `20261029100000_contract_finance_cleanup` puis
+      `20261029110000_backfill_counts_ledger_labels` (automatique au démarrage du conteneur API) :
+      la première archive les anciennes données dans `LegacyArchive` avant de supprimer les tables,
+      la seconde corrige les lignes existantes (quantité de votes, écritures de billets, libellés).

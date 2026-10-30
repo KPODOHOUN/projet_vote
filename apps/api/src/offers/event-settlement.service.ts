@@ -6,7 +6,6 @@ import {
 } from "@nestjs/common";
 import {
   EventStatus,
-  TenantOfferType,
   UserRole,
   WalletLedgerKind
 } from "@prisma/client";
@@ -14,7 +13,6 @@ import { createHash } from "crypto";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { PayoutJobLockService } from "../payouts/payout-job-lock.service";
-import { OfferSettingsService } from "./offer-settings.service";
 import { EventStatsService } from "./event-stats.service";
 import { WalletService } from "./wallet.service";
 import {
@@ -33,7 +31,6 @@ export class EventSettlementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wallet: WalletService,
-    private readonly offerSettings: OfferSettingsService,
     private readonly eventStats: EventStatsService,
     private readonly jobLock: PayoutJobLockService
   ) {}
@@ -42,106 +39,36 @@ export class EventSettlementService {
    * Manual close: set closedAt + CLOSED. For ESCROW, apply retention % on the
    * event's pending credits and release the remainder to available.
    */
+  /**
+   * Clôture d'un concours (manuelle ou automatique). Aucune retenue ici : la
+   * commission a été prélevée à chaque paiement et la réserve de ce concours se
+   * libère après le délai réglé (releaseMaturedHeld).
+   */
   async closeEvent(user: AuthUser, eventId: string) {
     const event = await this.prisma.client.event.findFirst({
       where: { id: eventId, tenantId: user.tenantId },
-      include: { tenant: { select: { offerType: true } } }
+      select: { id: true, status: true, closedAt: true }
     });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
     if (event.closedAt || event.status === EventStatus.CLOSED) {
-      throw new ConflictException("Cet évènement est déjà clôturé.");
+      throw new ConflictException("Cet événement est déjà clôturé.");
     }
     if (event.status === EventStatus.ARCHIVED) {
-      throw new ConflictException("Impossible de clôturer un évènement archivé.");
+      throw new ConflictException("Impossible de clôturer un événement archivé.");
+    }
+    if (event.status !== EventStatus.ACTIVE) {
+      throw new ConflictException("Seul un concours en ligne peut être clôturé.");
     }
 
-    const settings = await this.offerSettings.getSettings();
     const now = new Date();
-
-    const result = await this.prisma.client.$transaction(async (tx) => {
+    const closed = await this.prisma.client.$transaction(async (tx) => {
       const claimed = await tx.event.updateMany({
-        where: {
-          id: event.id,
-          closedAt: null,
-          status: { notIn: [EventStatus.CLOSED, EventStatus.ARCHIVED] }
-        },
+        where: { id: event.id, closedAt: null, status: EventStatus.ACTIVE },
         data: { status: EventStatus.CLOSED, closedAt: now }
       });
       if (claimed.count === 0) {
-        throw new ConflictException("Cet évènement a déjà été clôturé.");
+        throw new ConflictException("Cet événement a déjà été clôturé.");
       }
-      const closed = await tx.event.findUniqueOrThrow({ where: { id: event.id } });
-
-      let retentionCfa = 0;
-      let releasedCfa = 0;
-
-      if (event.tenant.offerType === TenantOfferType.ESCROW) {
-        const wallet = await this.wallet.getOrCreateWallet(user.tenantId, tx);
-        const entries = await tx.walletLedgerEntry.findMany({
-          where: { walletId: wallet.id, eventId: event.id }
-        });
-
-        if (!settings.offer2PerVoteCommissionEnabled) {
-          let credited = 0;
-          let alreadyDebited = 0;
-          for (const e of entries) {
-            if (
-              e.kind === WalletLedgerKind.VOTE_CREDIT ||
-              e.kind === WalletLedgerKind.TOPUP_CREDIT
-            ) {
-              credited += e.amountCfa;
-            } else if (
-              e.kind === WalletLedgerKind.RETENTION_DEBIT ||
-              e.kind === WalletLedgerKind.WITHDRAWAL_DEBIT
-            ) {
-              alreadyDebited += e.amountCfa;
-            } else if (e.kind === WalletLedgerKind.ADJUSTMENT && e.note?.includes("Libération")) {
-              // Already released to available — treat as out of pending pool.
-              alreadyDebited += e.amountCfa;
-            }
-          }
-
-          const pendingForEvent = Math.max(0, credited - alreadyDebited);
-          if (pendingForEvent > 0) {
-            retentionCfa = Math.floor(
-              (pendingForEvent * settings.offer2RetentionBps) / 10_000
-            );
-            const toRelease = pendingForEvent - retentionCfa;
-
-            if (retentionCfa > 0) {
-              await this.wallet.debit(
-                {
-                  tenantId: user.tenantId,
-                  amountCfa: retentionCfa,
-                  kind: WalletLedgerKind.RETENTION_DEBIT,
-                  from: "held",
-                  eventId: event.id,
-                  note: `Retenue plateforme ${settings.offer2RetentionBps} bps`
-                },
-                tx
-              );
-            }
-
-            if (toRelease > 0) {
-              await this.wallet.releaseHeldToWithdrawable(
-                {
-                  tenantId: user.tenantId,
-                  amountCfa: toRelease,
-                  eventId: event.id,
-                  note: "Libération held → withdrawable après clôture (legacy retenue)"
-                },
-                tx
-              );
-              releasedCfa = toRelease;
-            }
-          }
-        }
-        // Quand offer2PerVoteCommissionEnabled=true : aucune retenue ni
-        // libération ici. Le held de cet event a déjà été alloué vote par
-        // vote (creditSplit) et se libère 48h après clôture via
-        // EventSettlementService.releaseMaturedHeld — pas à la clôture elle-même.
-      }
-
       await tx.auditLog.create({
         data: {
           tenantId: user.tenantId,
@@ -150,24 +77,18 @@ export class EventSettlementService {
           action: "event.closed",
           targetType: "Event",
           targetId: event.id,
-          metadata: {
-            offerType: event.tenant.offerType,
-            retentionCfa,
-            releasedCfa,
-            closedAt: now.toISOString()
-          }
+          metadata: { closedAt: now.toISOString() }
         }
       });
-
-      return { event: closed, retentionCfa, releasedCfa };
+      return tx.event.findUniqueOrThrow({ where: { id: event.id } });
     });
 
     const stats = await this.eventStats.getEventStats(event.id, user.tenantId);
-    return { ...result, stats };
+    return { event: closed, stats };
   }
 
   /**
-   * Auto-close ACTIVE events past endsAt (Offer 2 retention applied via closeEvent logic).
+   * Clôture automatique des concours en ligne dont la date de fin est passée.
    */
   async closeExpiredEvents(limit = 100): Promise<{
     selected: number;
@@ -282,8 +203,7 @@ export class EventSettlementService {
     const matured = await this.prisma.client.event.findMany({
       where: {
         status: EventStatus.CLOSED,
-        closedAt: { lte: cutoff },
-        tenant: { offerType: TenantOfferType.ESCROW }
+        closedAt: { lte: cutoff }
       },
       select: { id: true, tenantId: true },
       orderBy: [{ closedAt: "asc" }, { id: "asc" }],

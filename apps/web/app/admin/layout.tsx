@@ -32,7 +32,7 @@ function AdminLayoutInner({ children }: Readonly<{ children: ReactNode }>) {
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminHeader />
         <main className="flex-1 overflow-y-auto bg-background/50">
-          <div className="mx-auto max-w-container-wide p-8 md:p-12 lg:p-16">{children}</div>
+          <div className="mx-auto max-w-container-wide px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">{children}</div>
         </main>
       </div>
     </div>

@@ -27,7 +27,8 @@ import {
   AdminErrorAlert,
   AdminFilterCard,
   AdminPageHeader,
-  AdminPageShell
+  AdminPageShell,
+  AdminSelect
 } from "@/components/admin/admin-shell";
 
 function formatCfa(amount: number, isEn: boolean) {
@@ -45,10 +46,12 @@ export default function AdminVotesPage() {
 
   const [votes, setVotes] = useState<PlatformVote[]>([]);
   const [eventId, setEventId] = useState("");
+  // Événements déjà vus dans les votes chargés : alimente le filtre par nom.
+  const [knownEvents, setKnownEvents] = useState<Record<string, string>>({});
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [limit, setLimit] = useState(50);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState<Record<string, string>>({});
+  const [cancelReason, setCancelReason] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -68,6 +71,11 @@ export default function AdminVotesPage() {
       });
       setNextCursor(response.nextCursor);
       setVotes((prev) => (cursor ? [...prev, ...response.items] : response.items));
+      setKnownEvents((prev) => {
+        const next = { ...prev };
+        for (const vote of response.items) next[vote.eventId] = vote.event.title;
+        return next;
+      });
     },
     [router, includeCancelled, limit, eventId]
   );
@@ -83,15 +91,13 @@ export default function AdminVotesPage() {
   const onCancel = async (voteId: string) => {
     const token = getStoredToken();
     if (!token) return;
-    const reason = cancelReason[voteId]?.trim();
-    if (!reason || reason.length < 3) {
-      showToast.error(isEn ? "Provide a reason (min 3 chars)." : "Indiquez un motif (min 3 caractères).");
-      return;
-    }
+    const reason = cancelReason.trim();
+    if (reason.length < 3) return;
     setBusyId(voteId);
     try {
       await cancelPlatformVote(token, voteId, reason);
-      showToast.success(isEn ? "Vote cancelled and vaulted." : "Vote annulé et coffré.");
+      showToast.success(isEn ? "Vote cancelled." : "Vote annulé.");
+      setCancelReason("");
       await load();
     } catch (caught) {
       showToast.error(caught instanceof Error ? caught.message : isEn ? "Cancel failed." : "Annulation impossible.");
@@ -115,16 +121,23 @@ export default function AdminVotesPage() {
     }
   };
 
+  const eventOptions = Object.entries(knownEvents)
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
   const voteColumns: Array<DataTableColumn<PlatformVote>> = [
     {
       key: "vote",
-      header: isEn ? "Vote" : "Vote",
+      header: isEn ? "Candidate" : "Candidat",
+      primary: true,
       render: (vote) => (
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{vote.id}</p>
-          <p className="text-xs text-muted-foreground">
-            {isEn ? "Event" : "Évènement"} {vote.eventId.slice(0, 10)}… ·{" "}
-            {new Date(vote.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR")}
+          <p className="font-medium text-foreground">
+            {vote.candidate.fullName}
+            <span className="ml-1.5 text-xs font-normal text-muted-foreground">n° {vote.candidate.number}</span>
+          </p>
+          <p className="text-xs font-normal text-muted-foreground">
+            {vote.event.title} · {new Date(vote.createdAt).toLocaleString(isEn ? "en-GB" : "fr-FR", { dateStyle: "short", timeStyle: "short" })}
           </p>
         </div>
       )
@@ -141,59 +154,75 @@ export default function AdminVotesPage() {
       render: (vote) =>
         vote.cancelledAt ? (
           <div className="space-y-1">
-            <StatusChip label={isEn ? "CANCELLED" : "ANNULÉ"} tone="error" />
+            <StatusChip label={isEn ? "Cancelled" : "Annulé"} tone="error" />
             {vote.cancelledReason ? (
               <p className="max-w-xs text-xs text-muted-foreground">{vote.cancelledReason}</p>
             ) : null}
           </div>
         ) : (
-          <StatusChip label={isEn ? "ACTIVE" : "ACTIF"} tone="active" />
+          <StatusChip label={isEn ? "Valid" : "Valide"} tone="active" />
         )
     },
     {
-      key: "moderation",
-      header: isEn ? "Moderation" : "Modération",
+      key: "actions",
+      header: <span className="sr-only">{isEn ? "Actions" : "Actions"}</span>,
+      align: "right",
+      cardSlot: "action",
       render: (vote) =>
-        vote.cancelledAt ? (
-          <span className="text-xs text-muted-foreground">{isEn ? "Already vaulted" : "Déjà coffré"}</span>
-        ) : (
-          <div className="space-y-2">
-            <Input
-              id={`reason-${vote.id}`}
-              label={isEn ? "Cancel reason" : "Motif d'annulation"}
-              value={cancelReason[vote.id] ?? ""}
-              onChange={(e) => setCancelReason((prev) => ({ ...prev, [vote.id]: e.target.value }))}
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                loading={busyId === vote.id}
-                onClick={() => void onCancel(vote.id)}
-              >
-                <Ban className="mr-1.5 size-4" />
-                {isEn ? "Cancel" : "Annuler"}
-              </Button>
-              <ConfirmDialog
-                disabled={busyId === vote.id}
-                title={isEn ? "Delete vote silently?" : "Supprimer le vote silencieusement ?"}
-                description={
-                  isEn
-                    ? "Hard-deletes the vote and its payment, keeping only an encrypted vault copy. No audit trail."
-                    : "Supprime définitivement le vote et son paiement, en ne gardant qu'une copie chiffrée au coffre. Aucune trace d'audit."
-                }
-                confirmLabel={isEn ? "Delete" : "Supprimer"}
-                cancelLabel={isEn ? "Cancel" : "Annuler"}
-                onConfirm={() => void onDelete(vote.id)}
-                trigger={
-                  <Button type="button" size="sm" variant="destructive">
-                    <Trash2 className="mr-1.5 size-4" />
-                    {isEn ? "Delete" : "Supprimer"}
-                  </Button>
-                }
+        vote.cancelledAt ? null : (
+          <div className="flex justify-end gap-1">
+            <ConfirmDialog
+              disabled={busyId === vote.id}
+              destructive={false}
+              title={isEn ? "Cancel this vote?" : "Annuler ce vote ?"}
+              description={
+                isEn
+                  ? `${vote.candidate.fullName} · ${formatCfa(vote.amountCfa, true)}. The vote stops counting.`
+                  : `${vote.candidate.fullName} · ${formatCfa(vote.amountCfa, false)}. Le vote ne compte plus.`
+              }
+              confirmLabel={isEn ? "Cancel the vote" : "Annuler le vote"}
+              cancelLabel={isEn ? "Back" : "Retour"}
+              confirmDisabled={cancelReason.trim().length < 3}
+              onOpenChange={(open) => {
+                if (!open) setCancelReason("");
+              }}
+              onConfirm={() => void onCancel(vote.id)}
+              trigger={
+                <Button type="button" size="sm" variant="outline" aria-label={isEn ? "Cancel vote" : "Annuler le vote"}>
+                  <Ban className="size-4" aria-hidden="true" />
+                  <span className="hidden lg:inline">{isEn ? "Cancel" : "Annuler"}</span>
+                </Button>
+              }
+            >
+              <Input
+                id={`reason-${vote.id}`}
+                label={isEn ? "Reason" : "Motif"}
+                placeholder={isEn ? "e.g. duplicate payment" : "ex. paiement en double"}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                helpText={isEn ? "3 characters minimum." : "3 caractères minimum."}
               />
-            </div>
+            </ConfirmDialog>
+            <ConfirmDialog
+              disabled={busyId === vote.id}
+              title={isEn ? "Delete this vote?" : "Supprimer ce vote ?"}
+              description={isEn ? "The vote and its payment are removed. Cannot be undone." : "Le vote et son paiement sont retirés. Irréversible."}
+              confirmLabel={isEn ? "Delete" : "Supprimer"}
+              cancelLabel={isEn ? "Back" : "Retour"}
+              onConfirm={() => void onDelete(vote.id)}
+              trigger={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  aria-label={isEn ? "Delete vote" : "Supprimer le vote"}
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                  <span className="hidden lg:inline">{isEn ? "Delete" : "Supprimer"}</span>
+                </Button>
+              }
+            />
           </div>
         )
     }
@@ -202,39 +231,37 @@ export default function AdminVotesPage() {
   return (
     <AdminPageShell>
       <AdminPageHeader
-        eyebrow={isEn ? "God-mode" : "God-mode"}
+        eyebrow={isEn ? "Platform" : "Plateforme"}
         title={isEn ? "Vote moderation" : "Modération des votes"}
-        description={
-          isEn
-            ? "Cancel or delete votes cross-tenant. Both actions move an encrypted copy to the vault and purge the main ledger. Irreversible from the UI."
-            : "Annulez ou supprimez des votes, tous tenants confondus. Les deux actions déposent une copie chiffrée au coffre et purgent le registre principal. Irréversible depuis l'UI."
-        }
+        description={isEn ? "Cancel or delete a vote. A copy is kept in the archive." : "Annulez ou supprimez un vote. Une copie reste dans l'archive."}
       />
 
-      <AdminFilterCard columns="md:grid-cols-3">
-        <Input
+      <AdminFilterCard columns="sm:grid-cols-[1fr_10rem] lg:grid-cols-[minmax(0,24rem)_10rem_auto]">
+        <AdminSelect
           id="eventId"
-          label={isEn ? "Filter by event ID" : "Filtrer par ID évènement"}
+          label={isEn ? "Event" : "Événement"}
           value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-          placeholder="cuid…"
+          onChange={setEventId}
+          options={[
+            { value: "", label: isEn ? "All events" : "Tous les événements" },
+            ...eventOptions
+          ]}
         />
-        <Input
+        <AdminSelect
           id="limit"
-          label={isEn ? "Page size" : "Taille de page"}
-          type="number"
-          min={1}
-          max={100}
-          value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
+          label={isEn ? "Rows" : "Lignes"}
+          value={String(limit)}
+          onChange={(v) => setLimit(Number(v))}
+          options={[25, 50, 100].map((n) => ({ value: String(n), label: String(n) }))}
         />
-        <label className="flex items-end gap-2 text-sm">
+        <label className="flex h-11 cursor-pointer items-center gap-2 text-sm sm:h-10">
           <input
             type="checkbox"
+            className="size-4"
             checked={includeCancelled}
             onChange={(e) => setIncludeCancelled(e.target.checked)}
           />
-          {isEn ? "Include cancelled" : "Inclure les annulés"}
+          {isEn ? "Show cancelled" : "Voir les annulés"}
         </label>
       </AdminFilterCard>
 
@@ -259,7 +286,7 @@ export default function AdminVotesPage() {
 
       {nextCursor ? (
         <div className="flex justify-center">
-          <Button type="button" variant="secondary" onClick={() => void load(nextCursor)}>
+          <Button type="button" variant="outline" onClick={() => void load(nextCursor)}>
             {isEn ? "Load more" : "Charger plus"}
           </Button>
         </div>

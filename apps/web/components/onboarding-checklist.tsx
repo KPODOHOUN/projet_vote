@@ -16,31 +16,22 @@ type OnboardingChecklistProps = {
   events: OnboardingEvent[];
   isEn?: boolean;
   linkShared?: boolean;
-  paymentReady?: boolean;
-  /** Formule partenaire : pas de compte Mobile Money à configurer */
-  skipPaymentStep?: boolean;
+  /** Numéro Mobile Money de retrait enregistré (où l'organisateur reçoit son argent). */
+  payoutConfigured?: boolean;
   onLinkShared?: () => void;
 };
 
-export function isOnboardingComplete(
-  events: OnboardingEvent[],
-  linkShared: boolean,
-  paymentReady = true,
-  skipPaymentStep = false
-): boolean {
-  if (events.length === 0) return false;
+export function isOnboardingComplete(events: OnboardingEvent[], linkShared: boolean, payoutConfigured = true): boolean {
   const latest = events[0];
   if (!latest) return false;
-  const paymentsOk = skipPaymentStep || paymentReady;
-  return latest.status === "ACTIVE" && paymentsOk && linkShared;
+  return latest.status === "ACTIVE" && payoutConfigured && linkShared;
 }
 
 export function OnboardingChecklist({
   events,
   isEn = false,
   linkShared = false,
-  paymentReady = false,
-  skipPaymentStep = false,
+  payoutConfigured = false,
   onLinkShared
 }: OnboardingChecklistProps) {
   const latest = events[0];
@@ -48,28 +39,23 @@ export function OnboardingChecklist({
     if (typeof window === "undefined" || !events[0]) return linkShared;
     return window.localStorage.getItem(`vp.onboarding.linkShared.${events[0].id}`) === "true" || linkShared;
   });
-  const paymentsDone = skipPaymentStep || paymentReady;
 
   const steps = [
     {
       done: events.length > 0 && (latest?.candidateCount ?? 0) > 0,
-      label: isEn ? "Create your event" : "Créer votre évènement",
+      label: isEn ? "Create your event" : "Créer votre événement",
       href: "/dashboard/start"
     },
     {
       done: latest?.status === "ACTIVE",
-      label: isEn ? "Go live" : "Mettre en ligne",
-      href: latest ? `/dashboard/events/${latest.id}/edit` : null
+      label: isEn ? "Sign the contract and go live" : "Signer le contrat et mettre en ligne",
+      href: latest ? `/dashboard/events/${latest.id}/contract` : null
     },
-    ...(skipPaymentStep
-      ? []
-      : [
-          {
-            done: paymentsDone,
-            label: isEn ? "Receive voter payments" : "Recevoir les paiements des votants",
-            href: "/dashboard/account"
-          }
-        ]),
+    {
+      done: payoutConfigured,
+      label: isEn ? "Save your Mobile Money withdrawal number" : "Enregistrer votre numéro Mobile Money de retrait",
+      href: "/dashboard/wallet"
+    },
     {
       done: shared,
       label: isEn ? "Share the voting link" : "Partager le lien de vote",
@@ -77,7 +63,7 @@ export function OnboardingChecklist({
     }
   ];
 
-  if (isOnboardingComplete(events, shared, paymentReady, skipPaymentStep)) {
+  if (isOnboardingComplete(events, shared, payoutConfigured)) {
     return null;
   }
 
@@ -94,13 +80,9 @@ export function OnboardingChecklist({
           {isEn ? `${steps.length} steps to launch` : `${steps.length} étapes pour lancer`}
         </h2>
         <p className="text-sm text-slate-600">
-          {skipPaymentStep
-            ? isEn
-              ? "Go live, then share the link. SHADOMA collects the payments."
-              : "Mettez en ligne, puis partagez le lien. SHADOMA encaisse les paiements."
-            : isEn
-              ? "Go live, connect Mobile Money, share."
-              : "Mettez en ligne, connectez Mobile Money, partagez."}
+          {isEn
+            ? "Sign the contract to go live, then share the link. SHADOMA collects the payments."
+            : "Signez le contrat pour mettre en ligne, puis partagez le lien. SHADOMA encaisse les paiements."}
         </p>
       </div>
       <ol className="space-y-3">

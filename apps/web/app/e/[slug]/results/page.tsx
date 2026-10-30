@@ -1,4 +1,4 @@
-// app/e/[slug]/results/page.tsx — Classement public d'un évènement.
+// app/e/[slug]/results/page.tsx — Classement public d'un événement.
 // Server Component. Câblé sur GET /votes/public/event/:slug/results →
 // { event, results, totals }. Invariant produit : seuls les votes PAYÉS comptent
 // (le backend filtre paidAt != null && cancelledAt == null). Aucun montant n'est

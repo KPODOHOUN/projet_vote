@@ -1,6 +1,6 @@
 import { ConflictException, BadRequestException, ForbiddenException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
-import { AuthOtpPurpose, InvitationStatus, TenantOfferType, UserRole } from "@prisma/client";
+import { AuthOtpPurpose, InvitationStatus, UserRole } from "@prisma/client";
 import { compare, hash } from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
@@ -8,19 +8,18 @@ import { env } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { MailService } from "../mail/mail.service";
-import { otpPasswordResetEmailHtml, otpVerificationEmailHtml } from "./auth-email.util";
+import { otpContractSignatureEmailHtml, otpPasswordResetEmailHtml, otpVerificationEmailHtml } from "./auth-email.util";
 import { isUniqueConstraintViolation } from "../common/prisma-errors";
 import { CURRENT_PRIVACY_POLICY_VERSION } from "../privacy/privacy-policy";
 import {
   DEFAULT_OTP_RESEND_DELAY_SECONDS,
   DEFAULT_OTP_TTL_SECONDS,
-  OFFER1_ENABLED_KEY,
   OTP_RESEND_DELAY_SECONDS_KEY,
   OTP_TTL_SECONDS_KEY,
-  parseBoolSetting,
   parseIntSetting
 } from "../common/platform-settings";
-import { DEFAULT_OFFER1_ENABLED } from "../offers/offer-settings.service";
+import { generateSecureEventSlug } from "../common/secure-event-slug";
+import { normalizePayinPhone } from "../common/mobile-operator";
 import type { AuthUser } from "./auth.types";
 
 // Politique appliquée aux NOUVEAUX mots de passe (inscription, reset, invitation).
@@ -39,17 +38,18 @@ export const strongPasswordSchema = z
     "Le mot de passe doit combiner au moins deux types de caractères (minuscule, majuscule, chiffre ou symbole)."
   );
 
+// Inscription : uniquement ce qui sert au compte. Les informations du contrat
+// (adresse, pièce d'identité…) sont demandées au moment de signer.
 const registerSchema = z
   .object({
-    tenantSlug: z.string().min(3).max(60),
-    tenantDisplayName: z.string().min(2).max(120),
-    email: z.string().email(),
+    firstName: z.string().trim().min(1).max(80),
+    lastName: z.string().trim().min(1).max(80),
+    phone: z.string().trim().min(8).max(30),
+    email: z.string().trim().email(),
     password: strongPasswordSchema,
     passwordConfirm: z.string().optional(),
-    firstName: z.string().min(1).max(80).optional(),
-    lastName: z.string().min(1).max(80).optional(),
-    phone: z.string().min(6).max(30).optional(),
-    offerType: z.nativeEnum(TenantOfferType),
+    // Nom public de l'organisation ; par défaut « Prénom Nom ».
+    organizationName: z.string().trim().min(2).max(120).optional(),
     // The organizer accepts the privacy policy once, here at account creation.
     // Must be explicitly true — registration is refused otherwise.
     acceptPrivacyPolicy: z.literal(true)
@@ -224,54 +224,35 @@ export class AuthService {
 
   async register(payload: unknown, meta?: SessionMeta) {
     const input = registerSchema.parse(payload);
-    const normalizedSlug = input.tenantSlug.toLowerCase();
     const normalizedEmail = input.email.toLowerCase();
+    const phone = normalizePayinPhone(input.phone);
 
-    if (input.offerType === TenantOfferType.EXTERNAL) {
-      const offer1Row = await this.prisma.client.platformSetting.findUnique({
-        where: { key: OFFER1_ENABLED_KEY }
-      });
-      const offer1Enabled = parseBoolSetting(offer1Row?.value, DEFAULT_OFFER1_ENABLED);
-      if (!offer1Enabled) {
-        throw new BadRequestException(
-          "L'offre External est en réflexion et indisponible. Choisissez l'offre Escrow (encaissement plateforme)."
-        );
-      }
-    }
-
-    // SECURITY: registration always provisions a NEW tenant. A duplicate slug
-    // is rejected (409) — it must NOT silently attach the new account to an
-    // existing tenant. Slugs are public (vote URLs), so reusing one would let
-    // anyone register as ORGANIZER_OWNER of another organizer's tenant.
-    // Adding members to an existing tenant is a separate authenticated flow.
-    const existingTenant = await this.prisma.client.tenant.findUnique({
-      where: { slug: normalizedSlug }
+    // Un email = un compte sur toute la plateforme : la connexion se fait par
+    // email seul, et une adresse rattachée à deux organisations serait ambiguë.
+    const existingUser = await this.prisma.client.user.findFirst({
+      where: { email: normalizedEmail },
+      select: { id: true }
     });
-    if (existingTenant) {
-      throw new ConflictException("Ce slug d'organisation est déjà utilisé.");
+    if (existingUser) {
+      throw new ConflictException("Un compte existe déjà avec cette adresse email. Connectez-vous ou réinitialisez votre mot de passe.");
     }
 
-    const tenant = await this.prisma.client.tenant
-      .create({
-        data: {
-          slug: normalizedSlug,
-          displayName: input.tenantDisplayName,
-          offerType: input.offerType
-        }
-      })
-      .catch((error: unknown) => {
-        // Unique-constraint backstop for the check-then-create race window.
-        if (isUniqueConstraintViolation(error)) {
-          throw new ConflictException("Ce slug d'organisation est déjà utilisé.");
-        }
-        throw error;
-      });
-
-    if (input.offerType === TenantOfferType.ESCROW) {
-      await this.prisma.client.organizerWallet.create({
-        data: { tenantId: tenant.id }
-      });
+    // SECURITY: registration always provisions a NEW tenant (never attaches to
+    // an existing one). Its public slug is generated, never chosen.
+    const displayName = input.organizationName ?? `${input.firstName} ${input.lastName}`;
+    let tenant: { id: string } | null = null;
+    for (let attempt = 0; attempt < 5 && !tenant; attempt += 1) {
+      tenant = await this.prisma.client.tenant
+        .create({ data: { slug: generateSecureEventSlug(displayName), displayName }, select: { id: true } })
+        .catch((error: unknown) => {
+          if (isUniqueConstraintViolation(error)) return null;
+          throw error;
+        });
     }
+    if (!tenant) {
+      throw new ConflictException("Impossible de créer votre espace. Réessayez.");
+    }
+    await this.prisma.client.organizerWallet.create({ data: { tenantId: tenant.id } });
 
     const passwordHash = await hash(input.password, 12);
     const user = await this.prisma.client.user.create({
@@ -280,9 +261,9 @@ export class AuthService {
         email: normalizedEmail,
         passwordHash,
         role: UserRole.ORGANIZER_OWNER,
-        ...(input.firstName ? { firstName: input.firstName } : {}),
-        ...(input.lastName ? { lastName: input.lastName } : {}),
-        ...(input.phone ? { phone: input.phone } : {}),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone,
         privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
         privacyAcceptedAt: new Date()
       }
@@ -859,6 +840,26 @@ export class AuthService {
     return { sent: !result.exposeInResponse };
   }
 
+  /**
+   * Code à 6 chiffres envoyé à l'email du compte pour confirmer une signature de
+   * contrat. Il prouve le contrôle de la boîte mail du compte au moment de la
+   * signature — pas l'identité civile du signataire. Hors production, si aucun
+   * email ne part, le code est renvoyé pour permettre les essais.
+   */
+  async sendContractSignatureCode(userId: string, email: string, eventTitle: string) {
+    const result = await this.createAndSendOtp(userId, email, AuthOtpPurpose.CONTRACT_SIGNATURE, eventTitle);
+    const exposeCode = !result.sent && env.NODE_ENV !== "production";
+    if (!result.sent && env.NODE_ENV === "production") {
+      throw new ServiceUnavailableException("Le code de signature n'a pas pu être envoyé. Réessayez dans quelques minutes.");
+    }
+    return { sent: result.sent, ...(exposeCode ? { devCode: result.code } : {}) };
+  }
+
+  /** Vérifie et consomme le code de signature (essais limités, expiration). */
+  async verifyContractSignatureCode(userId: string, code: string): Promise<void> {
+    await this.verifyAndConsumeOtpChallenge(userId, code, AuthOtpPurpose.CONTRACT_SIGNATURE);
+  }
+
   private async signAccessToken(user: AuthUser): Promise<string> {
     const secret = new TextEncoder().encode(env.API_JWT_SECRET);
     return new SignJWT({
@@ -952,7 +953,8 @@ export class AuthService {
   private async createAndSendOtp(
     userId: string,
     email: string,
-    purpose: AuthOtpPurpose
+    purpose: AuthOtpPurpose,
+    eventTitle = ""
   ): Promise<{ code: string; sent: boolean; exposeInResponse: boolean }> {
     const ttlSeconds = await this.getOtpTtlSeconds();
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
@@ -976,17 +978,25 @@ export class AuthService {
     });
 
     const ttlMinutes = Math.max(1, Math.ceil(ttlSeconds / 60));
-    const isReset = purpose === AuthOtpPurpose.PASSWORD_RESET;
-    const sent = await this.mail.send({
-      to: [email],
-      subject: isReset
-        ? "Réinitialisez votre mot de passe — SHADOMA Votes"
-        : "Confirmez votre adresse e-mail — SHADOMA Votes",
-      html: isReset ? otpPasswordResetEmailHtml(code, ttlMinutes) : otpVerificationEmailHtml(code, ttlMinutes),
-      text: isReset
-        ? `Code de réinitialisation : ${code} (expire dans ${ttlMinutes} min)`
-        : `Code de confirmation : ${code} (expire dans ${ttlMinutes} min)`
-    });
+    const message =
+      purpose === AuthOtpPurpose.PASSWORD_RESET
+        ? {
+            subject: "Réinitialisez votre mot de passe — SHADOMA Votes",
+            html: otpPasswordResetEmailHtml(code, ttlMinutes),
+            text: `Code de réinitialisation : ${code} (expire dans ${ttlMinutes} min)`
+          }
+        : purpose === AuthOtpPurpose.CONTRACT_SIGNATURE
+          ? {
+              subject: "Code de signature de votre contrat — SHADOMA Votes",
+              html: otpContractSignatureEmailHtml(code, ttlMinutes, eventTitle),
+              text: `Code de signature du contrat : ${code} (expire dans ${ttlMinutes} min)`
+            }
+          : {
+              subject: "Confirmez votre adresse e-mail — SHADOMA Votes",
+              html: otpVerificationEmailHtml(code, ttlMinutes),
+              text: `Code de confirmation : ${code} (expire dans ${ttlMinutes} min)`
+            };
+    const sent = await this.mail.send({ to: [email], ...message });
 
     const exposeInResponse = !sent && env.NODE_ENV === "development";
     if (exposeInResponse) {

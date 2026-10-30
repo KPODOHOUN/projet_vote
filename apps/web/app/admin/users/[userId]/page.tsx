@@ -6,27 +6,34 @@ import { apiFetch } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
-import { Button, ConfirmDialog, DataTable, Input, KpiCard, LoadingState, StatusChip } from "@/components/ui";
+import { getPaymentProvider } from "@/lib/payment-providers";
+import { TenantCommissionRatesPanel } from "@/components/admin/tenant-commission-rates-panel";
+import { Button, ConfirmDialog, DataTable, Input, LoadingState, StatusChip } from "@/components/ui";
 import type { DataTableColumn } from "@/components/ui";
-import { AdminPageHeader, AdminPageShell, AdminErrorAlert } from "@/components/admin/admin-shell";
+import {
+  AdminPageHeader,
+  AdminPageShell,
+  AdminErrorAlert,
+  AdminStatGrid,
+  AdminStatTile
+} from "@/components/admin/admin-shell";
 
 type UserDetail = {
   id: string;
   email: string;
   role: string;
   tenantId: string;
-  tenant: { id: string; slug: string; displayName: string; provider: string | null; commissionBps: number | null };
+  tenant: { id: string; slug: string; displayName: string; provider: string | null };
   emailVerifiedAt: string | null;
   suspendedAt: string | null;
   suspendedReason: string | null;
   createdAt: string;
   updatedAt: string;
   stats: { totalVotes: number; paidVotes: number; totalEvents: number; activeEvents: number; totalRevenueCfa: number };
-  subscription: { id: string; planType: string; status: string; expiresAt: string; frozenCommissionBps: number } | null;
   sessions: { id: string; createdAt: string; expiresAt: string; revokedAt: string | null }[];
 };
 
-const PROVIDERS = ["FEEXPAY", "KKIAPAY", "FEDAPAY"] as const;
+const PROVIDERS = ["FEEXPAY", "FEDAPAY"] as const;
 
 export default function AdminUserDetailPage() {
   const router = useRouter();
@@ -162,13 +169,13 @@ export default function AdminUserDetailPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-8">
-        <KpiCard label={isEn ? "Total votes" : "Votes totaux"} value={String(user.stats.totalVotes)} />
-        <KpiCard label={isEn ? "Paid votes" : "Votes payés"} value={String(user.stats.paidVotes)} />
-        <KpiCard label={isEn ? "Events" : "Événements"} value={String(user.stats.totalEvents)} />
-        <KpiCard label={isEn ? "Active events" : "Événements actifs"} value={String(user.stats.activeEvents)} />
-        <KpiCard label={isEn ? "Revenue (FCFA)" : "Revenu (FCFA)"} value={String(user.stats.totalRevenueCfa)} />
-      </div>
+      <AdminStatGrid columns="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" className="mb-8">
+        <AdminStatTile label={isEn ? "Total votes" : "Votes totaux"} value={String(user.stats.totalVotes)} />
+        <AdminStatTile label={isEn ? "Paid votes" : "Votes payés"} value={String(user.stats.paidVotes)} />
+        <AdminStatTile label={isEn ? "Events" : "Événements"} value={String(user.stats.totalEvents)} />
+        <AdminStatTile label={isEn ? "Active events" : "Événements actifs"} value={String(user.stats.activeEvents)} />
+        <AdminStatTile label={isEn ? "Revenue (FCFA)" : "Revenu (FCFA)"} value={String(user.stats.totalRevenueCfa)} />
+      </AdminStatGrid>
 
       <div className="grid gap-6 md:grid-cols-2 mb-8">
         <div className="rounded-xl border border-border bg-card p-5">
@@ -195,24 +202,21 @@ export default function AdminUserDetailPage() {
               className="flex-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">{isEn ? "Default" : "Défaut"}</option>
-              {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+              {PROVIDERS.map((p) => (
+                <option key={p} value={p}>
+                  {getPaymentProvider(p)?.name ?? p}
+                </option>
+              ))}
             </select>
             <Button onClick={updateProvider} loading={saving === "provider"}>
               {isEn ? "Save" : "Enregistrer"}
             </Button>
           </div>
-          {user.subscription && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-                {isEn ? "Subscription" : "Abonnement"}
-              </h4>
-              <dl className="space-y-1 text-sm">
-                <div className="flex justify-between"><dt className="text-muted-foreground">{isEn ? "Plan" : "Plan"}</dt><dd>{user.subscription.planType}</dd></div>
-                <div className="flex justify-between"><dt className="text-muted-foreground">{isEn ? "Status" : "Statut"}</dt><dd>{user.subscription.status}</dd></div>
-                <div className="flex justify-between"><dt className="text-muted-foreground">{isEn ? "Expires" : "Expire"}</dt><dd>{new Date(user.subscription.expiresAt).toLocaleDateString()}</dd></div>
-              </dl>
+          {user.role === "ORGANIZER_OWNER" ? (
+            <div className="mt-4 border-t border-border pt-4">
+              <TenantCommissionRatesPanel tenantId={user.tenantId} />
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -258,7 +262,7 @@ export default function AdminUserDetailPage() {
         open={showSuspendConfirm}
         onOpenChange={setShowSuspendConfirm}
         title={isEn ? "Suspend user" : "Suspendre l'utilisateur"}
-        description={isEn ? "This will block login and all active sessions." : "Cela bloquera la connexion et toutes les sessions actives."}
+        description={isEn ? "The person can no longer sign in." : "La personne ne pourra plus se connecter."}
         confirmLabel={isEn ? "Suspend" : "Suspendre"}
         onConfirm={suspendUser}
       >
@@ -275,8 +279,8 @@ export default function AdminUserDetailPage() {
         onOpenChange={setShowDeleteConfirm}
         title={isEn ? "Delete user permanently" : "Supprimer définitivement"}
         description={isEn
-          ? "This will permanently delete the user, their tenant, all events, votes, and payments. This action cannot be undone."
-          : "Cela supprimera définitivement l'utilisateur, son tenant, tous les événements, votes et paiements. Action irréversible."}
+          ? "Deletes the account, its events, votes and payments. Cannot be undone."
+          : "Supprime le compte, ses événements, votes et paiements. Irréversible."}
         confirmLabel={isEn ? "Delete permanently" : "Supprimer définitivement"}
         variant="destructive"
         onConfirm={deleteUser}

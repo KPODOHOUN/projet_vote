@@ -3,10 +3,12 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { WalletLedgerKind, WithdrawalStatus } from "@prisma/client";
+import { NotificationType, WalletLedgerKind, WithdrawalStatus } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { env } from "../config/env";
+import { NotificationsService } from "../notifications/notifications.service";
+import { PayoutDestinationService } from "../payouts/payout-destination.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "./wallet.service";
 
@@ -22,25 +24,16 @@ const rejectSchema = z.object({
 export class WithdrawalsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly wallet: WalletService
+    private readonly wallet: WalletService,
+    private readonly notifications: NotificationsService,
+    private readonly destinations: PayoutDestinationService
   ) {}
 
   async requestWithdrawal(user: AuthUser, payload: unknown) {
     const input = requestWithdrawalSchema.parse(payload);
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: user.tenantId },
-      select: { offerType: true, payoutPhoneEnc: true }
-    });
-    if (!tenant) throw new NotFoundException("Organisation introuvable.");
-    if (tenant.offerType !== "ESCROW") {
-      throw new ConflictException(
-        "Les retraits portefeuille sont réservés à l'offre Escrow (Offre 2)."
-      );
-    }
-    if (!tenant.payoutPhoneEnc) {
-      throw new ConflictException(
-        "Configurez d'abord votre destination de paiement (numéro Mobile Money) avant de demander un retrait."
-      );
+    const destination = await this.destinations.snapshotForTenant(user.tenantId);
+    if (!destination) {
+      throw new ConflictException("Enregistrez d'abord votre numéro Mobile Money de retrait.");
     }
 
     return this.prisma.client.$transaction(async (tx) => {
@@ -55,7 +48,8 @@ export class WithdrawalsService {
         data: {
           tenantId: user.tenantId,
           amountCfa: input.amountCfa,
-          status: WithdrawalStatus.PENDING
+          status: WithdrawalStatus.PENDING,
+          ...destination
         }
       });
 
@@ -104,16 +98,56 @@ export class WithdrawalsService {
       ...(status ? { where: { status } } : {}),
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: {
-        tenant: { select: { id: true, slug: true, displayName: true, offerType: true } }
+      // Jamais le numéro chiffré : réseau + 4 derniers chiffres seulement.
+      select: {
+        id: true,
+        tenantId: true,
+        amountCfa: true,
+        status: true,
+        rejectReason: true,
+        payoutNetwork: true,
+        payoutPhoneLast4: true,
+        processedAt: true,
+        createdAt: true,
+        tenant: { select: { id: true, slug: true, displayName: true } }
       }
     });
   }
 
-  async approve(admin: AuthUser, id: string) {
-    return this.transition(admin, id, WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED, {
-      action: "withdrawal.approved"
+  /**
+   * Numéro complet à créditer pour un retrait accepté. Seul un administrateur y
+   * accède, et chaque consultation est journalisée.
+   */
+  async revealDestination(admin: AuthUser, id: string) {
+    const request = await this.prisma.client.withdrawalRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException("Demande de retrait introuvable.");
+    if (request.status !== WithdrawalStatus.APPROVED) {
+      throw new ConflictException("Le numéro n'est visible que pour un retrait accepté, à payer.");
+    }
+    if (!request.payoutPhoneEnc || !request.payoutNetwork) {
+      throw new ConflictException("Cette ancienne demande n'a pas de numéro enregistré : contactez l'organisateur.");
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: request.tenantId,
+        actorUserId: admin.userId,
+        actorRole: admin.role,
+        action: "withdrawal.destination_revealed",
+        targetType: "WithdrawalRequest",
+        targetId: request.id
+      }
     });
+    return {
+      network: request.payoutNetwork,
+      phone: this.destinations.revealAccount(request.payoutPhoneEnc),
+      amountCfa: request.amountCfa
+    };
+  }
+
+  async approve(admin: AuthUser, id: string) {
+    return this.notify(NotificationType.WITHDRAWAL_APPROVED, await this.transition(admin, id, WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED, {
+      action: "withdrawal.approved"
+    }));
   }
 
   async reject(admin: AuthUser, id: string, payload: unknown) {
@@ -126,7 +160,7 @@ export class WithdrawalsService {
       );
     }
 
-    return this.prisma.client.$transaction(async (tx) => {
+    const rejected = await this.prisma.client.$transaction(async (tx) => {
       // Atomic claim: only one concurrent reject/approve can move the request
       // out of PENDING. Without it two rejects both restored the amount.
       const claim = await tx.withdrawalRequest.updateMany({
@@ -170,13 +204,20 @@ export class WithdrawalsService {
 
       return updated;
     });
+    return this.notify(NotificationType.WITHDRAWAL_REJECTED, rejected);
   }
 
   async markPaid(admin: AuthUser, id: string) {
-    return this.transition(admin, id, WithdrawalStatus.APPROVED, WithdrawalStatus.PAID, {
+    return this.notify(NotificationType.WITHDRAWAL_PAID, await this.transition(admin, id, WithdrawalStatus.APPROVED, WithdrawalStatus.PAID, {
       action: env.API_PAYMENT_DEMO_MODE ? "withdrawal.marked_paid_demo" : "withdrawal.marked_paid",
       demoMode: env.API_PAYMENT_DEMO_MODE
-    });
+    }));
+  }
+
+  /** Prévient l'organisateur du changement de statut de son retrait. */
+  private async notify<T extends { id: string; tenantId: string; amountCfa: number }>(type: NotificationType, request: T): Promise<T> {
+    await this.notifications.create(request.tenantId, type, { withdrawalId: request.id, amountCfa: request.amountCfa });
+    return request;
   }
 
   private async transition(

@@ -1,44 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { EventStatus, TenantOfferType, UserRole, WalletLedgerKind } from "@prisma/client";
+import { EventStatus, UserRole, WalletLedgerKind } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "./wallet.service";
-import { OfferSettingsService } from "./offer-settings.service";
 import { EventStatsService } from "./event-stats.service";
 import { EventSettlementService } from "./event-settlement.service";
 import { PayoutJobLockService } from "../payouts/payout-job-lock.service";
-import { OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY } from "../common/platform-settings";
 
 const prisma = new PrismaService();
 const wallet = new WalletService(prisma);
-const offerSettings = new OfferSettingsService(prisma);
 const eventStats = new EventStatsService(prisma, wallet);
 const jobLock = new PayoutJobLockService(prisma);
 const settlement = new EventSettlementService(
   prisma,
   wallet,
-  offerSettings,
   eventStats,
   jobLock
 );
 
-test("closeEvent: n'applique PAS la retenue 5% quand la commission par vote est active", async () => {
-  await prisma.client.platformSetting.upsert({
-    where: { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY },
-    create: { key: OFFER2_PER_VOTE_COMMISSION_ENABLED_KEY, value: "true", updatedByUserId: "test" },
-    update: { value: "true" }
-  });
+test("closeEvent: clôture sans rien prélever ; la réserve reste bloquée jusqu'à sa libération", async () => {
   const tenant = await prisma.client.tenant.create({
     data: {
-      slug: `close-novote-${Date.now().toString(36)}`,
-      displayName: "Close No Retention",
-      offerType: TenantOfferType.ESCROW
+      slug: `close-${Date.now().toString(36)}`,
+      displayName: "Close"
     }
   });
   const event = await prisma.client.event.create({
     data: {
       tenantId: tenant.id,
-      title: "Close no retention",
+      title: "Close",
       slug: `ev-close-${Date.now().toString(36)}`,
       startsAt: new Date(),
       endsAt: new Date(Date.now() + 86_400_000),
@@ -56,7 +46,12 @@ test("closeEvent: n'applique PAS la retenue 5% quand la commission par vote est 
 
   const user = { userId: "u1", tenantId: tenant.id, role: UserRole.ORGANIZER_OWNER, email: "o@test.dev" };
   const result = await settlement.closeEvent(user, event.id);
-  assert.equal(result.retentionCfa, 0);
+  assert.equal(result.event.status, EventStatus.CLOSED);
+  assert.ok(result.event.closedAt);
+  const w = await wallet.getWallet(tenant.id);
+  assert.equal(w.heldCfa, 500);
+  assert.equal(w.withdrawableCfa, 500);
+  await assert.rejects(() => settlement.closeEvent(user, event.id), /déjà clôturé/);
 });
 
 test("releaseMaturedHeld: libère le held des events clôturés il y a plus de 48h, pas les plus récents", async () => {
@@ -64,7 +59,6 @@ test("releaseMaturedHeld: libère le held des events clôturés il y a plus de 4
     data: {
       slug: `release-${Date.now().toString(36)}`,
       displayName: "Release Held",
-      offerType: TenantOfferType.ESCROW
     }
   });
   const matureEvent = await prisma.client.event.create({

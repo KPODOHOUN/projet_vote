@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { useI18n } from "../../../lib/i18n-provider";
+import { formatCfa } from "../../../lib/format";
 import { Button, Card, Badge, LoadingState } from "@/components/ui";
 import { motion } from "framer-motion";
 import { CheckCircle2, AlertCircle, Loader2, Ticket, User, ShieldCheck } from "lucide-react";
@@ -32,7 +33,7 @@ function TicketValidationContent() {
   const params = useParams<{ ticketId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ticketId = params.ticketId;
   const secret = searchParams.get("s");
 
@@ -46,7 +47,7 @@ function TicketValidationContent() {
   useEffect(() => {
     async function load() {
       try {
-        const data = await apiFetch<TicketDetail>(`/public/tickets/${ticketId}`);
+        const data = await apiFetch<TicketDetail>(`/public/tickets/${ticketId}?s=${encodeURIComponent(secret ?? "")}`);
         setTicket(data);
       } catch (err) {
         // Message vide : l'écran d'erreur affiche alors « Billet introuvable ».
@@ -56,7 +57,7 @@ function TicketValidationContent() {
       }
     }
     load();
-  }, [ticketId]);
+  }, [ticketId, secret]);
 
   async function onValidate() {
     setIsValidating(true);
@@ -109,7 +110,15 @@ function TicketValidationContent() {
           <div className="bg-muted/40 rounded-xl p-4 space-y-3 text-left">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">{t("ticket.status")}</span>
-              <Badge variant={isValid ? "default" : ticket.status === "USED" ? "secondary" : "destructive"}>{ticket.status}</Badge>
+              <Badge variant={isValid ? "default" : ticket.status === "USED" ? "secondary" : "destructive"}>
+                {isValid
+                  ? t("pub.ticketStatusPaid")
+                  : ticket.status === "USED"
+                    ? t("pub.ticketStatusUsed")
+                    : ticket.status === "CANCELLED" || ticket.status === "REFUNDED"
+                      ? t("pub.ticketStatusCancelled")
+                      : t("pub.ticketStatusReserved")}
+              </Badge>
             </div>
             {ticket.holderName && (
               <div className="flex justify-between text-sm">
@@ -119,7 +128,7 @@ function TicketValidationContent() {
             )}
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">{t("ticket.price")}</span>
-              <span className="font-bold">{ticket.amountCfa.toLocaleString()} XOF</span>
+              <span className="font-bold">{formatCfa(ticket.amountCfa, locale)}</span>
             </div>
           </div>
 

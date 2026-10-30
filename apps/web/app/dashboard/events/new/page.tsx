@@ -165,7 +165,7 @@ export default function NewEventPage() {
         })
       });
       clearFormDraft(DRAFT_KEY);
-      showToast.success(isEn ? "Event created." : "Évènement créé.");
+      showToast.success(isEn ? "Event created." : "Événement créé.");
       void trackEvent("event_created", { eventId: created.id, slug: created.slug });
       router.push(`/dashboard/events/${created.id}/candidates?welcome=1`);
     } catch (caughtError) {
@@ -180,17 +180,17 @@ export default function NewEventPage() {
       <DashboardBreadcrumb
         isEn={isEn}
         items={[
-          { label: isEn ? "Events" : "Évènements", href: "/dashboard/events" },
-          { label: isEn ? "New event" : "Nouvel évènement" }
+          { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
+          { label: isEn ? "New event" : "Nouvel événement" }
         ]}
       />
 
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{isEn ? "Create an event" : "Créer un évènement"}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-slate-900">{isEn ? "Create an event" : "Créer un événement"}</h1>
         <p className="text-slate-600">
           {isEn
-            ? "Name your event and set the dates. We'll create your public voting page automatically."
-            : "Donnez un nom à votre évènement et choisissez les dates. Votre page de vote sera créée automatiquement."}
+            ? "A name and dates: the voting page builds itself."
+            : "Un nom et des dates : la page de vote se crée toute seule."}
         </p>
       </header>
 
@@ -216,7 +216,7 @@ export default function NewEventPage() {
             <div>
               <Input
                 id="title"
-                label={isEn ? "Event name" : "Nom de l'évènement"}
+                label={isEn ? "Event name" : "Nom de l'événement"}
                 value={title}
                 onChange={(e) => onTitleChange(e.target.value)}
                 required
@@ -233,7 +233,7 @@ export default function NewEventPage() {
             <p className="text-sm text-muted-foreground">
               {isEn
                 ? "Dates default to the next 30 days. Adjust them later in vote settings."
-                : "Les dates couvrent les 30 prochains jours, modifiables plus tard dans les réglages de l'évènement."}
+                : "Les dates couvrent les 30 prochains jours, modifiables plus tard dans les réglages de l'événement."}
             </p>
           </div>
 
@@ -289,7 +289,7 @@ export default function NewEventPage() {
               {isEn ? "Cancel" : "Annuler"}
             </Button>
             <Button type="submit" loading={isSaving} size="lg" className="h-12 flex-1 sm:flex-none">
-              {isEn ? "Create event" : "Créer l'évènement"}
+              {isEn ? "Create event" : "Créer l'événement"}
             </Button>
           </div>
         </form>

@@ -1,7 +1,6 @@
 import "reflect-metadata";
 import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
-import { TenantOfferType } from "@prisma/client";
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -14,11 +13,11 @@ const authPrismaService = new PrismaService();
 const authService = new AuthService(authPrismaService, new NotificationsService(authPrismaService), new MailService());
 
 const credentials = {
-  tenantSlug: "lock-test",
-  tenantDisplayName: "Lock Test",
+  firstName: "Lock",
+  lastName: "Test",
+  phone: "0197100004",
   email: "owner@lock-test.africa",
   password: "SecurePass123!",
-  offerType: TenantOfferType.ESCROW,
   acceptPrivacyPolicy: true as const
 };
 
@@ -29,6 +28,12 @@ beforeEach(async () => {
   await resetDatabase();
   await authService.register(credentials);
 });
+/** Clé du compteur d'échecs : lien de l'organisation (généré) + email. */
+async function attemptKey() {
+  const user = await prisma.user.findFirstOrThrow({ where: { email: credentials.email }, include: { tenant: true } });
+  return `${user.tenant.slug}:${credentials.email}`;
+}
+
 after(async () => {
   await prisma.$disconnect();
 });
@@ -36,19 +41,19 @@ after(async () => {
 test("verrouille le compte après 5 échecs et persiste l'état en base", async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await assert.rejects(
-      authService.login({ tenantSlug: credentials.tenantSlug, email: credentials.email, password: "WrongPass999!" }),
+      authService.login({ email: credentials.email, password: "WrongPass999!" }),
       /Identifiants invalides/
     );
   }
 
   // 6th attempt is rejected with the lock message — even with the right password.
   await assert.rejects(
-    authService.login({ tenantSlug: credentials.tenantSlug, email: credentials.email, password: credentials.password }),
+    authService.login({ email: credentials.email, password: credentials.password }),
     /verrouillé/
   );
 
   const row = await prisma.loginAttempt.findUnique({
-    where: { identifier: `${credentials.tenantSlug}:${credentials.email}` }
+    where: { identifier: await attemptKey() }
   });
   assert.ok(row);
   assert.ok(row.count >= 5);
@@ -57,7 +62,6 @@ test("verrouille le compte après 5 échecs et persiste l'état en base", async 
 
 test("refresh: rotation single-use + détection de réutilisation révoque toute la chaîne", async () => {
   const { refreshToken: rt1 } = await authService.login({
-    tenantSlug: credentials.tenantSlug,
     email: credentials.email,
     password: credentials.password
   });
@@ -72,7 +76,7 @@ test("refresh: rotation single-use + détection de réutilisation révoque toute
   // La détection a révoqué toutes les sessions actives : rt2 (légitime) est mort aussi.
   await assert.rejects(authService.refresh({ refreshToken: rt2 }), /Session/);
 
-  // Au moins un évènement d'audit de réutilisation a été écrit (présenter un
+  // Au moins un événement d'audit de réutilisation a été écrit (présenter un
   // token révoqué — y compris rt2 tué par la révocation de chaîne — le déclenche).
   const reuseLogs = await prisma.auditLog.findMany({
     where: { action: "auth.refresh_token_reuse_detected" }
@@ -90,19 +94,18 @@ test("connexion par e-mail seul sans code d'organisation", async () => {
 
 test("un login réussi efface le compteur d'échecs", async () => {
   await assert.rejects(
-    authService.login({ tenantSlug: credentials.tenantSlug, email: credentials.email, password: "WrongPass999!" }),
+    authService.login({ email: credentials.email, password: "WrongPass999!" }),
     /Identifiants invalides/
   );
 
   const result = await authService.login({
-    tenantSlug: credentials.tenantSlug,
     email: credentials.email,
     password: credentials.password
   });
   assert.equal(typeof result.accessToken, "string");
 
   const row = await prisma.loginAttempt.findUnique({
-    where: { identifier: `${credentials.tenantSlug}:${credentials.email}` }
+    where: { identifier: await attemptKey() }
   });
   assert.equal(row, null);
 });
@@ -111,11 +114,11 @@ test("register refuse un mot de passe trop court (<10)", async () => {
   await resetDatabase();
   await assert.rejects(
     authService.register({
-      tenantSlug: "pw-short",
-      tenantDisplayName: "PW Short",
+      firstName: "Pw",
+      lastName: "Test",
+      phone: "0197100005",
       email: "a@pw-short.africa",
       password: "Ab1cdef",
-      offerType: TenantOfferType.ESCROW,
       acceptPrivacyPolicy: true as const
     }),
     /10 caract|au moins/i
@@ -126,11 +129,11 @@ test("register refuse un mot de passe sans diversité (une seule classe)", async
   await resetDatabase();
   await assert.rejects(
     authService.register({
-      tenantSlug: "pw-weak",
-      tenantDisplayName: "PW Weak",
+      firstName: "Pw",
+      lastName: "Test",
+      phone: "0197100005",
       email: "a@pw-weak.africa",
       password: "aaaaaaaaaa",
-      offerType: TenantOfferType.ESCROW,
       acceptPrivacyPolicy: true as const
     }),
     /deux types|classe|caract/i
@@ -140,11 +143,11 @@ test("register refuse un mot de passe sans diversité (une seule classe)", async
 test("register accepte un mot de passe robuste", async () => {
   await resetDatabase();
   const res = await authService.register({
-    tenantSlug: "pw-ok",
-    tenantDisplayName: "PW OK",
+    firstName: "Pw",
+      lastName: "Test",
+      phone: "0197100005",
     email: "a@pw-ok.africa",
     password: "SecurePass123!",
-    offerType: TenantOfferType.ESCROW,
     acceptPrivacyPolicy: true as const
   });
   assert.ok(res);
@@ -153,14 +156,13 @@ test("register accepte un mot de passe robuste", async () => {
 test("login écrit un audit log succès et échec", async () => {
   await assert.rejects(
     authService.login({
-      tenantSlug: credentials.tenantSlug,
       email: credentials.email,
       password: "WrongPass999!"
     }),
     /Identifiants invalides/
   );
   await authService.login(
-    { tenantSlug: credentials.tenantSlug, email: credentials.email, password: credentials.password },
+    { email: credentials.email, password: credentials.password },
     { userAgent: "AuditAgent/1.0", ipAddress: "203.0.113.9" }
   );
   const ok = await prisma.auditLog.findMany({ where: { action: "auth.login" } });
@@ -171,7 +173,7 @@ test("login écrit un audit log succès et échec", async () => {
 
 test("login enregistre userAgent + ipAddress sur la session", async () => {
   await authService.login(
-    { tenantSlug: credentials.tenantSlug, email: credentials.email, password: credentials.password },
+    { email: credentials.email, password: credentials.password },
     { userAgent: "TestAgent/1.0", ipAddress: "203.0.113.7" }
   );
   const session = await prisma.authSession.findFirst({

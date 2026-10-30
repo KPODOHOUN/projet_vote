@@ -7,9 +7,9 @@ import { CheckCircle2, Mail, Phone, User } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { formatCfa } from "@/lib/format";
-import { publicEventDateLocale } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-provider";
 import { sanitizePhoneInput } from "@/lib/phone";
+import { MOBILE_NETWORKS } from "@/lib/mobile-networks";
 import { usePublicTicketTypes, type PublicTicketType } from "@/lib/hooks/use-public-tickets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,16 +19,23 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { EmptyState, StatusChip } from "@/components/ui/primitives";
 
 /**
- * La vente en ligne reste fermée tant qu'aucun PSP n'est branché pour les
- * billets (l'API refuse l'achat hors mode démo). Le mode démo l'ouvre via
- * NEXT_PUBLIC_TICKET_SALES_OPEN=true.
+ * Vente ouverte par défaut : l'achat passe par le circuit de paiement des votes
+ * (push Mobile Money puis confirmation serveur). NEXT_PUBLIC_TICKET_SALES_OPEN=false
+ * permet de la fermer sans redéployer l'API.
  */
-const TICKET_SALES_OPEN = process.env.NEXT_PUBLIC_TICKET_SALES_OPEN === "true";
+const TICKET_SALES_OPEN = process.env.NEXT_PUBLIC_TICKET_SALES_OPEN !== "false";
+const POLL_INTERVAL_MS = 3_000;
+const POLL_MAX_TRIES = 60;
 
 type PurchaseResult = {
   tickets: { id: string; qrSecret: string; amountCfa: number }[];
-  transaction: { id: string; amountCfa: number; status: string };
+  transaction: { id: string; amountCfa: number; status: string; statusToken: string };
 };
+
+type PurchaseStatus = { status: string };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const ticketUrl = (id: string, secret: string) => `/public/tickets/${id}?s=${encodeURIComponent(secret)}`;
 
 type TicketInfo = {
   id: string;
@@ -40,10 +47,9 @@ type TicketInfo = {
   holderName: string | null;
 };
 
-export function TicketsClient({ slug }: { slug: string }) {
+export function TicketsClient({ slug, paymentNetworks }: { slug: string; paymentNetworks?: string[] | undefined }) {
   const router = useRouter();
   const { locale, t } = useI18n();
-  const dateLocale = publicEventDateLocale(locale);
 
   const { data: ticketTypes = [], isLoading, error } = usePublicTicketTypes(slug);
 
@@ -52,13 +58,40 @@ export function TicketsClient({ slug }: { slug: string }) {
   const [holderName, setHolderName] = useState("");
   const [holderPhone, setHolderPhone] = useState("");
   const [holderEmail, setHolderEmail] = useState("");
+  // Réseau obligatoire : deviner l'opérateur d'après le numéro peut viser le mauvais réseau.
+  const [operator, setOperator] = useState("");
+  const networks = paymentNetworks ? MOBILE_NETWORKS.filter((network) => paymentNetworks.includes(network.value)) : MOBILE_NETWORKS;
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
   const [purchaseResult, setPurchaseResult] = useState<PurchaseResult | null>(null);
   const [purchasedTicket, setPurchasedTicket] = useState<TicketInfo | null>(null);
+  const [isWaitingPayment, setIsWaitingPayment] = useState(false);
+  const phoneReady = holderPhone.replace(/\D/g, "").length >= 8;
+
+  const statusLabel = (status: string) =>
+    status === "PAID" || status === "CONFIRMED"
+      ? t("pub.ticketStatusPaid")
+      : status === "USED"
+        ? t("pub.ticketStatusUsed")
+        : status === "CANCELLED" || status === "REFUNDED"
+          ? t("pub.ticketStatusCancelled")
+          : t("pub.ticketStatusReserved");
+
+  async function waitForPayment(result: PurchaseResult): Promise<string> {
+    let status = result.transaction.status;
+    for (let i = 0; status === "PENDING" && i < POLL_MAX_TRIES; i++) {
+      await sleep(POLL_INTERVAL_MS);
+      const res = await apiFetch<PurchaseStatus>(`/public/events/${slug}/tickets/purchase-status`, {
+        method: "POST",
+        body: JSON.stringify({ transactionId: result.transaction.id, statusToken: result.transaction.statusToken })
+      });
+      status = res.status;
+    }
+    return status;
+  }
 
   async function onPurchase() {
-    if (!selectedType) return;
+    if (!selectedType || !phoneReady) return;
     setIsPurchasing(true);
     setPurchaseError("");
     try {
@@ -68,16 +101,25 @@ export function TicketsClient({ slug }: { slug: string }) {
           ticketTypeId: selectedType.id,
           quantity,
           holderName: holderName || undefined,
-          holderPhone: holderPhone || undefined,
+          holderPhone,
+          operator,
           holderEmail: holderEmail || undefined
         })
       });
       setPurchaseResult(result);
-      if (result.tickets.length > 0) {
-        const ticketInfo = await apiFetch<TicketInfo>(`/public/tickets/${result.tickets[0]!.id}`);
-        setPurchasedTicket(ticketInfo);
+      setIsWaitingPayment(result.transaction.status === "PENDING");
+      const finalStatus = await waitForPayment(result);
+      setIsWaitingPayment(false);
+      if (finalStatus !== "SUCCEEDED") {
+        setPurchaseError(t("pub.paymentFailed"));
+        return;
+      }
+      const first = result.tickets[0];
+      if (first) {
+        setPurchasedTicket(await apiFetch<TicketInfo>(ticketUrl(first.id, first.qrSecret)));
       }
     } catch (err) {
+      setIsWaitingPayment(false);
       setPurchaseError(err instanceof Error ? err.message : t("pub.purchaseError"));
     } finally {
       setIsPurchasing(false);
@@ -160,7 +202,7 @@ export function TicketsClient({ slug }: { slug: string }) {
                     <div>
                       <p className="text-lg font-extrabold">{selectedType.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {selectedType.priceCfa.toLocaleString(dateLocale)} XOF / {t("pub.perTicket")}
+                        {formatCfa(selectedType.priceCfa, locale)} / {t("pub.perTicket")}
                       </p>
                     </div>
                     <Button variant="ghost" size="sm" className="min-h-11" onClick={() => setSelectedType(null)}>
@@ -182,10 +224,10 @@ export function TicketsClient({ slug }: { slug: string }) {
                         className="h-11 w-20 text-center font-bold"
                       />
                       <span className="text-sm font-semibold text-muted-foreground">
-                        × {selectedType.priceCfa.toLocaleString(dateLocale)} XOF
+                        × {formatCfa(selectedType.priceCfa, locale)}
                       </span>
                       <p className="ml-auto text-lg font-black text-primary">
-                        = {(quantity * selectedType.priceCfa).toLocaleString(dateLocale)} XOF
+                        = {formatCfa(quantity * selectedType.priceCfa, locale)}
                       </p>
                     </div>
                   </div>
@@ -205,11 +247,31 @@ export function TicketsClient({ slug }: { slug: string }) {
                       <Phone className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                       <Input
                         className="h-11"
-                        placeholder={t("pub.phoneOptional")}
+                        placeholder={t("pub.phoneMomo")}
+                        aria-label={t("pub.phoneMomo")}
+                        inputMode="tel"
+                        autoComplete="tel"
+                        required
                         value={holderPhone}
                         onChange={(e) => setHolderPhone(sanitizePhoneInput(e.target.value))}
                       />
                     </div>
+                    <select
+                      aria-label={t("pay.network")}
+                      required
+                      value={operator}
+                      onChange={(e) => setOperator(e.target.value)}
+                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="" disabled>
+                        {t("pub.operatorPick")}
+                      </option>
+                      {networks.map((network) => (
+                        <option key={network.value} value={network.value}>
+                          {network.label}
+                        </option>
+                      ))}
+                    </select>
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                       <Input
@@ -222,18 +284,25 @@ export function TicketsClient({ slug }: { slug: string }) {
                     </div>
                   </div>
 
+                  {isWaitingPayment ? (
+                    <div role="status" aria-live="polite" className="rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+                      <p className="font-semibold text-foreground">{t("pub.waitingPayment")}</p>
+                      <p className="mt-1 text-muted-foreground">{t("pub.waitingPaymentHint")}</p>
+                    </div>
+                  ) : null}
+
                   <FormError>{purchaseError}</FormError>
 
                   <Button
                     size="lg"
                     loading={isPurchasing}
-                    disabled={isPurchasing}
+                    disabled={isPurchasing || !phoneReady || operator === ""}
                     onClick={onPurchase}
                     className="h-14 w-full text-base font-bold"
                   >
                     {isPurchasing
                       ? t("pub.processing")
-                      : `${t("pub.pay")} ${(quantity * selectedType.priceCfa).toLocaleString(dateLocale)} XOF`}
+                      : `${t("pub.pay")} ${formatCfa(quantity * selectedType.priceCfa, locale)}`}
                   </Button>
                 </motion.div>
               ) : null}
@@ -253,7 +322,7 @@ export function TicketsClient({ slug }: { slug: string }) {
                 <h2 className="text-xl font-black">{t("pub.purchaseConfirmed")}</h2>
                 <p className="text-sm text-muted-foreground">
                   {quantity} × {purchasedTicket.ticketType.name} —{" "}
-                  {(quantity * purchasedTicket.ticketType.priceCfa).toLocaleString(dateLocale)} XOF
+                  {formatCfa(quantity * purchasedTicket.ticketType.priceCfa, locale)}
                 </p>
               </div>
 
@@ -265,8 +334,8 @@ export function TicketsClient({ slug }: { slug: string }) {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("pub.statusLabel")}</span>
                   <StatusChip
-                    tone={purchasedTicket.status === "VALID" || purchasedTicket.status === "PAID" ? "success" : "pending"}
-                    label={purchasedTicket.status}
+                    tone={purchasedTicket.status === "PAID" || purchasedTicket.status === "CONFIRMED" ? "success" : "pending"}
+                    label={statusLabel(purchasedTicket.status)}
                   />
                 </div>
               </div>
@@ -280,7 +349,7 @@ export function TicketsClient({ slug }: { slug: string }) {
                     </span>
                     {/* eslint-disable-next-line @next/next/no-img-element -- QR généré à la volée par l'API : ni optimisation ni cache next/image */}
                     <img
-                      src={`/api/tickets/${ticket.id}/qr`}
+                      src={`/api/tickets/${ticket.id}/qr?s=${encodeURIComponent(ticket.qrSecret)}`}
                       alt={t("pub.qrAlt", { id: ticket.id.slice(0, 8) })}
                       width={64}
                       height={64}

@@ -6,7 +6,17 @@ export type Account = {
   role: string;
   tenant: { displayName: string; slug: string };
   createdAt: string;
+  hasPassword: boolean;
 };
+
+/** Droit à l'effacement (DELETE /privacy/delete) : confirmé par le mot de passe, ou l'e-mail sans mot de passe. */
+export function deleteMyAccount(token: string, confirmation: { currentPassword?: string; confirmEmail?: string }) {
+  return apiFetch<{ success: boolean }>("/privacy/delete", {
+    method: "DELETE",
+    headers: authHeaders(token),
+    body: JSON.stringify(confirmation)
+  });
+}
 
 export type AccountSession = {
   id: string;

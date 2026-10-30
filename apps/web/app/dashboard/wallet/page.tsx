@@ -10,6 +10,8 @@ import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import { showToast } from "@/lib/toast";
 import { formatCfa } from "@/lib/format";
+import { useAuth } from "@/lib/auth-context";
+import { canWithdraw } from "@/lib/roles";
 import {
   usePayoutDestinationQuery,
   useWalletQuery,
@@ -31,6 +33,9 @@ export default function DashboardWalletPage() {
   const router = useRouter();
   const { locale, t } = useI18n();
   const [hasToken] = useState(() => Boolean(getStoredToken()));
+  const { role } = useAuth();
+  // Le retrait est réservé au responsable (l'API refuse le membre d'équipe).
+  const mayWithdraw = canWithdraw(role);
 
   useEffect(() => {
     if (!hasToken) {
@@ -41,7 +46,7 @@ export default function DashboardWalletPage() {
   const walletQuery = useWalletQuery(hasToken);
   const withdrawalsQuery = useWithdrawalsQuery(hasToken);
   const withdrawalMutation = useWithdrawalMutation();
-  const destinationQuery = usePayoutDestinationQuery(hasToken);
+  const destinationQuery = usePayoutDestinationQuery(hasToken && mayWithdraw);
   const destination = destinationQuery.data ?? null;
 
   const [amount, setAmount] = useState("");
@@ -77,7 +82,7 @@ export default function DashboardWalletPage() {
   if (walletQuery.isError || !wallet) {
     return (
       <div className="space-y-4">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("wallet.title")}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-slate-900">{t("wallet.title")}</h1>
         <FormError>{walletQuery.error instanceof Error ? walletQuery.error.message : t("dash.wallet.requestFailed")}</FormError>
         <Button variant="secondary" onClick={() => void walletQuery.refetch()}>
           {t("pay.retry")}
@@ -89,7 +94,7 @@ export default function DashboardWalletPage() {
   return (
     <div className="space-y-8">
       <header className="space-y-2">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("wallet.title")}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-slate-900">{t("wallet.title")}</h1>
         <p className="max-w-2xl text-slate-600">{t("wallet.lead")}</p>
       </header>
 
@@ -146,6 +151,9 @@ export default function DashboardWalletPage() {
         )}
       </section>
 
+      {!mayWithdraw ? (
+        <p className="rounded-md border border-border bg-muted/40 p-4 text-sm text-slate-600">{t("wallet.request.ownerOnly")}</p>
+      ) : (
       <section aria-labelledby="request-title" className="space-y-4 rounded-md border border-border p-5">
         <h2 id="request-title" className="text-lg font-bold text-slate-900">{t("wallet.request.title")}</h2>
         <p className="text-sm text-slate-600">
@@ -177,7 +185,6 @@ export default function DashboardWalletPage() {
           </div>
           <Button
             type="submit"
-            className="h-12"
             loading={withdrawalMutation.isPending}
             disabled={wallet.withdrawableCfa <= 0 || !destination}
           >
@@ -187,6 +194,7 @@ export default function DashboardWalletPage() {
         <p className="text-sm text-slate-600">{t("wallet.request.help")}</p>
         <FormError>{formError}</FormError>
       </section>
+      )}
 
       <section aria-labelledby="requests-title" className="space-y-3">
         <h2 id="requests-title" className="text-lg font-bold text-slate-900">{t("wallet.requests")}</h2>

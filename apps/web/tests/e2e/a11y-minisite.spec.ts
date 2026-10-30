@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 
 // Accessibilité des mini-plateformes : axe-core (WCAG 2.2 A/AA) et aucun
 // défilement horizontal à 390 px, sur l'accueil, le profil et les résultats des
-// dix-sept styles de page, puis sur l'éditeur d'apparence. Activation et votes
+// dix-sept styles de page, puis sur l'éditeur d'apparence. Mise en ligne et votes
 // posés en base (base e2e), comme les autres specs.
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } } });
 const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3001/api/v1";
@@ -47,7 +47,7 @@ async function organizer(request: APIRequestContext, unique: string) {
   const email = `a11y-${unique}@shadowa.test`;
   const password = "SecurePass123!";
   const res = await request.post(`${apiBaseUrl}/auth/register`, {
-    data: { tenantSlug: `a11y-${unique}`, tenantDisplayName: "Comité A11y", email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+    data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: "Comité A11y", email, password, acceptPrivacyPolicy: true }
   });
   expect(res.ok()).toBeTruthy();
   const { accessToken } = (await res.json()) as { accessToken: string };
@@ -150,6 +150,11 @@ test("accessibilité : voter au clavier seul, focus toujours visible", async ({ 
 
   await tabUntil((s) => s.id === "voterPhone", 60);
   await page.keyboard.type("+22997000001");
+  // Le réseau est obligatoire : choix au clavier dans la liste (ouvrir, première option, valider).
+  await tabUntil((s) => s.id === "operator", 5);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#operator")).toContainText("MTN");
   const pay = await tabUntil((s) => s.tag === "BUTTON" && /Payer/.test(s.text), 20);
   expect(pay.text).toContain("Payer");
 });

@@ -7,19 +7,14 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../../../../lib/api";
 import { getStoredToken } from "../../../../../lib/auth";
-import { useAuth } from "../../../../../lib/auth-context";
-import { canManagePaymentSecrets } from "../../../../../lib/roles";
 import { useI18n } from "../../../../../lib/i18n-provider";
 import { Button, Input, Card, LoadingState } from "@/components/ui";
 import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcrumb";
 import { NextStepBanner } from "../../../../../components/next-step-banner";
 import { CopyPublicLinkButton } from "../../../../../components/copy-public-link-button";
-import { ActivationPaymentPanel } from "../../../../../components/activation-payment-panel";
-import { FeexPaySecretPanel } from "../../../../../components/feexpay-secret-panel";
+import { PublishPanel } from "../../../../../components/publish-panel";
 import { publicEventPath } from "../../../../../lib/site";
 import { showToast } from "../../../../../lib/toast";
-import { getEventPartnerStatus } from "../../../../../lib/partners";
-import { trackEvent } from "../../../../../lib/analytics";
 
 type EventDetail = {
   id: string;
@@ -28,6 +23,7 @@ type EventDetail = {
   status: string;
   startsAt: string;
   endsAt: string;
+  voteUnitPriceCfa: number | null;
 };
 
 export default function EditEventPage() {
@@ -36,14 +32,13 @@ export default function EditEventPage() {
   const eventId = params.eventId;
   const { locale } = useI18n();
   const isEn = locale === "en";
-  const { role } = useAuth();
 
   const [title, setTitle] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState("DRAFT");
-  const [isPartnerEvent, setIsPartnerEvent] = useState(false);
+  const [votePrice, setVotePrice] = useState("");
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -66,14 +61,11 @@ export default function EditEventPage() {
     }
     // No GET /events/:id endpoint — the list returns full event rows, so we read
     // it and pick our event (tenant-scoped server-side).
-    void Promise.all([
-      apiFetch<EventDetail[]>("/events", { headers: { Authorization: `Bearer ${token}` } }),
-      getEventPartnerStatus(token, eventId).catch(() => null)
-    ])
-      .then(([events, partnerStatus]) => {
+    void apiFetch<EventDetail[]>("/events", { headers: { Authorization: `Bearer ${token}` } })
+      .then((events) => {
         const found = events.find((e) => e.id === eventId);
         if (!found) {
-          setLoadError(isEn ? "Event not found." : "Évènement introuvable.");
+          setLoadError(isEn ? "Event not found." : "Événement introuvable.");
           return;
         }
         setSlug(found.slug);
@@ -81,7 +73,7 @@ export default function EditEventPage() {
         setTitle(found.title);
         setStartsAt(toLocalInput(found.startsAt));
         setEndsAt(toLocalInput(found.endsAt));
-        setIsPartnerEvent(partnerStatus?.isPartnerEvent ?? false);
+        setVotePrice(found.voteUnitPriceCfa ? String(found.voteUnitPriceCfa) : "");
       })
       .catch((caughtError) =>
         setLoadError(caughtError instanceof Error ? caughtError.message : isEn ? "Loading failed." : "Chargement impossible.")
@@ -105,7 +97,9 @@ export default function EditEventPage() {
         body: JSON.stringify({
           title,
           startsAt: new Date(startsAt).toISOString(),
-          endsAt: new Date(endsAt).toISOString()
+          endsAt: new Date(endsAt).toISOString(),
+          // Le prix ne se change qu'en brouillon : une fois signé, il est fixé par le contrat.
+          ...(status === "DRAFT" && votePrice ? { voteUnitPriceCfa: Number.parseInt(votePrice, 10) } : {})
         })
       });
       showToast.success(isEn ? "Changes saved." : "Modifications enregistrées.");
@@ -119,7 +113,7 @@ export default function EditEventPage() {
 
 
   if (isLoading) {
-    return <LoadingState variant="rows" count={4} label={isEn ? "Loading event…" : "Chargement de l'évènement…"} />;
+    return <LoadingState variant="rows" count={4} label={isEn ? "Loading event…" : "Chargement de l'événement…"} />;
   }
 
   if (loadError) {
@@ -135,43 +129,18 @@ export default function EditEventPage() {
       <DashboardBreadcrumb
         isEn={isEn}
         items={[
-          { label: isEn ? "Events" : "Évènements", href: "/dashboard/events" },
+          { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
           { label: isEn ? "Edit" : "Modifier" }
         ]}
       />
 
-      {status !== "ACTIVE" ? (
-        getStoredToken() ? (
-          <ActivationPaymentPanel
-            eventId={eventId}
-            token={getStoredToken() ?? ""}
-            isEn={isEn}
-            onActivated={() => {
-              setStatus("ACTIVE");
-              showToast.success(isEn ? "Event is live!" : "Évènement en ligne !");
-              void trackEvent("event_activated", { eventId, slug });
-            }}
-          />
-        ) : (
-          <NextStepBanner variant="activate" isEn={isEn} eventId={eventId} />
-        )
-      ) : null}
+      <PublishPanel eventId={eventId} eventStatus={status} isEn={isEn} />
       {status === "ACTIVE" && slug ? <NextStepBanner variant="share" isEn={isEn} eventSlug={slug} /> : null}
 
-      {status === "ACTIVE" && getStoredToken() && canManagePaymentSecrets(role) ? (
-        <FeexPaySecretPanel
-          token={getStoredToken() ?? ""}
-          isEn={isEn}
-          eventId={eventId}
-          isPartnerEvent={isPartnerEvent}
-          compact
-          hideWhenReady
-        />
-      ) : null}
 
       <header className="flex flex-col gap-2">
-        <span className="text-sm font-semibold text-slate-600">{isEn ? "Edit event" : "Modifier l'évènement"}</span>
-        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">{title}</h2>
+        <span className="text-sm font-semibold text-slate-600">{isEn ? "Edit event" : "Modifier l'événement"}</span>
+        <h1 className="text-4xl font-extrabold tracking-tight text-foreground">{title}</h1>
         <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
           {slug ? <CopyPublicLinkButton eventSlug={slug} isEn={isEn} /> : null}
           {slug ? (
@@ -213,10 +182,37 @@ export default function EditEventPage() {
             <h3 className="text-lg font-semibold">{isEn ? "General Information" : "Informations Générales"}</h3>
             <Input
               id="title"
-              label={isEn ? "Event name" : "Nom de l'évènement"}
+              label={isEn ? "Event name" : "Nom de l'événement"}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               required
+            />
+          </div>
+
+          <div className="w-full h-px bg-border/50" />
+
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold">{isEn ? "Voting" : "Vote"}</h3>
+            <Input
+              id="votePrice"
+              label={isEn ? "Price of one vote (F CFA)" : "Prix d'un vote (F CFA)"}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={votePrice}
+              onChange={(event) => setVotePrice(event.target.value.replace(/\D/g, ""))}
+              disabled={status !== "DRAFT"}
+              required={status === "DRAFT"}
+              helpText={
+                status === "DRAFT"
+                  ? isEn
+                    ? "Required to publish. It is written in the contract and cannot change afterwards."
+                    : "Obligatoire pour publier. Il figure au contrat et ne pourra plus changer ensuite."
+                  : isEn
+                    ? "Fixed by the signed contract."
+                    : "Fixé par le contrat signé."
+              }
             />
           </div>
 

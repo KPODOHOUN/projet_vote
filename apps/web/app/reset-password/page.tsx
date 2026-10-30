@@ -134,7 +134,7 @@ function ResetPasswordContent() {
             />
             <button
               type="button"
-              className="absolute right-3 top-9 text-muted-foreground hover:text-foreground"
+              className="absolute right-1 top-[30px] flex size-9 items-center justify-center rounded-md text-muted-foreground sm:top-[28px] hover:text-foreground"
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? (t("authpages.36")) : t("authpages.37")}
             >

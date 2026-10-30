@@ -4,18 +4,16 @@ import { authLoginUrl } from "@/lib/auth-navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, apiFetch } from "../../../lib/api";
+import { ApiError } from "../../../lib/api";
 import { clearAuthStorage, getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
 import {
   getAccount, changePassword, changeEmail, listSessions, revokeOtherSessions, revokeSession,
-  deviceLabel, downloadPrivacyExport, type Account, type AccountSession
+  deviceLabel, deleteMyAccount, downloadPrivacyExport, type Account, type AccountSession
 } from "../../../lib/account";
 import { Button, Input, StatusChip, EmptyState, LoadingState, ConfirmDialog } from "@/components/ui";
-import { FeexPaySecretPanel } from "../../../components/feexpay-secret-panel";
 import { PayoutDestinationPanel } from "../../../components/payout-destination-panel";
 import { formatUserRole } from "../../../lib/i18n";
-import { canManagePaymentSecrets } from "../../../lib/roles";
 import { showToast } from "../../../lib/toast";
 
 export default function DashboardAccountPage() {
@@ -24,6 +22,7 @@ export default function DashboardAccountPage() {
   const isEn = locale === "en";
 
   const [account, setAccount] = useState<Account | null>(null);
+  // Clés de paiement : seulement pour l'ancienne offre (paiement direct).
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -43,7 +42,6 @@ export default function DashboardAccountPage() {
   const [emailError, setEmailError] = useState("");
   const [emailSuccess, setEmailSuccess] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
-  const [hasActivatedEvent, setHasActivatedEvent] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
 
   const doExport = async () => {
@@ -56,6 +54,28 @@ export default function DashboardAccountPage() {
       showToast.error(t("account.data.exportFailed"));
     } finally {
       setExportBusy(false);
+    }
+  };
+
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const doDelete = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setDeleteBusy(true);
+    try {
+      await deleteMyAccount(
+        token,
+        account?.hasPassword === false ? { confirmEmail: deleteConfirmation.trim() } : { currentPassword: deleteConfirmation }
+      );
+      clearAuthStorage();
+      showToast.success(t("account.data.deleted"));
+      router.push("/");
+    } catch (caught) {
+      showToast.error(caught instanceof Error ? caught.message : t("account.data.deleteFailed"));
+    } finally {
+      setDeleteBusy(false);
+      setDeleteConfirmation("");
     }
   };
 
@@ -79,16 +99,6 @@ export default function DashboardAccountPage() {
       try {
         setAccount(await getAccount(token));
         await loadSessions(token);
-        let hasActive = false;
-        try {
-          const events = await apiFetch<Array<{ status: string; activationPaidAt?: string | null }>>("/events", {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          hasActive = events.some((event) => event.status === "ACTIVE" || Boolean(event.activationPaidAt));
-        } catch (error) {
-          console.error("Failed to load events for activation check:", error);
-        }
-        setHasActivatedEvent(hasActive);
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : t("account.loadError"));
       } finally {
@@ -152,8 +162,8 @@ export default function DashboardAccountPage() {
     <div className="space-y-10">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-6">
         <div className="space-y-1">
-          <span className="text-sm font-bold tracking-widest uppercase text-primary block">{isEn ? "Account" : "Compte"}</span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{t("account.title")}</h2>
+          <span className="block text-sm font-semibold text-slate-600">{isEn ? "Account" : "Compte"}</span>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-foreground">{t("account.title")}</h1>
           <p className="text-muted-foreground">{t("account.subtitle")}</p>
         </div>
       </header>
@@ -174,20 +184,6 @@ export default function DashboardAccountPage() {
                 <div><dt className="text-sm text-muted-foreground mb-1">{t("account.org")}</dt><dd className="font-medium text-foreground">{account.tenant.displayName}</dd></div>
                 <div><dt className="text-sm text-muted-foreground mb-1">{t("account.memberSince")}</dt><dd className="font-medium text-foreground">{new Date(account.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}</dd></div>
               </dl>
-            </section>
-          ) : null}
-
-          {getStoredToken() && canManagePaymentSecrets(account?.role) ? (
-            <section>
-              <h3 className="text-xl font-bold tracking-tight text-foreground mb-4">
-                {isEn ? "Receive voter payments" : "Recevoir les paiements des votants"}
-              </h3>
-              <FeexPaySecretPanel
-                token={getStoredToken() ?? ""}
-                isEn={isEn}
-                afterActivationOnly
-                hasActivatedEvent={hasActivatedEvent}
-              />
             </section>
           ) : null}
 
@@ -268,12 +264,36 @@ export default function DashboardAccountPage() {
             <Button type="button" variant="secondary" loading={exportBusy} onClick={() => void doExport()}>
               {t("account.data.export")}
             </Button>
-            <p className="text-sm text-slate-600">
-              {t("account.data.deleteDesc")}{" "}
-              <a href="/legal" className="font-semibold text-primary underline underline-offset-4">
-                {t("account.data.legalLink")}
-              </a>
-            </p>
+          </section>
+
+          <section aria-labelledby="account-delete" className="space-y-3 rounded-md border border-destructive/30 p-5">
+            <h2 id="account-delete" className="text-lg font-bold text-slate-900">{t("account.data.deleteTitle")}</h2>
+            <p className="text-sm text-slate-600">{t("account.data.deleteDesc")}</p>
+            <ConfirmDialog
+              title={t("account.data.deleteTitle")}
+              description={t("account.data.deleteConfirm")}
+              confirmLabel={t("account.data.delete")}
+              cancelLabel={t("account.data.keep")}
+              confirmDisabled={deleteConfirmation.trim().length === 0 || deleteBusy}
+              onOpenChange={(open) => {
+                if (!open) setDeleteConfirmation("");
+              }}
+              onConfirm={() => void doDelete()}
+              trigger={
+                <Button type="button" variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                  {t("account.data.delete")}
+                </Button>
+              }
+            >
+              <Input
+                id="delete-confirmation"
+                label={account?.hasPassword === false ? t("account.data.deleteEmail") : t("account.data.deletePassword")}
+                type={account?.hasPassword === false ? "email" : "password"}
+                autoComplete={account?.hasPassword === false ? "email" : "current-password"}
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+              />
+            </ConfirmDialog>
           </section>
         </div>
       )}

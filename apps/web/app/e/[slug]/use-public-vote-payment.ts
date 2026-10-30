@@ -28,7 +28,7 @@ export type PublicVoteStatus = {
   phase: "idle" | "submitting" | "tracking";
   result: InitPublicPaymentResponse | null;
   live: PublicPaymentStatusResponse | null;
-  /** Libellé d'état humanisé, partagé avec le tunnel d'activation. Vide si pas de suivi. */
+  /** Libellé d'état humanisé, partagé avec les autres tunnels de paiement. Vide si pas de suivi. */
   label: string;
   error: string;
 };
@@ -45,7 +45,7 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
     candidateNumber?: number;
     quantity: number;
     voterPhone: string;
-    /** Réseau mobile money (mtn/moov/orange…) — optionnel, détection Bénin par défaut. */
+    /** Réseau mobile money (mtn, moov, celtiis), choisi par le votant. */
     operator?: string | undefined;
   }) {
     setError("");

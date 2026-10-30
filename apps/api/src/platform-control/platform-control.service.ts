@@ -1,37 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { EventStatus, PaymentPurpose, PaymentStatus } from "@prisma/client";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PaymentPurpose, PaymentStatus } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  ACTIVATION_FEE_CFA_KEY,
-  COMMISSION_BPS_KEY,
-  DEFAULT_ACTIVATION_FEE_CFA,
-  parseIntSetting
-} from "../common/platform-settings";
-import { assertCommissionBpsAllowed } from "../offers/commission-guardrails";
 import { VaultService } from "./vault.service";
-
-export const COMMISSION_SETTING_KEY = COMMISSION_BPS_KEY;
-
-const commissionSchema = z.object({
-  // Basis points: 0..10000 (0% .. 100%). 0 disables commission.
-  commissionBps: z.number().int().min(0).max(10_000)
-});
-
-const updateSettingsSchema = z
-  .object({
-    commissionBps: z.number().int().min(0).max(10_000).optional(),
-    activationFeeCfa: z.number().int().min(0).max(100_000_000).optional()
-  })
-  .refine((v) => v.commissionBps !== undefined || v.activationFeeCfa !== undefined, {
-    message: "Aucun paramètre fourni."
-  });
-
-const eventCommissionSchema = z.object({
-  // null clears the per-event override (falls back to the platform default).
-  commissionBps: z.number().int().min(0).max(10_000).nullable()
-});
 
 const cancelVoteSchema = z.object({
   reason: z.string().min(3).max(500)
@@ -56,135 +28,6 @@ export class PlatformControlService {
     private readonly vault: VaultService
   ) {}
 
-  /**
-   * Resolve the effective commission (bps) following the chain:
-   * per-event override → organizer negotiated rate → platform default → 0.
-   */
-  async resolveCommissionBps(
-    eventCommissionBps: number | null,
-    tenantCommissionBps: number | null = null
-  ): Promise<number> {
-    if (eventCommissionBps !== null && eventCommissionBps >= 0) {
-      return eventCommissionBps;
-    }
-    if (tenantCommissionBps !== null && tenantCommissionBps >= 0) {
-      return tenantCommissionBps;
-    }
-    const setting = await this.prisma.client.platformSetting.findUnique({
-      where: { key: COMMISSION_SETTING_KEY }
-    });
-    const bps = setting ? Number.parseInt(setting.value, 10) : 0;
-    return Number.isFinite(bps) && bps > 0 ? bps : 0;
-  }
-
-  async setTenantCommission(user: AuthUser, tenantId: string, payload: unknown) {
-    const input = eventCommissionSchema.parse(payload);
-    if (input.commissionBps !== null) {
-      assertCommissionBpsAllowed(user, input.commissionBps);
-    }
-    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
-    if (!tenant) {
-      throw new NotFoundException("Organisateur introuvable.");
-    }
-    const oldBps = tenant.commissionBps;
-    await this.prisma.client.$transaction([
-      this.prisma.client.tenant.update({
-        where: { id: tenantId },
-        data: { commissionBps: input.commissionBps }
-      }),
-      this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          actorUserId: user.userId,
-          actorRole: user.role,
-          action: "commission.override_tenant",
-          targetType: "Tenant",
-          targetId: tenantId,
-          metadata: { oldBps, newBps: input.commissionBps, via: "platform-control" }
-        }
-      })
-    ]);
-    return { tenantId, commissionBps: input.commissionBps };
-  }
-
-  async getSettings() {
-    const rows = await this.prisma.client.platformSetting.findMany({
-      where: { key: { in: [COMMISSION_BPS_KEY, ACTIVATION_FEE_CFA_KEY] } }
-    });
-    const map = new Map(rows.map((r) => [r.key, r.value]));
-    return {
-      commissionBps: parseIntSetting(map.get(COMMISSION_BPS_KEY), 0),
-      activationFeeCfa: parseIntSetting(map.get(ACTIVATION_FEE_CFA_KEY), DEFAULT_ACTIVATION_FEE_CFA)
-    };
-  }
-
-  private async putSetting(user: AuthUser, key: string, value: number) {
-    await this.prisma.client.platformSetting.upsert({
-      where: { key },
-      create: { key, value: String(value), updatedByUserId: user.userId },
-      update: { value: String(value), updatedByUserId: user.userId }
-    });
-  }
-
-  // SILENT by design (commission must be ultra-discreet): NO audit log is
-  // written for any commission / platform-settings change — organizers must
-  // never see it surface in their own audit trail.
-  async updateCommission(user: AuthUser, payload: unknown) {
-    const input = commissionSchema.parse(payload);
-    await this.putSetting(user, COMMISSION_BPS_KEY, input.commissionBps);
-    return { commissionBps: input.commissionBps };
-  }
-
-  async updateSettings(user: AuthUser, payload: unknown) {
-    const input = updateSettingsSchema.parse(payload);
-    if (input.commissionBps !== undefined) {
-      await this.putSetting(user, COMMISSION_BPS_KEY, input.commissionBps);
-    }
-    if (input.activationFeeCfa !== undefined) {
-      await this.putSetting(user, ACTIVATION_FEE_CFA_KEY, input.activationFeeCfa);
-    }
-    return this.getSettings();
-  }
-
-  async setEventCommission(user: AuthUser, eventId: string, payload: unknown) {
-    const input = eventCommissionSchema.parse(payload);
-    if (input.commissionBps !== null) {
-      assertCommissionBpsAllowed(user, input.commissionBps);
-    }
-    const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
-    if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
-    }
-    if (event.status !== EventStatus.DRAFT) {
-      throw new ConflictException(
-        "Le taux de commission d'un event déjà activé est gelé — impossible de le modifier."
-      );
-    }
-    const oldBps = event.commissionBps;
-    await this.prisma.client.$transaction([
-      this.prisma.client.event.update({
-        where: { id: eventId },
-        data: { commissionBps: input.commissionBps }
-      }),
-      this.prisma.client.auditLog.create({
-        data: {
-          tenantId: event.tenantId,
-          actorUserId: user.userId,
-          actorRole: user.role,
-          action: "commission.override_event",
-          targetType: "Event",
-          targetId: eventId,
-          metadata: { oldBps, newBps: input.commissionBps, via: "platform-control" }
-        }
-      })
-    ]);
-    return { eventId, commissionBps: input.commissionBps };
-  }
-
-  // Option B+ : annuler un vote l'EFFACE du ledger principal (Vote +
-  // PaymentTransaction) et dépose une copie chiffrée dans le coffre. La seule
-  // trace survivante est la VaultEntry, lisible par un PLATFORM_SUPER_ADMIN
-  // après OTP. SILENCIEUX : aucun audit log côté normal.
   async cancelVote(user: AuthUser, voteId: string, payload: unknown) {
     const input = cancelVoteSchema.parse(payload);
     const vote = await this.prisma.client.vote.findUnique({ where: { id: voteId } });
@@ -265,7 +108,9 @@ export class PlatformControlService {
         amountCfa: true,
         createdAt: true,
         cancelledAt: true,
-        cancelledReason: true
+        cancelledReason: true,
+        event: { select: { title: true } },
+        candidate: { select: { fullName: true, number: true } }
       }
     });
     const hasMore = items.length > q.limit;

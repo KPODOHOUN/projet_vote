@@ -34,7 +34,7 @@ export default function VoteEventsPage({ params }: VoteEventsPageProps) {
       void apiFetch<PublicEvent[]>(`/votes/public/${resolvedParams.tenantSlug}/events`)
         .then((items) => setEvents(items))
         .catch((caughtError) => {
-          setError(caughtError instanceof Error ? caughtError.message : isEn ? "Unable to load events." : "Impossible de charger les évènements.");
+          setError(caughtError instanceof Error ? caughtError.message : isEn ? "Unable to load events." : "Impossible de charger les événements.");
         })
         .finally(() => setIsLoading(false));
     });
@@ -45,21 +45,21 @@ export default function VoteEventsPage({ params }: VoteEventsPageProps) {
       <Card className="mb-8 w-full max-w-4xl overflow-hidden rounded-2xl border-none bg-background p-6 shadow-xl sm:p-10 lg:p-12">
         <header className="mb-12 border-b border-border/50 pb-8">
           <Badge variant="outline" className="mb-6 w-fit border-0 bg-transparent px-0 py-0 text-sm font-semibold text-slate-600">
-            {isEn ? "Public events" : "Évènements publics"}
+            {isEn ? "Public events" : "Événements publics"}
           </Badge>
           <h1 className="mb-4 text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl">
-            {isEn ? "Choose an event." : "Choisissez un évènement."}
+            {isEn ? "Choose an event." : "Choisissez un événement."}
           </h1>
           <p className="max-w-2xl text-lg font-medium text-muted-foreground">
             {isEn
               ? "Browse open paid voting events. Each event has its own public page."
-              : "Parcourez les évènements de vote payant ouverts. Chaque évènement a sa propre page publique."}
+              : "Parcourez les événements de vote payant ouverts. Chaque événement a sa propre page publique."}
           </p>
         </header>
 
         {isLoading ? (
           <div className="flex justify-center p-12">
-            <p className="animate-pulse font-medium text-muted-foreground">{isEn ? "Loading events…" : "Chargement des évènements…"}</p>
+            <p className="animate-pulse font-medium text-muted-foreground">{isEn ? "Loading events…" : "Chargement des événements…"}</p>
           </div>
         ) : null}
 
@@ -69,8 +69,8 @@ export default function VoteEventsPage({ params }: VoteEventsPageProps) {
 
         {!isLoading && !error && events.length === 0 ? (
           <EmptyState
-            title={isEn ? "No active events" : "Aucun évènement actif"}
-            description={isEn ? "No event available for this organizer." : "Aucun évènement disponible pour cet organisateur."}
+            title={isEn ? "No active events" : "Aucun événement actif"}
+            description={isEn ? "No event available for this organizer." : "Aucun événement disponible pour cet organisateur."}
           />
         ) : null}
 

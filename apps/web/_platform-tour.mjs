@@ -210,9 +210,9 @@ await runSection("PART 2 — ORGANIZER", async ({ page: p, recover }) => {
   });
 
   const dashRoutes = [
-    ["/dashboard/subscription", "Abonnement — aperçu"],
-    ["/dashboard/subscription/subscribe", "Abonnement — souscrire (Standard)"],
-    ["/dashboard/subscription/partner", "Abonnement — devenir Partenaire"],
+    ["/dashboard/offer", "Mes conditions (commission, réserve)"],
+    ["/dashboard/wallet", "Portefeuille / retraits"],
+    ["/dashboard/ticketing", "Billetterie"],
     ["/dashboard/team", "Équipe / membres"],
     ["/dashboard/notifications", "Notifications"],
     ["/dashboard/search", "Recherche"],
@@ -247,16 +247,13 @@ await runSection("PART 3 — ADMIN", async ({ page: p, recover }) => {
 
   const adminRoutes = [
     ["/admin", "Admin — vue d'ensemble", 2000],
-    ["/admin/subscriptions", "Admin — abonnements"],
-    ["/admin/account-partners", "Admin — comptes partenaires"],
-    ["/admin/partners", "Admin — demandes de partenariat"],
+    ["/admin/offers", "Admin — règles d'argent et retraits"],
     ["/admin/payments", "Admin — paiements"],
-    ["/admin/payouts", "Admin — versements (payouts)"],
     ["/admin/votes", "Admin — votes"],
     ["/admin/users", "Admin — utilisateurs"],
     ["/admin/audit", "Admin — journal d'audit"],
     ["/admin/jobs", "Admin — tâches planifiées (jobs)"],
-    ["/admin/feature-flags", "Admin — feature flags"],
+    ["/admin/display-partners", "Admin — partenaires affichés"],
     ["/admin/maintenance", "Admin — maintenance"],
     ["/admin/settings", "Admin — paramètres"],
   ];

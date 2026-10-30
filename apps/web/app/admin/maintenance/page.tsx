@@ -98,8 +98,8 @@ export default function AdminMaintenancePage() {
         title={isEn ? "Maintenance mode" : "Mode maintenance"}
         description={
           isEn
-            ? "Temporarily block public access while you work. Data purge and audit deletion are on the Audit log page."
-            : "Bloquez temporairement l'accès public pendant vos opérations. La purge et la suppression des logs sont dans le Journal d'audit."
+            ? "Close the site to visitors during your work."
+            : "Fermez le site aux visiteurs pendant vos travaux."
         }
       />
 

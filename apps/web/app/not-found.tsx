@@ -22,7 +22,7 @@ export default async function NotFoundPage() {
           <Link href="/">{isEn ? "Back to home" : "Retour à l'accueil"}</Link>
         </Button>
         <Button asChild variant="secondary" size="lg">
-          <Link href="/vote">{isEn ? "Enter event code" : "Entrer un code évènement"}</Link>
+          <Link href="/vote">{isEn ? "Enter event code" : "Entrer un code événement"}</Link>
         </Button>
       </div>
     </main>

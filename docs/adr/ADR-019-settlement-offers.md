@@ -1,7 +1,7 @@
 # ADR-019 — Settlement Offre EXTERNAL / ESCROW
 
 **Date :** 2026-07-29  
-**Statut :** Accepté
+**Statut :** Remplacé par [ADR-022](./ADR-022-contrat-par-concours-modele-unique.md) (2026-10-29)
 
 ## Contexte
 
@@ -15,6 +15,6 @@ Remplacement du produit Plans/Partenaire par deux offres de règlement.
 
 ## Conséquences
 
-- Migration tenants via `packages/db/prisma/migrate-offers.ts`
+- Migration tenants via `packages/db/prisma/migrate-offers.ts` (script supprimé avec ADR-022)
 - UI Plans redirigée vers `/admin/offers`
 - Flags PSP overridables admin

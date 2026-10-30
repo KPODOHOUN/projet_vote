@@ -6,6 +6,8 @@ export type MailPayload = {
   subject: string;
   html: string;
   text?: string;
+  /** Pièces jointes (ex. contrat signé en PDF). */
+  attachments?: Array<{ filename: string; content: Buffer }>;
 };
 
 @Injectable()
@@ -36,7 +38,10 @@ export class MailService {
           to: recipients,
           subject: payload.subject,
           html: payload.html,
-          ...(payload.text ? { text: payload.text } : {})
+          ...(payload.text ? { text: payload.text } : {}),
+          ...(payload.attachments?.length
+            ? { attachments: payload.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+            : {})
         })
       });
       if (!response.ok) {

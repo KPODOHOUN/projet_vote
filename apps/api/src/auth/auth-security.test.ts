@@ -409,7 +409,7 @@ test("un admin standard ne peut pas attribuer un rôle plateforme", async () => 
       authSession: { updateMany: async () => ({ count: 0 }) }
     }
   };
-  const admin = new AdminService(prisma as never, {} as never);
+  const admin = new AdminService(prisma as never);
 
   await assert.rejects(
     admin.updateUser(

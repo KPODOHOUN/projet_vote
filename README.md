@@ -21,7 +21,7 @@ projet_vote/
 - **Frontend :** Next.js 15 (App Router), React 19, Tailwind CSS v4
 - **Backend :** NestJS 11, Prisma ORM
 - **Base de données :** PostgreSQL
-- **Paiements :** FeexPay, Kkiapay, FedaPay
+- **Paiements :** FeexPay, FedaPay (compte plateforme SHADOMA)
 - **Auth :** JWT (access + refresh tokens), OAuth (Google/Facebook)
 - **Observabilité :** Sentry, logs structurés
 
@@ -29,8 +29,9 @@ projet_vote/
 
 - Concours et votes payants via mobile money (XOF/FCFA)
 - Multitenant : chaque organisateur a son espace isolé
-- Offre Escrow (parcours actif) : portefeuille, clôture, retraits validés admin
-- Offre External : en réflexion (désactivée pendant la phase de test)
+- Inscription simple, sans abonnement ni frais d'activation
+- Mise en ligne d'un concours par la signature électronique de son contrat (PDF signé téléchargeable à volonté) — voir ADR-022
+- Commission plateforme de 12 % par défaut prélevée à chaque paiement ; le reste au portefeuille de l'organisateur (réserve + part retirable)
 - Paiements démo pour la phase de test (`API_PAYMENT_DEMO_MODE`, interdit en prod)
 - Billetterie avec QR codes (paiement réel non branché : la confirmation d'achat n'existe qu'en `API_PAYMENT_DEMO_MODE`)
 - Retraits organisateur **100 % manuels** (validation admin) — l'automatisation via PSP est prévue (F6) mais pas encore livrée, et n'est jamais un prérequis de lancement (voir ADR-020)

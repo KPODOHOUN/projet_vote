@@ -4,11 +4,7 @@ import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { FEEXPAY_API_SECRET_KEY } from "../common/payment-secrets";
 import {
-  ACTIVATION_FEE_CFA_KEY,
-  COMMISSION_BPS_KEY,
-  DEFAULT_ACTIVATION_FEE_CFA,
-  FEEXPAY_SHOP_ID_KEY,
-  parseIntSetting
+  FEEXPAY_SHOP_ID_KEY
 } from "../common/platform-settings";
 import { env } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
@@ -35,7 +31,6 @@ export class PlatformSecretsService {
       shopIdConfigured: shopId.length > 0 && !shopId.includes("dev-shop"),
       apiKeySource,
       shopIdSource: shopSetting ? ("database" as const) : ("env" as const),
-      activationUsesPlatformAccount: true,
       key: FEEXPAY_API_SECRET_KEY
     } as const;
   }
@@ -80,13 +75,11 @@ export class PlatformSecretsService {
 
   async getPlatformSettings() {
     const rows = await this.prisma.client.platformSetting.findMany({
-      where: { key: { in: [COMMISSION_BPS_KEY, ACTIVATION_FEE_CFA_KEY, FEEXPAY_SHOP_ID_KEY] } }
+      where: { key: { in: [FEEXPAY_SHOP_ID_KEY] } }
     });
     const map = new Map(rows.map((r) => [r.key, r.value]));
     const paymentSetup = await this.getPaymentSetupStatus();
     return {
-      commissionBps: parseIntSetting(map.get(COMMISSION_BPS_KEY), 0),
-      activationFeeCfa: parseIntSetting(map.get(ACTIVATION_FEE_CFA_KEY), DEFAULT_ACTIVATION_FEE_CFA),
       feexpayShopId: map.get(FEEXPAY_SHOP_ID_KEY) ?? env.FEEXPAY_SHOP_ID,
       paymentSetup
     };

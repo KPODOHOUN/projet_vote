@@ -70,7 +70,11 @@ async function doRefresh(): Promise<boolean> {
       accessToken = null;
       return false;
     }
-    const data = (await res.json()) as { accessToken: string };
+    const data = (await res.json()) as { accessToken: string | null };
+    if (!data.accessToken) {
+      accessToken = null;
+      return false;
+    }
     accessToken = data.accessToken;
     broadcastToken(accessToken);
     return true;

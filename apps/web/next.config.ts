@@ -31,14 +31,17 @@ const cspReportUri = (() => {
   }
 })();
 
-// CSP en Report-Only : on observe les violations avant de bloquer (voir
+// CSP appliquée en production, Report-Only en développement (HMR, outils).
+// CSP_REPORT_ONLY=true repasse en observation sans changer le code (voir
 // docs/deployment/security-headers.md). Next injecte des scripts inline sans
 // nonce, d'où 'unsafe-inline' tant qu'aucun nonce n'est en place.
+const cspReportOnly = isDev || process.env.CSP_REPORT_ONLY === "true";
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${imageHosts.join(" ")}`,
+  // Les photos importées peuvent être servies par l'API (stockage en base).
+  ["img-src 'self' data: blob:", ...imageHosts, originOf(process.env.NEXT_PUBLIC_API_BASE_URL)].filter(Boolean).join(" "),
   "font-src 'self' data:",
   [
     "connect-src 'self'",
@@ -65,7 +68,7 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
   // L'éditeur d'apparence affiche la page publique dans une iframe du même site.
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy },
+  { key: cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy", value: contentSecurityPolicy },
   ...(cspReportUri ? [{ key: "Reporting-Endpoints", value: `csp="${cspReportUri}"` }] : [])
 ];
 

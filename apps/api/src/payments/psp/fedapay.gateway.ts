@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { PaymentProvider } from "@prisma/client";
 import { env } from "../../config/env";
 import type {
@@ -59,6 +59,41 @@ function unwrap(raw: Record<string, unknown>, key: string): Record<string, unkno
   return raw;
 }
 
+/**
+ * Code « mode » FedaPay pour un réseau. La doc (POST /transactions/{mode})
+ * donne « mtn » et « moov » pour le Bénin ; aucun code Celtiis n'y est publié,
+ * on refuse donc clairement plutôt que d'envoyer un code deviné.
+ */
+function fedapayMode(operator: string): string {
+  const network = operator.trim().toLowerCase();
+  if (network === "celtiis") {
+    throw new BadRequestException("Celtiis n'est pas encore disponible avec ce moyen de paiement. Choisissez MTN ou Moov.");
+  }
+  return network;
+}
+
+/** Indicatif → code pays FedaPay (pays où FedaPay encaisse le Mobile Money). */
+const COUNTRY_BY_DIAL_CODE: Readonly<Record<string, string>> = {
+  "229": "BJ",
+  "225": "CI",
+  "228": "TG",
+  "221": "SN",
+  "226": "BF",
+  "227": "NE",
+  "223": "ML",
+  "224": "GN"
+};
+
+/**
+ * Numéro au format de la doc FedaPay (« Send payment ») : « + », indicatif puis
+ * numéro, avec le pays — ex. { number: "+22997808080", country: "BJ" }.
+ */
+function fedapayPhone(international: string): { number: string; country?: string } {
+  const digits = international.replace(/\D/g, "");
+  const country = COUNTRY_BY_DIAL_CODE[digits.slice(0, 3)];
+  return country ? { number: `+${digits}`, country } : { number: `+${digits}` };
+}
+
 @Injectable()
 export class FedapayGateway implements PspGateway {
   readonly provider = PaymentProvider.FEDAPAY;
@@ -77,19 +112,14 @@ export class FedapayGateway implements PspGateway {
    * Payin = FedaPay's 3-step flow:
    *   1. POST /transactions                 → transaction id
    *   2. POST /transactions/{id}/token      → one-time token
-   *   3. POST /{mode} { token }             → triggers the mobile-money push
+   *   3. POST /transactions/{mode} { token } → triggers the mobile-money push
    * The transaction id is returned as `reference` (stored as providerRef) and the
    * authoritative status is resolved later by verify-by-pull (ADR-017).
    */
   async initPayin(input: PspPayinInitInput, creds: PspCredentials): Promise<PspPayinInitResult> {
-    if (
-      input.split &&
-      (input.split.amountCfa <= 0 ||
-        input.split.amountCfa >= input.amountCfa ||
-        !input.split.beneficiaryReference.trim())
-    ) {
-      throw new ServiceUnavailableException("Fedapay: répartition Marketplace invalide.");
-    }
+    // Réseau vérifié avant tout appel : un refus ne crée aucune transaction FedaPay.
+    const mode = fedapayMode(input.operator);
+    const phone = fedapayPhone(input.phoneNumber);
 
     // 1. create transaction
     const created = await this.requestJson<Record<string, unknown>>("POST", `${this.baseUrl}/transactions`, creds.apiKey, {
@@ -99,19 +129,8 @@ export class FedapayGateway implements PspGateway {
       customer: {
         firstname: input.firstName ?? "Votant",
         lastname: input.lastName ?? "Anonyme",
-        phone_number: { number: input.phoneNumber }
-      },
-      ...(input.split
-        ? {
-            // FedaPay's public Marketplace API uses this historical spelling.
-            sub_accounts_commisssions: [
-              {
-                reference: input.split.beneficiaryReference,
-                amount: input.split.amountCfa
-              }
-            ]
-          }
-        : {})
+        phone_number: phone
+      }
     });
     const tx = unwrap(created, "v1/transaction");
     const id = tx.id;
@@ -134,9 +153,9 @@ export class FedapayGateway implements PspGateway {
     // 3. send the mobile-money push for the chosen operator mode. The mode is
     // validated against an allowlist upstream; encodeURIComponent guards the
     // path segment as defence-in-depth.
-    const mode = input.operator.toLowerCase();
-    await this.requestJson<Record<string, unknown>>("POST", `${this.baseUrl}/${encodeURIComponent(mode)}`, creds.apiKey, {
-      token
+    await this.requestJson<Record<string, unknown>>("POST", `${this.baseUrl}/transactions/${encodeURIComponent(mode)}`, creds.apiKey, {
+      token,
+      phone_number: phone
     });
 
     return { reference, status: "PENDING", amountCfa: input.amountCfa };
@@ -151,36 +170,11 @@ export class FedapayGateway implements PspGateway {
     const tx = unwrap(raw, "v1/transaction");
     const status = normalize(tx.status);
     if (!status) throw new ServiceUnavailableException(`Fedapay: statut inconnu "${tx.status}".`);
-    const splitRows = [
-      tx.sub_accounts_commissions,
-      tx.sub_accounts_commisssions
-    ].find(Array.isArray);
-    const firstSplit =
-      Array.isArray(splitRows) && splitRows[0] && typeof splitRows[0] === "object"
-        ? (splitRows[0] as Record<string, unknown>)
-        : null;
-    const nestedSubAccount =
-      firstSplit?.sub_account && typeof firstSplit.sub_account === "object"
-        ? (firstSplit.sub_account as Record<string, unknown>)
-        : null;
-    const splitReference =
-      firstSplit?.reference ??
-      firstSplit?.sub_account_reference ??
-      nestedSubAccount?.reference;
-    const splitAmount = firstSplit ? toInt(firstSplit.amount, 0) : 0;
     return {
       status,
       amountCfa: toInt(tx.amount, 0),
       currency: this.currencyIso(tx.currency),
-      reason: tx.last_error_code as string | undefined,
-      ...(typeof splitReference === "string" && splitReference && splitAmount > 0
-        ? {
-            split: {
-              beneficiaryReference: splitReference,
-              amountCfa: splitAmount
-            }
-          }
-        : {})
+      reason: tx.last_error_code as string | undefined
     };
   }
 
@@ -199,7 +193,12 @@ export class FedapayGateway implements PspGateway {
         mode: input.network.toLowerCase(),
         merchant_reference: input.idempotencyKey,
         description: input.label,
-        customer: { phone_number: { number: input.beneficiaryAccount } }
+        // Un numéro au format de la doc ; une autre référence de compte reste telle quelle.
+        customer: {
+          phone_number: /^\+?\d{8,15}$/.test(input.beneficiaryAccount)
+            ? fedapayPhone(input.beneficiaryAccount)
+            : { number: input.beneficiaryAccount }
+        }
       });
       const payout = unwrap(created, "v1/payout");
       const id = payout.id;

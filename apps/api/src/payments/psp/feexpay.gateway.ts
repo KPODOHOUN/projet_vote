@@ -36,6 +36,9 @@ function toInt(raw: unknown, fallback: number): number {
   return fallback;
 }
 
+/** Codes FeexPay dont le nom diffère du réseau (doc requesttopay : mtn, moov, celtiis_bj). */
+const FEEXPAY_OPERATOR_CODES: Readonly<Record<string, string>> = { celtiis: "celtiis_bj" };
+
 @Injectable()
 export class FeexpayGateway implements PspGateway {
   readonly provider = PaymentProvider.FEEXPAY;
@@ -51,7 +54,7 @@ export class FeexpayGateway implements PspGateway {
   }
 
   async initPayin(input: PspPayinInitInput, creds: PspCredentials): Promise<PspPayinInitResult> {
-    const operator = input.operator.toLowerCase();
+    const operator = FEEXPAY_OPERATOR_CODES[input.operator.toLowerCase()] ?? input.operator.toLowerCase();
     // encodeURIComponent as defence-in-depth: the operator is already validated
     // against an allowlist upstream, but it must never be able to inject a path
     // segment into the PSP URL.

@@ -81,13 +81,23 @@ export class AuthController {
   }
 
   @Post("refresh")
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  // Appelé à chaque chargement de page : 20/min par IP coupait les sessions
+  // derrière les IP partagées des opérateurs mobiles. Le jeton est aléatoire
+  // et sa réutilisation est détectée : la limite globale suffit.
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   async refresh(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response
   ) {
     // Read refresh token from cookie first, fallback to body for backward compatibility
     const cookieToken = (request.cookies as Record<string, string | undefined>)?.[REFRESH_COOKIE_NAME];
+    const bodyToken = (request.body as { refreshToken?: unknown } | undefined)?.refreshToken;
+    // Aucun jeton du tout = simple visiteur sans session : ce n'est pas une
+    // erreur (le site sonde la session à chaque chargement). Un jeton présent
+    // mais invalide reste refusé par authService.refresh.
+    if (!cookieToken && !bodyToken) {
+      return { accessToken: null };
+    }
     const payload = cookieToken ? { refreshToken: cookieToken } : request.body;
     const result = await this.authService.refresh(payload, extractSessionMeta(request));
     response.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);

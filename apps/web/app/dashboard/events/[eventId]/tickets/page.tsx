@@ -9,6 +9,7 @@ import { Button, Card, LoadingState, Badge } from "@/components/ui";
 import { Input } from "@/components/ui/input";
 import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcrumb";
 import { showToast } from "../../../../../lib/toast";
+import { formatCfa } from "../../../../../lib/format";
 import { Plus, Pencil, Ticket, X, Loader2, AlertCircle, Palette, Download, TrendingUp } from "lucide-react";
 
 type TicketType = {
@@ -44,12 +45,31 @@ type Ticket = {
   ticketType: { name: string };
 };
 
+const TYPE_STATUS: Record<string, readonly [string, string]> = {
+  ACTIVE: ["En vente", "On sale"],
+  PAUSED: ["En pause", "Paused"],
+  SOLD_OUT: ["Épuisé", "Sold out"],
+  CANCELLED: ["Annulé", "Cancelled"]
+};
+const TICKET_STATUS: Record<string, readonly [string, string]> = {
+  RESERVED: ["En attente de paiement", "Awaiting payment"],
+  PAID: ["Payé", "Paid"],
+  CONFIRMED: ["Payé", "Paid"],
+  USED: ["Utilisé", "Used"],
+  CANCELLED: ["Annulé", "Cancelled"],
+  REFUNDED: ["Remboursé", "Refunded"]
+};
+const pick = (map: Record<string, readonly [string, string]>, status: string, isEn: boolean) =>
+  map[status]?.[isEn ? 1 : 0] ?? status;
+
 export default function TicketsPage() {
   const router = useRouter();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
   const { locale } = useI18n();
   const isEn = locale === "en";
+  const typeStatusLabel = (status: string) => pick(TYPE_STATUS, status, isEn);
+  const ticketStatusLabel = (status: string) => pick(TICKET_STATUS, status, isEn);
 
   const [types, setTypes] = useState<TicketType[]>([]);
   const [stats, setStats] = useState<TicketStats | null>(null);
@@ -59,6 +79,7 @@ export default function TicketsPage() {
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingType, setEditingType] = useState<TicketType | null>(null);
+  const [eventStatus, setEventStatus] = useState("DRAFT");
   const [showTickets, setShowTickets] = useState(false);
 
   const [showTypeFilter, setShowTypeFilter] = useState("");
@@ -71,12 +92,14 @@ export default function TicketsPage() {
     try {
       const token = getStoredToken();
       if (!token) { router.push("/login"); return; }
-      const [typesData, statsData] = await Promise.all([
+      const [typesData, statsData, eventData] = await Promise.all([
         apiFetch<TicketType[]>(`/events/${eventId}/ticket-types`, { headers: { Authorization: `Bearer ${token}` } }),
-        apiFetch<TicketStats>(`/events/${eventId}/tickets/stats`, { headers: { Authorization: `Bearer ${token}` } })
+        apiFetch<TicketStats>(`/events/${eventId}/tickets/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+        apiFetch<{ status: string }>(`/events/${eventId}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       setTypes(typesData);
       setStats(statsData);
+      setEventStatus(eventData.status);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
     } finally {
@@ -114,11 +137,19 @@ export default function TicketsPage() {
     a.download = `tickets-${new Date().toISOString().slice(0, 10)}.csv`;
     a.style.display = "none";
     fetch(a.href, { headers: { Authorization: `Bearer ${token}` }, credentials: "include" })
-      .then((r) => r.blob())
+      .then((r) => {
+        // Une erreur de l'API ne doit pas être téléchargée comme un fichier CSV.
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
       .then((blob) => {
-        a.href = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(a.href);
+        a.remove();
+        // Libéré après coup : certains navigateurs annulent un téléchargement dont l'URL disparaît aussitôt.
+        setTimeout(() => URL.revokeObjectURL(url), 1_000);
       })
       .catch(() => showToast.error(isEn ? "Export failed" : "Échec de l'export"));
   }
@@ -134,12 +165,15 @@ export default function TicketsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <DashboardBreadcrumb items={[
-          { label: isEn ? "Events" : "Évènements", href: "/dashboard/events" },
-          { label: isEn ? "Tickets" : "Billets" }
-        ]} />
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-2">
+          <DashboardBreadcrumb items={[
+            { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
+            { label: isEn ? "Tickets" : "Billets" }
+          ]} />
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{isEn ? "Tickets" : "Billets"}</h1>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => { setShowChart(!showChart); if (!showChart && dailySales.length === 0) loadDailySales(); }}>
             <TrendingUp className="w-4 h-4 mr-1" />
             {showChart ? (isEn ? "Hide chart" : "Masquer") : (isEn ? "Sales chart" : "Graphique")}
@@ -166,7 +200,7 @@ export default function TicketsPage() {
         </Card>
         <Card className="p-4 space-y-1">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Revenue" : "Revenu"}</p>
-          <p className="text-2xl font-black">{totalRevenue.toLocaleString()} XOF</p>
+          <p className="text-2xl font-black">{formatCfa(totalRevenue, locale)}</p>
         </Card>
         <Card className="p-4 space-y-1">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Types" : "Types"}</p>
@@ -188,7 +222,7 @@ export default function TicketsPage() {
               return (
                 <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
                   <span className="text-[10px] font-bold text-muted-foreground">{d.count}</span>
-                  <div className="w-full rounded-t-md bg-primary/60 hover:bg-primary/80 transition-colors" style={{ height: `${Math.max(h, 4)}%` }} title={`${d.date}: ${d.count} tickets · ${d.revenue.toLocaleString()} XOF`} />
+                  <div className="w-full rounded-t-md bg-primary/60 hover:bg-primary/80 transition-colors" style={{ height: `${Math.max(h, 4)}%` }} title={`${d.date}: ${d.count} ${isEn ? "tickets" : "billets"} · ${formatCfa(d.revenue, locale)}`} />
                   <span className="text-[9px] text-muted-foreground">{d.date.slice(5)}</span>
                 </div>
               );
@@ -204,18 +238,18 @@ export default function TicketsPage() {
               <div className="flex items-center gap-2">
                 <p className="font-bold">{tt.name}</p>
                 <Badge variant={tt.status === "ACTIVE" ? "default" : tt.status === "PAUSED" ? "secondary" : "destructive"}>
-                  {tt.status}
+                  {typeStatusLabel(tt.status)}
                 </Badge>
               </div>
               {tt.description && <p className="text-xs text-muted-foreground truncate">{tt.description}</p>}
               <p className="text-xs text-muted-foreground">
-                {tt.priceCfa.toLocaleString()} XOF · {tt._count.tickets}/{tt.quantity} {isEn ? "sold" : "vendus"}
-                {tt.maxPerPerson < 100 && ` · max ${tt.maxPerPerson}/person`}
+                {formatCfa(tt.priceCfa, locale)} · {tt._count.tickets}/{tt.quantity} {isEn ? "sold" : "vendus"}
+                {tt.maxPerPerson < 100 && (isEn ? ` · max ${tt.maxPerPerson} per person` : ` · ${tt.maxPerPerson} max par personne`)}
               </p>
             </div>
             <div className="flex gap-1 flex-shrink-0">
-              <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/events/${eventId}/tickets/designer/${tt.id}`)}><Palette className="w-4 h-4" /></Button>
-              <Button variant="ghost" size="sm" onClick={() => setEditingType(tt)}><Pencil className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="sm" aria-label={isEn ? `Design the ticket ${tt.name}` : `Personnaliser le billet ${tt.name}`} onClick={() => router.push(`/dashboard/events/${eventId}/tickets/designer/${tt.id}`)}><Palette className="w-4 h-4" aria-hidden="true" /></Button>
+              <Button variant="ghost" size="sm" aria-label={isEn ? `Edit ${tt.name}` : `Modifier ${tt.name}`} onClick={() => setEditingType(tt)}><Pencil className="w-4 h-4" aria-hidden="true" /></Button>
             </div>
           </Card>
         ))}
@@ -256,10 +290,10 @@ export default function TicketsPage() {
               {tickets.map((t) => (
                 <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/30 text-xs">
                   <div>
-                    <p className="font-semibold">{t.ticketType.name} · {t.amountCfa.toLocaleString()} XOF</p>
+                    <p className="font-semibold">{t.ticketType.name} · {formatCfa(t.amountCfa, locale)}</p>
                     <p className="text-muted-foreground">{t.holderName ?? "-"} · {t.holderPhone ?? "-"} · {t.holderEmail ?? "-"}</p>
                   </div>
-                  <Badge variant={t.status === "USED" ? "default" : t.status === "CANCELLED" ? "destructive" : "secondary"}>{t.status}</Badge>
+                  <Badge variant={t.status === "USED" ? "default" : t.status === "CANCELLED" ? "destructive" : "secondary"}>{ticketStatusLabel(t.status)}</Badge>
                 </div>
               ))}
             </div>
@@ -281,6 +315,7 @@ export default function TicketsPage() {
           eventId={eventId}
           isEn={isEn}
           initial={editingType}
+          priceLocked={eventStatus !== "DRAFT"}
           onClose={() => setEditingType(null)}
           onSaved={() => { setEditingType(null); loadTypes(); }}
         />
@@ -289,10 +324,12 @@ export default function TicketsPage() {
   );
 }
 
-function TicketTypeForm({ eventId, isEn, initial, onClose, onSaved }: {
+function TicketTypeForm({ eventId, isEn, initial, priceLocked = false, onClose, onSaved }: {
   eventId: string;
   isEn: boolean;
   initial?: TicketType;
+  /** Concours publié : le prix de ce billet figure au contrat signé. */
+  priceLocked?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -356,8 +393,11 @@ function TicketTypeForm({ eventId, isEn, initial, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Price (XOF)" : "Prix (XOF)"}</label>
-              <Input type="number" min={1} value={priceCfa} onChange={(e) => setPriceCfa(Number(e.target.value))} required className="mt-1" />
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Price (FCFA)" : "Prix (FCFA)"}</label>
+              <Input type="number" min={1} value={priceCfa} onChange={(e) => setPriceCfa(Number(e.target.value))} required disabled={priceLocked} className="mt-1" />
+              {priceLocked && (
+                <p className="mt-1 text-xs text-muted-foreground">{isEn ? "Fixed by the signed contract." : "Fixé par le contrat signé."}</p>
+              )}
             </div>
             <div>
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Quantity" : "Quantité"}</label>

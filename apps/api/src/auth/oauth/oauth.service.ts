@@ -1,5 +1,5 @@
 import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
-import { TenantOfferType, UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import { createHash, randomBytes } from "crypto";
 import { SignJWT } from "jose";
 import { env } from "../../config/env";
@@ -319,8 +319,7 @@ export class OAuthService {
     const tenant = await this.prisma.client.tenant.create({
       data: {
         slug: uniqueSlug,
-        displayName,
-        offerType: TenantOfferType.ESCROW
+        displayName
       }
     });
 

@@ -22,3 +22,10 @@ export function formatEventDate(value: string | Date, locale: Locale): string {
   if (!Number.isFinite(date.getTime())) return "";
   return date.toLocaleDateString(intlLocale(locale), { day: "numeric", month: "long", year: "numeric" });
 }
+
+/** Date et heure (« 29 oct. 2026, 14:05 ») ; chaîne vide si la date est illisible. */
+export function formatDateTime(value: string | Date, locale: Locale): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleString(intlLocale(locale), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}

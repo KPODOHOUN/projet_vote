@@ -71,32 +71,6 @@ export class AdminController {
     return this.adminService.deleteDisplayPartner(user, id);
   }
 
-  // ── Subscriptions ────────────────────────────────────────────────────
-
-  @Get("subscriptions/overview")
-  getSubscriptionsOverview(@CurrentUser() user: AuthUser, @Query() query: Record<string, unknown>) {
-    return this.adminService.getSubscriptionsOverview(user, query);
-  }
-
-  @Post("subscriptions/:id/activate")
-  activateSubscription(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.adminService.activateSubscription(user, id);
-  }
-
-  @Post("subscriptions/:id/suspend")
-  suspendSubscription(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.adminService.suspendSubscription(user, id);
-  }
-
-  @Post("subscriptions/:id/renew")
-  renewSubscription(
-    @CurrentUser() user: AuthUser,
-    @Param("id") id: string,
-    @Body() body: { durationMonths: number }
-  ) {
-    return this.adminService.renewSubscription(user, id, body);
-  }
-
   // ── Admin Management ─────────────────────────────────────────────────
 
   @Get("admins")
@@ -145,27 +119,6 @@ export class AdminController {
   @Post("api-keys/:id/revoke")
   revokeApiKey(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.adminService.revokeApiKey(user, id);
-  }
-
-  // ── Feature Flags ────────────────────────────────────────────────────
-
-  @Get("feature-flags")
-  listFeatureFlags(@CurrentUser() user: AuthUser, @Query() query: Record<string, unknown>) {
-    return this.adminService.listFeatureFlags(user, query);
-  }
-
-  @Post("feature-flags")
-  upsertFeatureFlag(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.adminService.upsertFeatureFlag(user, body);
-  }
-
-  @Delete("feature-flags/:key")
-  deleteFeatureFlag(
-    @CurrentUser() user: AuthUser,
-    @Param("key") key: string,
-    @Query("tenantId") tenantId?: string
-  ) {
-    return this.adminService.deleteFeatureFlag(user, { key, ...(tenantId ? { tenantId } : {}) });
   }
 
   // ── Jobs & Audit ─────────────────────────────────────────────────────

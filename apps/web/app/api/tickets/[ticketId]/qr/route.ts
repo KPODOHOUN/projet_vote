@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
   const { ticketId } = await params;
   const apiUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${apiUrl}/public/tickets/${ticketId}/qr`);
+    const secret = req.nextUrl.searchParams.get("s") ?? "";
+    const res = await fetch(`${apiUrl}/public/tickets/${ticketId}/qr?s=${encodeURIComponent(secret)}`);
     if (!res.ok) return new NextResponse("Not found", { status: 404 });
     const buffer = await res.arrayBuffer();
     return new NextResponse(buffer, {
-      headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" }
+      headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=3600" }
     });
   } catch {
     return new NextResponse("Error", { status: 500 });

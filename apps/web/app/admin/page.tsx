@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { getStoredToken } from "../../lib/auth";
 import { useI18n } from "../../lib/i18n-provider";
 import { FormError, LoadingState } from "@/components/ui";
-import { InternalCapabilitiesPanel } from "@/components/admin/internal-capabilities-panel";
-import { AdminPageHeader, AdminPageShell } from "@/components/admin/admin-shell";
+import { AdminPageHeader, AdminPageShell, AdminStatGrid, AdminStatTile } from "@/components/admin/admin-shell";
 import { fetchMaintenanceMode } from "../../lib/platform-maintenance";
 
 type JobsOverview = { pendingPayments: number; failedPayments24h: number; expiredIdempotencyKeys: number };
@@ -22,9 +20,9 @@ type Overview = {
 };
 
 /**
- * Vue d'ensemble admin (7.8) : un chiffre dominant (retraits à traiter), le
- * reste en lignes cliquables. Chaque valeur vient d'une route existante ; une
- * route en échec affiche « — », jamais un chiffre inventé.
+ * Vue d'ensemble admin : six tuiles de même taille, chacune mène à la page qui
+ * traite le sujet. Chaque valeur vient d'une route existante ; une route en
+ * échec affiche « — », jamais un chiffre inventé.
  */
 export default function AdminHomePage() {
   const { t } = useI18n();
@@ -58,60 +56,67 @@ export default function AdminHomePage() {
   }
 
   const dash = (value: number | null | undefined) => (value == null ? "—" : String(value));
-  const row = "flex min-h-11 items-center border-b border-border py-2 text-sm text-slate-900 hover:bg-accent/40";
+  const pending = data.pendingWithdrawals;
+  const failed = data.jobs?.failedPayments24h;
+  const ledger = data.ledger;
 
   return (
     <AdminPageShell>
-      <AdminPageHeader eyebrow="SHADOMA" title={t("adminHome.title")} />
+      <AdminPageHeader eyebrow={t("adminHome.eyebrow")} title={t("adminHome.title")} />
 
       {partialError ? <FormError>{t("adminHome.loadFailed")}</FormError> : null}
 
-      <section className="grid gap-8 md:grid-cols-[3fr_2fr]">
-        <Link href="/admin/offers/withdrawals?status=PENDING" className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <p className="text-sm text-slate-600">{t("adminHome.pending")}</p>
-          <p className="mt-1 text-4xl font-extrabold text-slate-900 tabular-nums">{dash(data.pendingWithdrawals)}</p>
-          {data.pendingWithdrawals === 0 ? <p className="mt-1 text-sm text-slate-600">{t("adminHome.pendingNone")}</p> : null}
-        </Link>
-
-        <ul className="border-t border-border">
-          <li>
-            <Link href="/admin/offers/events" className={row}>
-              {t("adminHome.activeEvents", { count: dash(data.activeEscrowEvents) })}
-            </Link>
-          </li>
-          <li>
-            <Link href="/admin/offers" className={row}>
-              {data.ledger === null
-                ? "—"
-                : data.ledger.driftCount > 0
-                  ? <span className="font-semibold text-[var(--color-error-text)]">{t("adminHome.ledgerDrift", { count: data.ledger.driftCount })}</span>
-                  : t("adminHome.ledgerOk", { count: data.ledger.walletsChecked })}
-            </Link>
-          </li>
-          {data.ledger && data.ledger.unknownEntries > 0 ? (
-            <li className="border-b border-border py-2 text-sm text-slate-600">
-              {t("adminHome.ledgerUnknown", { count: data.ledger.unknownEntries })}
-            </li>
-          ) : null}
-          <li>
-            <Link href="/admin/maintenance" className={row}>
-              {data.maintenance === null ? "—" : data.maintenance ? t("adminHome.maintenanceOn") : t("adminHome.maintenanceOff")}
-            </Link>
-          </li>
-          <li>
-            <Link href="/admin/jobs" className={row}>
-              {t("adminHome.pendingPayments", { count: dash(data.jobs?.pendingPayments) })}
-            </Link>
-          </li>
-          <li>
-            <Link href="/admin/jobs" className={row}>
-              {t("adminHome.failedPayments", { count: dash(data.jobs?.failedPayments24h) })}
-            </Link>
-          </li>
-        </ul>
-      </section>
-
-      <InternalCapabilitiesPanel />
+      <AdminStatGrid>
+        <AdminStatTile
+          href="/admin/offers/withdrawals?status=PENDING"
+          label={t("adminHome.pending")}
+          value={dash(pending)}
+          tone={pending ? "alert" : pending === 0 ? "ok" : "neutral"}
+          {...(pending === 0 ? { hint: t("adminHome.pendingNone") } : {})}
+        />
+        <AdminStatTile
+          href="/admin/offers/events"
+          label={t("adminHome.activeEvents")}
+          value={dash(data.activeEscrowEvents)}
+        />
+        <AdminStatTile
+          href="/admin/jobs"
+          label={t("adminHome.pendingPayments")}
+          value={dash(data.jobs?.pendingPayments)}
+        />
+        <AdminStatTile
+          href="/admin/jobs"
+          label={t("adminHome.failedPayments")}
+          value={dash(failed)}
+          tone={failed ? "alert" : failed === 0 ? "ok" : "neutral"}
+          {...(failed === 0 ? { hint: t("adminHome.allGood") } : {})}
+        />
+        <AdminStatTile
+          href="/admin/offers"
+          label={t("adminHome.ledger")}
+          value={ledger ? (ledger.driftCount > 0 ? String(ledger.driftCount) : t("adminHome.ledgerOkShort")) : "—"}
+          tone={ledger ? (ledger.driftCount > 0 ? "alert" : "ok") : "neutral"}
+          {...(ledger
+            ? {
+                hint:
+                  ledger.driftCount > 0
+                    ? t("adminHome.ledgerDrift", { count: ledger.driftCount })
+                    : ledger.unknownEntries > 0
+                      ? t("adminHome.ledgerUnknown", { count: ledger.unknownEntries })
+                      : t("adminHome.ledgerOk", { count: ledger.walletsChecked })
+              }
+            : {})}
+        />
+        <AdminStatTile
+          href="/admin/maintenance"
+          label={t("adminHome.maintenance")}
+          value={data.maintenance === null ? "—" : data.maintenance ? t("adminHome.maintenanceOn") : t("adminHome.maintenanceOff")}
+          tone={data.maintenance ? "alert" : "neutral"}
+          {...(data.maintenance === null
+            ? {}
+            : { hint: data.maintenance ? t("adminHome.maintenanceOnHint") : t("adminHome.maintenanceOffHint") })}
+        />
+      </AdminStatGrid>
     </AdminPageShell>
   );
 }

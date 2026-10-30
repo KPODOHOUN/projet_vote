@@ -14,7 +14,7 @@ type TicketInfo = {
 export function ticketEmailHtml(ticket: TicketInfo): string {
   const publicUrl = env.APP_PUBLIC_URL.replace(/\/+$/, "");
   const ticketUrl = `${publicUrl}/t/${ticket.id}?s=${ticket.qrSecret}`;
-  const qrUrl = `${publicUrl}/api/v1/public/tickets/${ticket.id}/qr`;
+  const qrUrl = `${publicUrl}/api/v1/public/tickets/${ticket.id}/qr?s=${encodeURIComponent(ticket.qrSecret)}`;
 
   return `
     <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px">
@@ -58,8 +58,8 @@ export function ticketEmailHtml(ticket: TicketInfo): string {
 
       <div style="border-top:1px solid #eee;padding-top:16px;margin-top:16px">
         <p style="color:#888;font-size:12px;line-height:1.5">
-          Ce billet est personnel et nominatif. Un seul scan par billet sera accepté à l'entrée de l'évènement.
-          En cas de problème, contactez l'organisateur de l'évènement.
+          Ce billet est personnel et nominatif. Un seul scan par billet sera accepté à l'entrée de l'événement.
+          En cas de problème, contactez l'organisateur de l'événement.
         </p>
       </div>
     </div>

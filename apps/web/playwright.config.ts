@@ -8,9 +8,9 @@ process.env.E2E_API_BASE_URL ??= "http://127.0.0.1:3011/api/v1";
 // Base dédiée aux e2e (convention identique au script `npm test` de l'API).
 // Surcharge le DATABASE_URL du .env racine chargé par apps/api/src/config/env.ts
 // afin que les specs ne polluent jamais la base de développement.
-const e2eDatabaseUrl =
-  process.env.TEST_DATABASE_URL ??
-  "postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test";
+// Exportée aussi vers les specs qui ouvrent leur propre client Prisma.
+const e2eDatabaseUrl = (process.env.TEST_DATABASE_URL ??=
+  "postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test");
 
 export default defineConfig({
   testDir: "./tests/e2e",

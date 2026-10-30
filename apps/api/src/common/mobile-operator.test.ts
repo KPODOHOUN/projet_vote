@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  detectMobileOperator,
-  isSupportedOperator,
-  normalizePayinPhone,
-  resolvePayinOperator
-} from "./mobile-operator";
+import { normalizePayinPhone, payinNetworksFor, resolvePayinNetwork } from "./mobile-operator";
 
 test("normalizePayinPhone: numéro international avec + préservé (pan-Afrique)", () => {
   assert.equal(normalizePayinPhone("+2250102030405"), "2250102030405"); // Côte d'Ivoire
@@ -14,58 +9,69 @@ test("normalizePayinPhone: numéro international avec + préservé (pan-Afrique)
 });
 
 test("normalizePayinPhone: préfixe international 00 retiré", () => {
-  assert.equal(normalizePayinPhone("0022990000001"), "22990000001");
+  assert.equal(normalizePayinPhone("0022990000001"), "2290190000001");
 });
 
 test("normalizePayinPhone: indicatif pays africain déjà présent → conservé (pas de double 229)", () => {
   assert.equal(normalizePayinPhone("2250102030405"), "2250102030405");
-  assert.equal(normalizePayinPhone("22990000001"), "22990000001");
+  assert.equal(normalizePayinPhone("22990000001"), "2290190000001");
 });
 
-test("normalizePayinPhone: numéro local Bénin (trunk 0) → indicatif par défaut", () => {
-  assert.equal(normalizePayinPhone("0166000000"), "229166000000");
+test("normalizePayinPhone: numéro Bénin à 10 chiffres → le 0 fait partie du numéro (+229 01…)", () => {
+  assert.equal(normalizePayinPhone("0166000000"), "2290166000000");
+  assert.equal(normalizePayinPhone("01 97 00 00 00"), "2290197000000");
+  assert.equal(normalizePayinPhone("+229 01 97 00 00 00"), "2290197000000");
 });
 
-test("normalizePayinPhone: numéro local nu → indicatif par défaut", () => {
-  assert.equal(normalizePayinPhone("90000001"), "22990000001");
+test("normalizePayinPhone: ancien numéro Bénin à 8 chiffres → « 01 » ajouté", () => {
+  assert.equal(normalizePayinPhone("90000001"), "2290190000001");
+  assert.equal(normalizePayinPhone("+229 97 00 00 00"), "2290197000000");
+});
+
+test("normalizePayinPhone: Côte d'Ivoire garde aussi son 0 de tête", () => {
+  assert.equal(normalizePayinPhone("0707000000", "225"), "2250707000000");
 });
 
 test("normalizePayinPhone: indicatif par défaut paramétrable (autre pays)", () => {
   assert.equal(normalizePayinPhone("0770000000", "221"), "221770000000");
 });
 
-test("detectMobileOperator: heuristique Bénin (fallback)", () => {
-  // Après retrait de l'indicatif 229, un local commençant par 019/010 → Moov.
-  assert.equal(detectMobileOperator("229019000000"), "moov");
-  assert.equal(detectMobileOperator("229010000000"), "moov");
-  assert.equal(detectMobileOperator("22990000000"), "mtn");
-  // Hors Bénin sans opérateur explicite → défaut mtn (sûr).
-  assert.equal(detectMobileOperator("2250102030405"), "mtn");
+test("normalizePayinPhone: numéro béninois impossible → 400 (10 chiffres commençant par 01)", () => {
+  assert.throws(() => normalizePayinPhone("0766000001"), /Numéro béninois invalide/);
+  assert.throws(() => normalizePayinPhone("+229 66 00 00"), /Numéro béninois invalide/);
+  assert.throws(() => normalizePayinPhone("229019700000012"), /Numéro béninois invalide/);
 });
 
-test("resolvePayinOperator: opérateur explicite validé et normalisé", () => {
-  assert.equal(resolvePayinOperator("MTN", "2250102030405"), "mtn");
-  assert.equal(resolvePayinOperator("orange", "2250102030405"), "orange");
-  assert.equal(resolvePayinOperator("Moov", "22990000000"), "moov");
+test("resolvePayinNetwork: réseau choisi validé et normalisé", () => {
+  assert.equal(resolvePayinNetwork("MTN", "FEDAPAY"), "mtn");
+  assert.equal(resolvePayinNetwork(" Moov ", "FEDAPAY"), "moov");
+  assert.equal(resolvePayinNetwork("Celtiis", "FEEXPAY"), "celtiis");
 });
 
-test("resolvePayinOperator: fallback détection quand opérateur absent", () => {
-  assert.equal(resolvePayinOperator(undefined, "229019000000"), "moov");
-  assert.equal(resolvePayinOperator(undefined, "22990000000"), "mtn");
+test("resolvePayinNetwork: réseau absent → 400, jamais deviné d'après le numéro", () => {
+  assert.throws(() => resolvePayinNetwork(undefined, "FEDAPAY"), /Choisissez votre réseau Mobile Money \(MTN, MOOV\)/);
+  assert.throws(() => resolvePayinNetwork("  ", "FEEXPAY"), /Choisissez votre réseau/);
 });
 
-test("resolvePayinOperator: opérateur hors liste blanche → 400", () => {
-  assert.throws(() => resolvePayinOperator("vodafone", "2250102030405"), /non supporté/);
+test("resolvePayinNetwork: le message ne propose que les réseaux du prestataire", () => {
+  // Orange n'est pas dans la liste blanche ; Celtiis n'est pas débitable par FedaPay.
+  assert.throws(() => resolvePayinNetwork("orange", "FEDAPAY"), /Le réseau ORANGE n'est pas accepté pour ce paiement\. Réseaux acceptés : MTN, MOOV\.$/);
+  assert.throws(() => resolvePayinNetwork("celtiis", "FEDAPAY"), /Le réseau CELTIIS n'est pas accepté.*: MTN, MOOV\.$/);
+  assert.throws(() => resolvePayinNetwork("orange", "FEEXPAY"), /Réseaux acceptés : MTN, MOOV, CELTIIS\.$/);
 });
 
-test("resolvePayinOperator: tentative d'injection de segment → 400", () => {
-  assert.throws(() => resolvePayinOperator("../payouts", "2250102030405"), /non supporté/);
-  assert.throws(() => resolvePayinOperator("mtn/../x", "2250102030405"), /non supporté/);
+test("resolvePayinNetwork: tentative d'injection de segment → 400 sans recopier la saisie", () => {
+  for (const raw of ["../payouts", "mtn/../x"]) {
+    assert.throws(() => resolvePayinNetwork(raw, "FEEXPAY"), (error: Error) => /n'est pas accepté/.test(error.message) && !error.message.includes(raw));
+  }
 });
 
-test("isSupportedOperator: liste blanche par défaut", () => {
-  assert.equal(isSupportedOperator("mtn"), true);
-  assert.equal(isSupportedOperator("MOOV"), true);
-  assert.equal(isSupportedOperator("orange"), true);
-  assert.equal(isSupportedOperator("wave"), false);
+test("resolvePayinNetwork: prestataire sans réseau → 400 explicite", () => {
+  assert.throws(() => resolvePayinNetwork("mtn", "KKIAPAY"), /Aucun réseau Mobile Money n'est disponible/);
+});
+
+test("payinNetworksFor: seuls les réseaux que le prestataire sait débiter", () => {
+  assert.deepEqual(payinNetworksFor("FEEXPAY"), ["mtn", "moov", "celtiis"]);
+  assert.deepEqual(payinNetworksFor("FEDAPAY"), ["mtn", "moov"]);
+  assert.deepEqual(payinNetworksFor("KKIAPAY"), []);
 });

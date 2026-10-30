@@ -33,7 +33,7 @@ export function LegalFooter() {
 
   return (
     <footer className="border-t border-border bg-background" aria-label={t("footer.label")}>
-      <div className="px-5 py-10 md:px-16">
+      <div className="mx-auto w-[min(1160px,100%-2rem)] py-10">
         <Link href="/" className="text-base font-extrabold tracking-tight text-slate-900">
           SHADOMA
         </Link>

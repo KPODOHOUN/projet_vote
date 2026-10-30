@@ -34,7 +34,7 @@ Les anciennes URLs `/vote/...` redirigent vers `/e/{slug}`. L'API accepte encore
 
 | Acteur | Rôle technique (`UserRole`) | Ce qu'il fait |
 |--------|------------------------------|---------------|
-| **Admin plateforme** | `PLATFORM_ADMIN` | God-mode `/admin/platform/*` : supervise tous les tenants, commissions, audit, feature flags, partenaires, maintenance |
+| **Admin plateforme** | `PLATFORM_ADMIN` | God-mode `/admin/platform/*` : supervise tous les tenants, commissions, contrats, retraits, audit, maintenance |
 | **Organisateur** | `ORGANIZER_OWNER` / `ORGANIZER_STAFF` | Gère SES événements et candidats ; consulte SES votes et revenus ; invite des membres |
 | **Votant** | public, anonyme | Vote en payant ; identifié par son téléphone (haché) |
 
@@ -45,13 +45,12 @@ Les anciennes URLs `/vote/...` redirigent vers `/e/{slug}`. L'API accepte encore
 ```
 Organisateur (compte = Tenant)
   └── crée un Event (concours)              → page publique /e/{slug}
-        ├── configure branding + FeexPay + règles de vote
+        ├── configure branding, prix du vote, billetterie
         ├── ajoute des Candidates (publicRef auto, numéro optionnel)
-        └── active l'événement               → statut ACTIVE
-              (forfait 0 FCFA = activation auto ; sinon paiement mobile)
-                    └── le public vote        → paiement FeexPay (XOF)
+        └── lit et signe le contrat du concours → statut ACTIVE (en ligne)
+                    └── le public vote        → paiement Mobile Money (XOF) sur le compte SHADOMA
                           └── webhook + verify-by-pull → vote validé
-                                └── commissions event → organisateur → plateforme
+                                └── commission (12 % par défaut) → reste au portefeuille organisateur
 ```
 
 **Partage votant :** lien direct par candidat (`/e/{slug}/c/{publicRef}`), copiable depuis le dashboard organisateur.
@@ -60,10 +59,10 @@ Organisateur (compte = Tenant)
 
 ## 5. Modèle économique
 
-- **Votes payants** : chaque voix = micro-paiement mobile money (FeexPay, FCFA/XOF).
-- **Commissions** : chaîne **event → organisateur → plateforme** (pilotable `PLATFORM_ADMIN`).
-- **Activation** : forfait configurable (`activation_fee_cfa`) ; à 0 FCFA l'activation est gratuite et immédiate.
-- **Programme partenaires** : offres à paliers, dettes d'activation, notifications admin.
+- **Votes et billets payants** : micro-paiements mobile money (FeexPay / FedaPay, FCFA/XOF) encaissés par SHADOMA.
+- **Commission** : 12 % par défaut, prélevée à chaque paiement confirmé ; taux négocié possible par organisateur (date d'effet, historisé, jamais rétroactif) ; le taux d'un concours est figé par son contrat.
+- **Portefeuille organisateur** : part réservée (libérée 48 h après la clôture) + part retirable ; retraits validés par un admin.
+- **Aucun abonnement, aucun frais d'activation** : la mise en ligne passe uniquement par la signature du contrat (ADR-022).
 
 ---
 
@@ -71,7 +70,7 @@ Organisateur (compte = Tenant)
 
 **Monorepo** (npm workspaces) :
 - **`apps/web`** — Next.js 15 (App Router) : pages publiques `/e/...` + dashboards
-- **`apps/api`** — NestJS 11 : métier, sécurité, webhooks, partenaires
+- **`apps/api`** — NestJS 11 : métier, sécurité, webhooks, contrats
 - **`packages/db`** — Prisma + PostgreSQL (scoping `tenantId`)
 - **`packages/shared`** — types/contrats
 
@@ -95,7 +94,7 @@ Les migrations Prisma s'appliquent au démarrage du conteneur API (`docker-entry
 - **Parcours votant** : pages publiques SSR, résultats en direct, liens candidat sécurisés
 - **Conformité RGPD** : export ZIP, suppression/anonymisation, consentement cookies
 - **Observabilité** : logs JSON, `x-trace-id`, Sentry, `/ops/metrics`, healthchecks
-- **Admin plateforme** : audit, feature flags, jobs, partenaires, secrets plateforme
+- **Admin plateforme** : audit, jobs, règles d'argent, taux négociés, contrats signés, retraits, secrets plateforme
 
 ---
 

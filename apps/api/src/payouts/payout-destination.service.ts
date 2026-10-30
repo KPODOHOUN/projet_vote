@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 import { z } from "zod";
-import { PaymentProvider } from "@prisma/client";
 import { env } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
+import { normalizePayinPhone } from "../common/mobile-operator";
 
 /**
  * Organizer payout (settlement) destination: an encrypted Mobile Money number +
@@ -17,11 +17,6 @@ const setDestinationSchema = z.object({
   network: z.string().min(2).max(20) // "MTN" | "MOOV" | "MTN_CI" | ...
 });
 
-export type OrganizerPayoutDestination = {
-  network: string;
-  account: string; // decrypted MoMo number — in-memory only, never persisted/logged
-};
-
 @Injectable()
 export class PayoutDestinationService {
   constructor(private readonly prisma: PrismaService) {}
@@ -29,7 +24,8 @@ export class PayoutDestinationService {
   /** Organizer (or owner) sets their settlement Mobile Money destination. */
   async setForTenant(tenantId: string, payload: unknown): Promise<{ network: string; last4: string }> {
     const input = setDestinationSchema.parse(payload);
-    const normalized = input.phone.replace(/^\+/, "");
+    // Même format que les paiements : Bénin en 229 01 + 8 chiffres.
+    const normalized = normalizePayinPhone(input.phone);
     const enc = this.encrypt(normalized);
     const last4 = normalized.slice(-4);
     await this.prisma.client.tenant.update({
@@ -49,27 +45,25 @@ export class PayoutDestinationService {
     return { network: tenant.payoutNetwork, last4: tenant.payoutPhoneLast4 };
   }
 
-  /**
-   * Resolve a tenant's decrypted payout destination. Returns null when the
-   * organizer has not configured one — the orchestrator must then SKIP (never
-   * disburse to an unknown account).
-   */
-  async resolveForTenant(tenantId: string): Promise<OrganizerPayoutDestination | null> {
+  /** Numéro de retrait actuel, tel qu'il sera figé dans une demande de retrait (chiffré). */
+  async snapshotForTenant(
+    tenantId: string
+  ): Promise<{ payoutNetwork: string; payoutPhoneEnc: string; payoutPhoneLast4: string } | null> {
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
-      select: { payoutNetwork: true, payoutPhoneEnc: true }
+      select: { payoutNetwork: true, payoutPhoneEnc: true, payoutPhoneLast4: true }
     });
-    if (!tenant?.payoutNetwork || !tenant.payoutPhoneEnc) return null;
-    return { network: tenant.payoutNetwork, account: this.decrypt(tenant.payoutPhoneEnc) };
+    if (!tenant?.payoutNetwork || !tenant.payoutPhoneEnc || !tenant.payoutPhoneLast4) return null;
+    return {
+      payoutNetwork: tenant.payoutNetwork,
+      payoutPhoneEnc: tenant.payoutPhoneEnc,
+      payoutPhoneLast4: tenant.payoutPhoneLast4
+    };
   }
 
-  /** Platform settlement destination from env (Flow A master account). */
-  platformDestination(): { provider: PaymentProvider; network: string; account: string } {
-    return {
-      provider: env.DEFAULT_PSP_PROVIDER as PaymentProvider,
-      network: env.PLATFORM_PAYOUT_NETWORK,
-      account: env.PLATFORM_PAYOUT_ACCOUNT
-    };
+  /** Numéro en clair, en mémoire uniquement (jamais journalisé ni stocké). */
+  revealAccount(payoutPhoneEnc: string): string {
+    return this.decrypt(payoutPhoneEnc);
   }
 
   private key(): Buffer {

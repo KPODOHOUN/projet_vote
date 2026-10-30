@@ -5,33 +5,19 @@ import { EventStatus, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventsService } from "./events.service";
 import { VotesService } from "../votes/votes.service";
-import { PlatformControlService } from "../platform-control/platform-control.service";
-import { VaultService } from "../platform-control/vault.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { PartnersService } from "../partners/partners.service";
-import { noopPartnerNotifications } from "../partners/partner-notifications.stub";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
-import { OfferSettingsService } from "../offers/offer-settings.service";
-import { SETTLEMENT_HELD_BPS_KEY } from "../common/platform-settings";
 
 const prismaService = new PrismaService();
 const votes = new VotesService(prismaService);
-const partners = new PartnersService(prismaService, noopPartnerNotifications());
-const offerSettings = new OfferSettingsService(prismaService);
 const events = new EventsService(
   prismaService,
   votes,
-  new NotificationsService(prismaService),
-  partners,
-  offerSettings
+  new NotificationsService(prismaService)
 );
-const platform = new PlatformControlService(prismaService, new VaultService(prismaService));
 
 function owner(tenantId: string) {
   return { userId: "owner-1", tenantId, email: "owner@ev.bj", role: UserRole.ORGANIZER_OWNER };
-}
-function admin(tenantId: string) {
-  return { userId: "admin-1", tenantId, email: "admin@ev.bj", role: UserRole.PLATFORM_ADMIN };
 }
 const past = () => new Date(Date.now() - 86_400_000).toISOString();
 const future = () => new Date(Date.now() + 86_400_000).toISOString();
@@ -164,11 +150,12 @@ test("listCandidates: isolation tenant (event d'autrui → introuvable)", async 
   await assert.rejects(events.listCandidates(owner(t2.id), ev.id), /introuvable/);
 });
 
-test("updateEvent: activation refusée (402) tant que le forfait est impayé", async () => {
+test("updateEvent: la mise en ligne passe uniquement par la signature du contrat", async () => {
   const t = await tenant("ev-act");
-  await platform.updateSettings(admin(t.id), { activationFeeCfa: 20000 });
   const ev = await events.createEvent(owner(t.id), { slug: "act-evt", title: "Activation", startsAt: past(), endsAt: future() });
-  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { status: "ACTIVE" }), /Forfait/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { status: "ACTIVE" }), /contrat/);
+  const still = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(still.status, "DRAFT");
 });
 
 test("importCandidates: crée plusieurs candidats et signale les numéros en conflit", async () => {
@@ -190,28 +177,6 @@ test("importCandidates: crée plusieurs candidats et signale les numéros en con
 
   const list = await events.listCandidates(owner(t.id), ev.id);
   assert.equal(list.length, 3);
-});
-
-test("updateEvent: pose heldBps au moment de l'activation, jamais avant", async () => {
-  await prisma.platformSetting.upsert({
-    where: { key: SETTLEMENT_HELD_BPS_KEY },
-    create: { key: SETTLEMENT_HELD_BPS_KEY, value: "5000", updatedByUserId: "test" },
-    update: { value: "5000" }
-  });
-  const t = await tenant(`held-snap-${Date.now().toString(36)}`);
-  const draft = await prisma.event.create({
-    data: {
-      tenantId: t.id,
-      title: "Held snapshot event",
-      slug: `ev-held-${Date.now().toString(36)}`,
-      startsAt: new Date(future()),
-      endsAt: new Date(new Date(future()).getTime() + 86_400_000)
-    }
-  });
-  assert.equal(draft.heldBps, null);
-
-  const activated = await events.updateEvent(owner(t.id), draft.id, { status: "ACTIVE" });
-  assert.equal(activated.heldBps, 5_000);
 });
 
 test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre organisateur ; payload public cohérent", async () => {

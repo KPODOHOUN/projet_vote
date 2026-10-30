@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import {
   BarChart3,
+  FileSignature,
   LayoutTemplate,
   Settings2,
   Ticket,
@@ -32,7 +33,8 @@ const tabs = [
   { id: "candidates", suffix: "/candidates", icon: Users, labelFr: "Candidats", labelEn: "Candidates" },
   { id: "tickets", suffix: "/tickets", icon: Ticket, labelFr: "Billetterie", labelEn: "Tickets" },
   { id: "design", suffix: "/design", icon: LayoutTemplate, labelFr: "Design", labelEn: "Design" },
-  { id: "edit", suffix: "/edit", icon: Settings2, labelFr: "Réglages", labelEn: "Settings" }
+  { id: "edit", suffix: "/edit", icon: Settings2, labelFr: "Réglages", labelEn: "Settings" },
+  { id: "contract", suffix: "/contract", icon: FileSignature, labelFr: "Contrat", labelEn: "Contract" }
 ] as const;
 
 export function EventDashboardShell({
@@ -53,7 +55,7 @@ export function EventDashboardShell({
       <DashboardBreadcrumb
         isEn={isEn}
         items={[
-          { label: isEn ? "Events" : "Évènements", href: "/dashboard/events" },
+          { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
           { label: eventTitle }
         ]}
       />
@@ -61,7 +63,7 @@ export function EventDashboardShell({
       <header className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-600">
-            {isEn ? "Event workspace" : "Espace évènement"}
+            {isEn ? "Event workspace" : "Espace événement"}
           </p>
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">{eventTitle}</h1>
           <p className="text-sm text-muted-foreground">
@@ -72,25 +74,25 @@ export function EventDashboardShell({
           <CopyPublicLinkButton eventSlug={eventSlug} isEn={isEn} />
           <Button asChild variant="secondary" size="sm">
             <Link href={publicEventPath(eventSlug)} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="mr-1.5 size-4" />
+              <ExternalLink className="size-4" />
               {isEn ? "Public page" : "Page publique"}
             </Link>
           </Button>
           {onDeleteEvent ? (
             <ConfirmDialog
               disabled={deleting}
-              title={isEn ? "Delete or archive event?" : "Supprimer ou archiver l'évènement ?"}
+              title={isEn ? "Delete or archive event?" : "Supprimer ou archiver l'événement ?"}
               description={
                 isEn
                   ? "Events with paid votes will be archived instead of deleted. This cannot be undone easily."
-                  : "Les évènements avec votes payés seront archivés plutôt que supprimés. Action difficilement réversible."
+                  : "Les événements avec votes payés seront archivés plutôt que supprimés. Action difficilement réversible."
               }
               confirmLabel={isEn ? "Confirm" : "Confirmer"}
               cancelLabel={isEn ? "Cancel" : "Annuler"}
               onConfirm={onDeleteEvent}
               trigger={
                 <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" loading={deleting}>
-                  <Trash2 className="mr-1.5 size-4" />
+                  <Trash2 className="size-4" />
                   {isEn ? "Delete" : "Supprimer"}
                 </Button>
               }

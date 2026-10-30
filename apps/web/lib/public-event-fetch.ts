@@ -33,6 +33,8 @@ export type PublicEventResponse = {
   organizer: PublicOrganizer;
   event: PublicEvent;
   candidates: PublicCandidate[];
+  /** Réseaux que le prestataire de ce concours sait débiter. */
+  paymentNetworks?: string[];
 };
 
 export async function fetchPublicEvent(slug: string): Promise<PublicEventResponse | null> {

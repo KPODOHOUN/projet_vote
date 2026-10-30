@@ -17,7 +17,7 @@ export default function PrivacyPage() {
           <p className="text-muted-foreground leading-relaxed">
             {isEn
               ? "SHADOMA Votes only collects data required to run your events, secure paid votes, and monitor operations: organizer accounts, audit logs, payment transactions, and technical metrics."
-              : "SHADOMA Votes collecte uniquement les données nécessaires au pilotage de vos évènements, à la sécurisation des votes payants et au suivi d'exploitation : comptes organisateurs, journaux d'audit, transactions de paiement et métriques techniques."}
+              : "SHADOMA Votes collecte uniquement les données nécessaires au pilotage de vos événements, à la sécurisation des votes payants et au suivi d'exploitation : comptes organisateurs, journaux d'audit, transactions de paiement et métriques techniques."}
           </p>
         </section>
 
@@ -26,7 +26,7 @@ export default function PrivacyPage() {
           <p className="text-muted-foreground leading-relaxed">
             {isEn
               ? "Processing covers authentication, event management, payment confirmation, fraud detection, legal compliance, and service continuity."
-              : "Les traitements couvrent l'authentification, la gestion des évènements, la confirmation des paiements, la détection de fraude, la conformité légale et la continuité de service."}
+              : "Les traitements couvrent l'authentification, la gestion des événements, la confirmation des paiements, la détection de fraude, la conformité légale et la continuité de service."}
           </p>
         </section>
 

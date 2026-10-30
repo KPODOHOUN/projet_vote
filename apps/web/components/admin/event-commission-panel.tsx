@@ -9,9 +9,8 @@ import { Button, Card, FormError, Input, LoadingState } from "@/components/ui";
 import type { MessageKey } from "@/lib/i18n";
 
 type CommissionInfo = {
-  enabled: boolean;
   effectiveBps: number;
-  source: "event" | "tenant" | "default" | "disabled";
+  source: "event" | "tenant" | "default";
   eventBps: number | null;
   tenantBps: number | null;
   defaultBps: number;
@@ -25,9 +24,9 @@ function bpsToPercent(bps: number): string {
 }
 
 /**
- * Taux de commission Escrow d'un événement, côté admin. Les bornes viennent de
- * l'API (garde-fous serveur) ; le serveur refuse aussi toute modification après
- * l'activation, le champ n'est donc qu'un reflet de cette règle.
+ * Taux de commission d'un concours, côté admin. Les bornes viennent de l'API
+ * (garde-fous serveur) ; le serveur refuse toute modification après la
+ * signature du contrat (le taux y est figé), le champ n'en est que le reflet.
  */
 export function EventCommissionPanel({ eventId }: { eventId: string }) {
   const { t } = useI18n();
@@ -60,7 +59,7 @@ export function EventCommissionPanel({ eventId }: { eventId: string }) {
         method: "PUT",
         body: JSON.stringify({ commissionBps }),
       });
-      setInfo({ ...info, eventBps: commissionBps, effectiveBps: info.enabled ? commissionBps : 0, source: info.enabled ? "event" : "disabled" });
+      setInfo({ ...info, eventBps: commissionBps, effectiveBps: commissionBps, source: "event" });
       setValue("");
       showToast.success(t("admin.commission.saved"));
     } catch (caught) {
@@ -78,7 +77,7 @@ export function EventCommissionPanel({ eventId }: { eventId: string }) {
       <div>
         <h3 className="text-base font-bold">{t("admin.commission.title")}</h3>
         <p className="mt-1 text-2xl font-extrabold tabular-nums">
-          {info.enabled ? `${bpsToPercent(info.effectiveBps)} %` : t("admin.commission.disabled")}
+          {`${bpsToPercent(info.effectiveBps)} %`}
         </p>
         <p className="text-sm text-muted-foreground">
           {t(`admin.commission.source.${info.source}` as MessageKey)}

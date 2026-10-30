@@ -46,37 +46,38 @@ export function normalizePayinPhone(phone: string, defaultCountryCode?: string):
   const hadPlus = trimmed.startsWith("+");
   const digits = normalizePhoneDigits(trimmed);
 
+  let international: string;
   if (digits.startsWith("00")) {
-    return digits.slice(2);
+    international = digits.slice(2);
+  } else if (hadPlus || startsWithKnownCountryCode(digits)) {
+    international = digits;
+  } else if (digits.startsWith("0") && !KEEPS_LEADING_ZERO.has(cc)) {
+    international = `${cc}${digits.slice(1)}`;
+  } else {
+    international = `${cc}${digits}`;
   }
-  if (hadPlus) {
-    return digits;
+  const normalized = toBeninTenDigits(international);
+  if (normalized.startsWith("229") && !/^22901\d{8}$/.test(normalized)) {
+    throw new BadRequestException("Numéro béninois invalide : 10 chiffres commençant par 01 (ex. 01 97 00 00 00).");
   }
-  if (digits.startsWith("0")) {
-    return `${cc}${digits.slice(1)}`;
-  }
-  if (startsWithKnownCountryCode(digits)) {
-    return digits;
-  }
-  return `${cc}${digits}`;
+  return normalized;
 }
 
 /**
- * Détection opérateur Mobile Money — heuristique Bénin (indicatif 229) UNIQUEMENT,
- * utilisée en dernier recours quand le client ne fournit pas d'opérateur explicite.
- * MTN : 016/017/014/015 — Moov : 019/010. Pour les autres pays, l'opérateur DOIT
- * être fourni explicitement (voir resolvePayinOperator).
+ * Pays où le « 0 » de tête fait partie du numéro (pas un préfixe national) :
+ * Bénin depuis le 30/11/2024 (01 + ancien numéro), Côte d'Ivoire depuis 2021.
  */
-export function detectMobileOperator(phone: string): string {
-  const digits = normalizePhoneDigits(phone);
-  const isBenin = digits.startsWith("229");
-  const local = digits.startsWith("229")
-    ? digits.slice(3)
-    : digits.startsWith("0")
-      ? digits.slice(1)
-      : digits;
-  if (isBenin && (local.startsWith("019") || local.startsWith("010"))) return "moov";
-  return "mtn";
+const KEEPS_LEADING_ZERO: ReadonlySet<string> = new Set(["229", "225"]);
+
+/**
+ * Bénin : un ancien numéro à 8 chiffres devient « 01 » + ce numéro
+ * (+229 01 XX XX XX XX). Les PSP refusent désormais l'ancien format.
+ */
+function toBeninTenDigits(international: string): string {
+  if (international.startsWith("229") && international.length === 11) {
+    return `22901${international.slice(3)}`;
+  }
+  return international;
 }
 
 /** Liste des réseaux mobile money acceptés (minuscules), issue de la config. */
@@ -86,25 +87,43 @@ export function supportedOperators(): string[] {
     .filter(Boolean);
 }
 
-export function isSupportedOperator(operator: string): boolean {
-  return supportedOperators().includes(operator.trim().toLowerCase());
+/**
+ * Réseau choisi par le payeur, validé pour le prestataire qui encaisse.
+ * Obligatoire : depuis les numéros béninois à 10 chiffres (01 + ancien numéro),
+ * le préfixe ne dit plus le réseau, et un réseau deviné envoie la demande au
+ * mauvais opérateur. Un code inconnu est refusé par un 400 AVANT d'atteindre
+ * l'URL du PSP (anti-injection), sans recopier la saisie dans le message.
+ */
+export function resolvePayinNetwork(raw: string | undefined, provider: string): string {
+  const accepted = payinNetworksFor(provider);
+  if (accepted.length === 0) {
+    throw new BadRequestException("Aucun réseau Mobile Money n'est disponible pour ce paiement.");
+  }
+  const list = accepted.map((network) => network.toUpperCase()).join(", ");
+  const network = raw?.trim().toLowerCase() ?? "";
+  if (!network) {
+    throw new BadRequestException(`Choisissez votre réseau Mobile Money (${list}).`);
+  }
+  const wellFormed = /^[a-z][a-z0-9_]{1,20}$/.test(network);
+  if (!wellFormed || !accepted.includes(network)) {
+    const shown = wellFormed ? network.toUpperCase() : "choisi";
+    throw new BadRequestException(`Le réseau ${shown} n'est pas accepté pour ce paiement. Réseaux acceptés : ${list}.`);
+  }
+  return network;
 }
 
 /**
- * Résout le code opérateur à transmettre au PSP.
- *   - Opérateur explicite : validé (format + liste blanche) — un code inconnu
- *     est refusé par un 400 AVANT d'atteindre l'URL du PSP (anti-injection).
- *   - Sinon : détection Bénin par défaut (compat ascendante mono-pays).
+ * Réseaux qu'un prestataire sait réellement débiter (codes vérifiés dans sa doc),
+ * limités à la liste blanche de la plateforme. FedaPay ne publie aucun code
+ * Celtiis. Un prestataire inconnu ne débite aucun réseau.
  */
-export function resolvePayinOperator(explicit: string | undefined, phone: string): string {
-  if (explicit && explicit.trim()) {
-    const operator = explicit.trim().toLowerCase();
-    if (!/^[a-z][a-z0-9_]{1,20}$/.test(operator) || !isSupportedOperator(operator)) {
-      throw new BadRequestException(
-        `Opérateur mobile money non supporté : « ${explicit} ». Réseaux acceptés : ${supportedOperators().join(", ")}.`
-      );
-    }
-    return operator;
-  }
-  return detectMobileOperator(phone);
+const PROVIDER_NETWORKS: Readonly<Record<string, readonly string[]>> = {
+  FEEXPAY: ["mtn", "moov", "celtiis"],
+  FEDAPAY: ["mtn", "moov"]
+};
+
+export function payinNetworksFor(provider: string): string[] {
+  const known = PROVIDER_NETWORKS[provider];
+  const allowed = supportedOperators();
+  return known ? allowed.filter((network) => known.includes(network)) : [];
 }

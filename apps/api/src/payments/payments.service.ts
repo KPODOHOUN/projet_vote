@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException
@@ -11,7 +10,7 @@ import {
   PaymentProvider,
   PaymentPurpose,
   PaymentStatus,
-  TenantOfferType,
+  TicketStatus,
   UserRole
 } from "@prisma/client";
 import { z } from "zod";
@@ -19,28 +18,15 @@ import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { hashVoterPhone } from "../common/voter-phone";
 import { paymentStatusToken, verifyPaymentStatusToken } from "../common/payment-status-token";
-import {
-  ACTIVATION_FEE_CFA_KEY,
-  DEFAULT_ACTIVATION_FEE_CFA,
-  parseIntSetting
-} from "../common/platform-settings";
 import { PaymentVerifyService } from "./payment-verify.service";
 import { PspRegistry } from "./psp/psp.registry";
-import { normalizePayinPhone, resolvePayinOperator } from "../common/mobile-operator";
+import { normalizePayinPhone, payinNetworksFor, resolvePayinNetwork } from "../common/mobile-operator";
 import { env } from "../config/env";
 import { OfferSettingsService } from "../offers/offer-settings.service";
 
-const initActivationSchema = z.object({
-  eventId: z.string().min(1),
-  idempotencyKey: z.string().min(16),
-  requestFingerprint: z.string().min(8).optional(),
-  payerPhone: z.string().min(8).max(20),
-  // Réseau mobile money explicite (pan-africain). Optionnel : détection Bénin
-  // par défaut si absent. Validé contre la liste blanche au moment du push.
-  operator: z.string().min(2).max(20).optional()
-});
-
-const initPaymentSchema = z.object({
+/** Entrée commune de création d'un paiement (vote public ou votes ajoutés). */
+type InitPaymentInput = z.infer<typeof _initPaymentSchema>;
+const _initPaymentSchema = z.object({
   tenantId: z.string().min(1),
   eventId: z.string().min(1),
   voteId: z.string().min(1).optional(),
@@ -127,38 +113,6 @@ export class PaymentsService {
     return true;
   }
 
-  async initPayment(user: AuthUser, payload: unknown) {
-    const input = initPaymentSchema.parse(payload);
-
-    // Tenant isolation: an organizer may only initiate payments scoped to its
-    // own tenant. PLATFORM_ADMIN is allowed to act cross-tenant by design.
-    if (user.role !== UserRole.PLATFORM_ADMIN && input.tenantId !== user.tenantId) {
-      throw new ForbiddenException("Tenant non autorisé.");
-    }
-
-    const event = await this.prisma.client.event.findFirst({
-      where: { id: input.eventId, tenantId: input.tenantId }
-    });
-    if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
-    }
-    if (input.voteId) {
-      const vote = await this.prisma.client.vote.findFirst({
-        where: { id: input.voteId, tenantId: input.tenantId, eventId: event.id }
-      });
-      if (!vote) {
-        throw new NotFoundException("Vote introuvable.");
-      }
-    }
-
-    return this.initPaymentCore(input, "payments:init");
-  }
-
-  /**
-   * Organizer-paid vote top-up: create a Vote row + ORGANIZER_VOTE_TOPUP payment.
-   * EXTERNAL: payer pays platform commission only; vote tallies full votesCount.
-   * ESCROW: payer pays votesCount × unit price (credited to wallet on success).
-   */
   async initOrganizerTopup(user: AuthUser, payload: unknown) {
     const schema = z.object({
       eventId: z.string().min(1),
@@ -171,12 +125,11 @@ export class PaymentsService {
     const input = schema.parse(payload);
 
     const event = await this.prisma.client.event.findFirst({
-      where: { id: input.eventId, tenantId: user.tenantId },
-      include: { tenant: { select: { offerType: true } } }
+      where: { id: input.eventId, tenantId: user.tenantId }
     });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
     if (event.closedAt || event.status === "CLOSED" || event.status === "ARCHIVED") {
-      throw new ConflictException("Impossible d'ajouter des votes sur un évènement clôturé.");
+      throw new ConflictException("Impossible d'ajouter des votes sur un événement clôturé.");
     }
     const unitPrice = event.voteUnitPriceCfa;
     if (!unitPrice || unitPrice <= 0) {
@@ -187,28 +140,14 @@ export class PaymentsService {
     });
     if (!candidate) throw new NotFoundException("Candidat introuvable.");
 
-    const settingsRow = await this.prisma.client.platformSetting.findMany();
-    const settingsMap = Object.fromEntries(settingsRow.map((s) => [s.key, s.value]));
-    const offer1Bps = parseIntSetting(settingsMap["offer1_commission_bps"], 500);
-    const offer1Fixed = parseIntSetting(settingsMap["offer1_commission_fixed_cfa"], 0);
-
-    const grossCfa = input.votesCount * unitPrice;
-    let amountDueCfa = grossCfa;
-    if (event.tenant.offerType === "EXTERNAL") {
-      amountDueCfa = Math.floor((grossCfa * offer1Bps) / 10_000) + offer1Fixed;
-      if (amountDueCfa <= 0) {
-        throw new BadRequestException(
-          "Commission plateforme nulle : configurez le taux Offre 1 avant d'ajouter des votes."
-        );
-      }
-    }
+    const amountDueCfa = input.votesCount * unitPrice;
 
     const vote = await this.prisma.client.vote.create({
       data: {
         tenantId: user.tenantId,
         eventId: event.id,
         candidateId: candidate.id,
-        amountCfa: grossCfa,
+        amountCfa: amountDueCfa,
         votesCount: input.votesCount,
         voterPhoneLast4: "ORGA"
       }
@@ -233,6 +172,7 @@ export class PaymentsService {
     });
 
     if (env.API_PAYMENT_DEMO_MODE) {
+      await this.assertNetworkAccepted(initResult.transactionId, input.operator, input.payerPhone);
       return this.maybeAutoConfirmDemoPayment(initResult.transactionId);
     }
 
@@ -262,7 +202,7 @@ export class PaymentsService {
       }
     });
     if (!event) {
-      throw new UnauthorizedException("Évènement introuvable.");
+      throw new UnauthorizedException("Événement introuvable.");
     }
     const vote = await this.prisma.client.vote.findFirst({
       where: {
@@ -291,6 +231,8 @@ export class PaymentsService {
 
     // Demo mode short-circuits the PSP entirely (dev/staging only).
     if (env.API_PAYMENT_DEMO_MODE) {
+      // Même refus qu'en réel pour un réseau non accepté : la démo ne doit rien laisser passer de plus.
+      await this.assertNetworkAccepted(result.transactionId, input.operator, input.payerPhone);
       const demo = await this.maybeAutoConfirmDemoPayment(result.transactionId);
       return { ...demo, statusToken: paymentStatusToken(demo.transactionId) };
     }
@@ -313,8 +255,8 @@ export class PaymentsService {
   }
 
   /**
-   * Server-side mobile-money push for a public VOTE payment (ADR-017). Mirrors
-   * the activation flow: PENDING tx already created → ask the resolved PSP to
+   * Server-side mobile-money push for a public VOTE payment (ADR-017): the
+   * PENDING tx is already created → ask the resolved PSP to
    * push the USSD prompt → bind the returned reference as providerRef so the
    * verify-by-pull pipeline can later confirm it server-to-server.
    *
@@ -332,16 +274,7 @@ export class PaymentsService {
     description: string;
   }) {
     const tx = await this.prisma.client.paymentTransaction.findUnique({
-      where: { id: args.transactionId },
-      include: {
-        tenant: {
-          select: {
-            offerType: true,
-            fedapaySubAccountRef: true,
-            fedapaySubAccountVerifiedAt: true
-          }
-        }
-      }
+      where: { id: args.transactionId }
     });
     if (!tx) {
       throw new NotFoundException("Transaction introuvable.");
@@ -355,61 +288,16 @@ export class PaymentsService {
       };
     }
 
-    let split:
-      | { beneficiaryReference: string; amountCfa: number }
-      | undefined;
-    if (
-      tx.purpose === PaymentPurpose.VOTE &&
-      tx.tenant.offerType === TenantOfferType.EXTERNAL
-    ) {
-      if (
-        tx.provider !== PaymentProvider.FEDAPAY ||
-        !tx.tenant.fedapaySubAccountRef ||
-        !tx.tenant.fedapaySubAccountVerifiedAt
-      ) {
-        throw new ConflictException(
-          "Offre External : sous-compte FedaPay Marketplace validé requis."
-        );
-      }
-      const settings = await this.offerSettings.getSettings();
-      const commissionCfa = this.offerSettings.computeExternalCommissionCfa(
-        settings,
-        args.amountCfa
-      );
-      const organizerNetCfa = args.amountCfa - commissionCfa;
-      if (commissionCfa <= 0 || organizerNetCfa <= 0) {
-        throw new ConflictException(
-          "La commission Offre External doit être positive et inférieure au prix du vote."
-        );
-      }
-      split = {
-        beneficiaryReference: tx.tenant.fedapaySubAccountRef,
-        amountCfa: organizerNetCfa
-      };
-      await this.prisma.client.paymentTransaction.update({
-        where: { id: tx.id },
-        data: {
-          splitBeneficiaryRef: split.beneficiaryReference,
-          splitAmountCfa: split.amountCfa
-        }
-      });
-    }
-
+    const { operator, phoneNumber } = await this.acceptedNetworkOrFail(tx.id, tx.provider, args.operator, args.payerPhone);
     const gateway = this.pspRegistry.get(tx.provider);
-    const creds = split
-      ? await this.pspRegistry.resolvePlatformCredentials(PaymentProvider.FEDAPAY)
-      : await this.pspRegistry.resolveVotePayinCredentials({
-          eventId: args.eventId,
-          tenantId: args.tenantId
-        });
+    const creds = await this.pspRegistry.resolvePlatformCredentials(tx.provider);
     const payin = await gateway.initPayin(
       {
         amountCfa: args.amountCfa,
-        phoneNumber: normalizePayinPhone(args.payerPhone),
-        operator: resolvePayinOperator(args.operator, args.payerPhone),
+        phoneNumber,
+        operator,
         customId: tx.id,
-        description: args.description,
-        ...(split ? { split } : {})
+        description: args.description
       },
       creds
     );
@@ -423,95 +311,17 @@ export class PaymentsService {
     };
   }
 
-  async getActivationFeeInfo() {
-    const feeSetting = await this.prisma.client.platformSetting.findUnique({
-      where: { key: ACTIVATION_FEE_CFA_KEY }
-    });
-    const activationFeeCfa = parseIntSetting(feeSetting?.value, DEFAULT_ACTIVATION_FEE_CFA);
-    return {
-      activationFeeCfa,
-      currency: "XOF" as const,
-      requiresPayment: activationFeeCfa > 0
-    };
-  }
-
-  async initActivationPayment(user: AuthUser, payload: unknown) {
-    const input = initActivationSchema.parse(payload);
-    const event = await this.prisma.client.event.findFirst({
-      where: { id: input.eventId, tenantId: user.tenantId }
-    });
-    if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
-    }
-    if (event.activationPaidAt) {
-      throw new ConflictException("Forfait d'activation déjà réglé pour cet évènement.");
-    }
-    const feeSetting = await this.prisma.client.platformSetting.findUnique({
-      where: { key: ACTIVATION_FEE_CFA_KEY }
-    });
-    const feeCfa = parseIntSetting(feeSetting?.value, DEFAULT_ACTIVATION_FEE_CFA);
-    if (feeCfa <= 0) {
-      throw new BadRequestException("Aucun forfait d'activation n'est configuré.");
-    }
-
-    const initResult = await this.initPaymentCore(
-      {
-        tenantId: user.tenantId,
-        eventId: event.id,
-        amountCfa: feeCfa,
-        idempotencyKey: input.idempotencyKey,
-        requestFingerprint: input.requestFingerprint ?? input.payerPhone
-      },
-      "payments:activation:init",
-      PaymentPurpose.ACTIVATION
-    );
-
-    const tx = await this.prisma.client.paymentTransaction.findUnique({
-      where: { id: initResult.transactionId }
-    });
-    if (!tx) {
-      throw new NotFoundException("Transaction introuvable.");
-    }
-
-    if (!tx.providerRef) {
-      const provider = await this.pspRegistry.resolveProvider({
-        eventId: event.id,
-        tenantId: user.tenantId
+  /** Réseaux proposés à l'organisateur (ajout de votes) : ceux du prestataire qui encaisse. */
+  async getPayinNetworks(user: AuthUser, eventId?: string) {
+    if (eventId) {
+      const event = await this.prisma.client.event.findFirst({
+        where: { id: eventId, tenantId: user.tenantId },
+        select: { id: true }
       });
-      const gateway = this.pspRegistry.get(provider);
-      const creds = await this.pspRegistry.resolvePlatformCredentials(provider);
-      const payin = await gateway.initPayin(
-        {
-          amountCfa: feeCfa,
-          phoneNumber: normalizePayinPhone(input.payerPhone),
-          operator: resolvePayinOperator(input.operator, input.payerPhone),
-          customId: tx.id,
-          description: `Activation — ${event.title}`
-        },
-        creds
-      );
-      await this.attachProviderRef(tx.id, payin.reference);
-      if (env.API_PAYMENT_DEMO_MODE) {
-        await this.confirmDemoPayment(tx.id);
-      }
-      return {
-        ...initResult,
-        amountCfa: feeCfa,
-        providerRef: payin.reference,
-        status: env.API_PAYMENT_DEMO_MODE ? PaymentStatus.SUCCEEDED : initResult.status
-      };
+      if (!event) throw new NotFoundException("Événement introuvable.");
     }
-
-    if (env.API_PAYMENT_DEMO_MODE && tx.status === PaymentStatus.PENDING) {
-      await this.confirmDemoPayment(tx.id);
-    }
-
-    return {
-      ...initResult,
-      amountCfa: feeCfa,
-      providerRef: tx.providerRef,
-      status: env.API_PAYMENT_DEMO_MODE ? PaymentStatus.SUCCEEDED : tx.status
-    };
+    const provider = await this.pspRegistry.resolveProvider({ eventId, tenantId: user.tenantId });
+    return { paymentNetworks: payinNetworksFor(provider) };
   }
 
   async getOrganizerPaymentStatus(user: AuthUser, transactionId: string) {
@@ -537,10 +347,6 @@ export class PaymentsService {
       throw new NotFoundException("Transaction introuvable.");
     }
 
-    const event = await this.prisma.client.event.findFirst({
-      where: { id: fresh.eventId, tenantId: user.tenantId },
-      select: { activationPaidAt: true }
-    });
 
     return {
       transactionId: fresh.id,
@@ -549,8 +355,7 @@ export class PaymentsService {
       providerRef: fresh.providerRef,
       purpose: fresh.purpose,
       amountCfa: fresh.amountCfa,
-      eventId: fresh.eventId,
-      activationPaidAt: event?.activationPaidAt?.toISOString() ?? null
+      eventId: fresh.eventId
     } as const;
   }
 
@@ -569,7 +374,7 @@ export class PaymentsService {
       }
     });
     if (!event) {
-      throw new UnauthorizedException("Évènement introuvable.");
+      throw new UnauthorizedException("Événement introuvable.");
     }
 
     const transaction = await this.prisma.client.paymentTransaction.findFirst({
@@ -645,8 +450,8 @@ export class PaymentsService {
    * amount, for instance).
    */
   private async initPaymentCore(
-    input: z.infer<typeof initPaymentSchema>,
-    scope: "payments:init" | "payments:public:init" | "payments:activation:init" | "payments:organizer:topup",
+    input: InitPaymentInput,
+    scope: "payments:public:init" | "payments:organizer:topup",
     purpose: PaymentPurpose = PaymentPurpose.VOTE
   ) {
     const requestHash = createHash("sha256")
@@ -703,11 +508,21 @@ export class PaymentsService {
       tenantId: input.tenantId
     });
 
+    // Le paiement porte le nombre de voix du vote : les statistiques comptent
+    // les mêmes voix que les résultats publics.
+    const vote = input.voteId
+      ? await this.prisma.client.vote.findUnique({ where: { id: input.voteId }, select: { votesCount: true } })
+      : null;
+    // Un vote n'a qu'une demande de paiement : après un refus, le votant recommence son vote.
+    if (input.voteId && (await this.prisma.client.paymentTransaction.count({ where: { voteId: input.voteId } }))) {
+      throw new ConflictException("Ce vote a déjà une demande de paiement. Recommencez votre vote.");
+    }
     const tx = await this.prisma.client.paymentTransaction.create({
       data: {
         tenantId: input.tenantId,
         eventId: input.eventId,
         voteId: input.voteId ?? null,
+        ...(vote ? { votesCount: vote.votesCount } : {}),
         provider,
         amountCfa: input.amountCfa,
         idempotencyKey: input.idempotencyKey,
@@ -779,6 +594,84 @@ export class PaymentsService {
     }
     const result = await this.verifyService.verifyAndApplyByReference(reference);
     return { acknowledged: true, ...result };
+  }
+
+  /**
+   * Billetterie : lance le paiement d'une transaction TICKET déjà créée, par le
+   * même circuit que le vote (démo auto-confirmée, sinon push mobile money puis
+   * verify-by-pull). Renvoie le jeton opaque qui autorise le suivi du statut.
+   */
+  async startTicketPayment(args: {
+    transactionId: string;
+    eventId: string;
+    tenantId: string;
+    amountCfa: number;
+    payerPhone: string;
+    operator?: string | undefined;
+    description: string;
+  }) {
+    if (env.API_PAYMENT_DEMO_MODE) {
+      await this.assertNetworkAccepted(args.transactionId, args.operator, args.payerPhone);
+      const demo = await this.maybeAutoConfirmDemoPayment(args.transactionId);
+      return { ...demo, statusToken: paymentStatusToken(demo.transactionId) };
+    }
+    const pushed = await this.triggerVotePayin(args);
+    return { ...pushed, statusToken: paymentStatusToken(pushed.transactionId) };
+  }
+
+  /** Billetterie : statut d'un paiement TICKET, lisible uniquement avec son jeton. */
+  async refreshTicketPayment(transactionId: string, statusToken: string) {
+    if (!verifyPaymentStatusToken(transactionId, statusToken)) {
+      throw new UnauthorizedException("Paiement introuvable.");
+    }
+    const tx = await this.prisma.client.paymentTransaction.findUnique({ where: { id: transactionId } });
+    if (!tx || tx.purpose !== PaymentPurpose.TICKET) {
+      throw new UnauthorizedException("Paiement introuvable.");
+    }
+    if (tx.status === PaymentStatus.PENDING) {
+      if (env.API_PAYMENT_DEMO_MODE) {
+        await this.confirmDemoPayment(tx.id);
+      } else if (tx.providerRef && this.shouldPullNow(tx.id)) {
+        await this.verifyService.verifyAndApplyByReference(tx.providerRef);
+      }
+    }
+    const fresh = await this.prisma.client.paymentTransaction.findUnique({ where: { id: transactionId } });
+    return { transactionId, status: fresh?.status ?? tx.status };
+  }
+
+  /** Le réseau choisi doit être débitable par le prestataire de la transaction. */
+  private async assertNetworkAccepted(transactionId: string, rawOperator: string | undefined, payerPhone: string) {
+    const tx = await this.prisma.client.paymentTransaction.findUnique({ where: { id: transactionId }, select: { provider: true } });
+    if (tx) await this.acceptedNetworkOrFail(transactionId, tx.provider, rawOperator, payerPhone);
+  }
+
+  /** Réseau et numéro validés pour le prestataire ; sinon la transaction passe FAILED avant le refus. */
+  private async acceptedNetworkOrFail(
+    transactionId: string,
+    provider: PaymentProvider,
+    rawOperator: string | undefined,
+    payerPhone: string
+  ): Promise<{ operator: string; phoneNumber: string }> {
+    try {
+      return { operator: resolvePayinNetwork(rawOperator, provider), phoneNumber: normalizePayinPhone(payerPhone) };
+    } catch (error) {
+      await this.failRefusedPayment(transactionId);
+      throw error;
+    }
+  }
+
+  /** Paiement refusé avant tout envoi : il ne doit pas rester « en attente », et ses billets sont libérés. */
+  private async failRefusedPayment(transactionId: string) {
+    await this.prisma.client.$transaction([
+      this.prisma.client.paymentTransaction.updateMany({
+        where: { id: transactionId, status: { in: [PaymentStatus.INITIATED, PaymentStatus.PENDING] } },
+        data: { status: PaymentStatus.FAILED }
+      }),
+      this.prisma.client.ticket.updateMany({
+        where: { paymentTransactionId: transactionId, status: TicketStatus.RESERVED },
+        data: { status: TicketStatus.CANCELLED }
+      })
+    ]);
   }
 
   private async maybeAutoConfirmDemoPayment(transactionId: string) {

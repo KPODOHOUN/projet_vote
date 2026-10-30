@@ -3,14 +3,13 @@ import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
 import { PaymentProvider, PaymentStatus, UserRole } from "@prisma/client";
 import { AdminService } from "./admin.service";
-import { OrganizerSecretsService } from "../organizer-secrets/organizer-secrets.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
 
 // Real-database service tests — no mock Prisma. PrismaService wraps the real
 // singleton client pointed at the test database.
 const prismaService = new PrismaService();
-const adminService = new AdminService(prismaService, new OrganizerSecretsService(prismaService));
+const adminService = new AdminService(prismaService);
 
 before(() => {
   assertTestDatabase();
@@ -115,48 +114,6 @@ test("AdminService.updateUser suspend puis réactive un compte", async () => {
   assert.equal(reactivated.suspendedAt, null);
 });
 
-test("AdminService.getSubscriptionsOverview agrège correctement les revenus", async () => {
-  const tenant = await prisma.tenant.create({ data: { slug: "tenant-a", displayName: "Tenant A" } });
-  await prisma.paymentTransaction.createMany({
-    data: [
-      {
-        tenantId: tenant.id,
-        eventId: "evt-1",
-        provider: PaymentProvider.FEEXPAY,
-        amountCfa: 2000,
-        status: PaymentStatus.SUCCEEDED,
-        idempotencyKey: "sub-overview-key-0001"
-      },
-      {
-        tenantId: tenant.id,
-        eventId: "evt-1",
-        provider: PaymentProvider.FEEXPAY,
-        amountCfa: 1500,
-        status: PaymentStatus.SUCCEEDED,
-        idempotencyKey: "sub-overview-key-0002"
-      }
-    ]
-  });
-
-  const day = 24 * 60 * 60 * 1000;
-  const result = await adminService.getSubscriptionsOverview(
-    {
-      userId: "admin-1",
-      tenantId: tenant.id,
-      email: "admin@votezpro.africa",
-      role: UserRole.PLATFORM_ADMIN
-    },
-    {
-      from: new Date(Date.now() - 40 * day).toISOString(),
-      to: new Date(Date.now() + day).toISOString()
-    }
-  );
-
-  assert.equal(result.totals.tenantsWithRevenue, 1);
-  assert.equal(result.totals.totalRevenueCfa, 3500);
-  assert.equal(result.items[0]?.subscriptionState, "ACTIVE");
-});
-
 test("AdminService.listAuditLogs: scope tenant (owner) + filtre action + pagination curseur", async () => {
   const tenant = await prisma.tenant.create({ data: { slug: "audit-a", displayName: "A" } });
   const other = await prisma.tenant.create({ data: { slug: "audit-b", displayName: "B" } });
@@ -221,18 +178,6 @@ test("AdminService.listAuditLogs: même createdAt → pagination sans doublon ni
   } while (cursor);
   assert.equal(new Set(seen).size, 60, "aucune ligne sautée");
   assert.equal(seen.length, 60, "aucune ligne en double");
-});
-
-test("AdminService.featureFlags: upsert puis list (round-trip chiffré via secrets)", async () => {
-  const tenant = await prisma.tenant.create({ data: { slug: "ff-a", displayName: "FF" } });
-  const owner = { userId: "o", tenantId: tenant.id, email: "o@a", role: UserRole.ORGANIZER_OWNER };
-  await adminService.upsertFeatureFlag(owner, { key: "new_dashboard", enabled: true, rolloutPercent: 50 });
-
-  const flags = await adminService.listFeatureFlags(owner, {});
-  const flag = flags.items.find((f) => f.key === "new_dashboard");
-  assert.ok(flag);
-  assert.equal(flag.enabled, true);
-  assert.equal(flag.rolloutPercent, 50);
 });
 
 test("AdminService.getJobsOverview: compteurs + expiredIdempotencyKeys masqué aux organisateurs (L6)", async () => {

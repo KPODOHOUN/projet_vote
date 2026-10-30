@@ -11,6 +11,8 @@ export type DataTableColumn<T> = {
   hideInCard?: boolean;
   /** Champ affiché comme titre de carte ; par défaut : première colonne visible. */
   primary?: boolean;
+  /** En vue carte : placé en haut à droite, sur la ligne du titre (case à cocher, actions). */
+  cardSlot?: "action";
   align?: "left" | "right";
 };
 
@@ -43,9 +45,10 @@ export function DataTable<T>({
     );
   }
 
-  const cardColumns = columns.filter((col) => !col.hideInCard);
+  const cardColumns = columns.filter((col) => !col.hideInCard && col.cardSlot !== "action");
+  const actionColumns = columns.filter((col) => col.cardSlot === "action");
   const primaryKey =
-    columns.find((col) => col.primary && !col.hideInCard)?.key ?? cardColumns[0]?.key;
+    cardColumns.find((col) => col.primary)?.key ?? cardColumns[0]?.key;
 
   const cellContent = (row: T, col: DataTableColumn<T>): ReactNode =>
     col.render ? col.render(row) : null;
@@ -62,7 +65,7 @@ export function DataTable<T>({
                   key={col.key}
                   scope="col"
                   className={cn(
-                    "p-4",
+                    "px-4 py-3 align-middle whitespace-nowrap",
                     col.align === "right" && "text-right"
                   )}
                 >
@@ -77,7 +80,7 @@ export function DataTable<T>({
                 {columns.map((col) => (
                   <td
                     key={col.key}
-                    className={cn("p-4 align-top", col.align === "right" && "text-right")}
+                    className={cn("px-4 py-3 align-middle", col.align === "right" && "text-right")}
                   >
                     {cellContent(row, col)}
                   </td>
@@ -93,15 +96,22 @@ export function DataTable<T>({
         {rows.map((row) => (
           <li
             key={rowKey(row)}
-            className="space-y-3 rounded-xl border border-border bg-card p-4"
+            className="space-y-2 rounded-xl border border-border bg-card p-4"
           >
-            {cardColumns.map((col) => {
+            {[...cardColumns.filter((c) => c.key === primaryKey), ...cardColumns.filter((c) => c.key !== primaryKey)].map((col) => {
               const content = cellContent(row, col);
               if (content == null) return null;
               if (col.key === primaryKey) {
                 return (
-                  <div key={col.key} className="font-semibold text-foreground">
-                    {content}
+                  <div key={col.key} className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 font-semibold text-foreground">{content}</div>
+                    {actionColumns.length > 0 ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {actionColumns.map((action) => (
+                          <span key={action.key} className="inline-flex">{cellContent(row, action)}</span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 );
               }

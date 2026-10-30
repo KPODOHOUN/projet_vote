@@ -4,11 +4,11 @@ export type NotificationType =
   | "PAYMENT_SUCCEEDED"
   | "INVITATION_ACCEPTED"
   | "EVENT_ACTIVATED"
-  | "PAYOUT_SUCCEEDED"
-  | "PAYOUT_FAILED"
-  | "PARTNER_REQUEST_RECEIVED"
-  | "PARTNER_REQUEST_APPROVED"
-  | "PARTNER_REQUEST_REJECTED";
+  | "CONTRACT_SIGNED"
+  | "COMMISSION_RATE_CHANGED"
+  | "WITHDRAWAL_APPROVED"
+  | "WITHDRAWAL_REJECTED"
+  | "WITHDRAWAL_PAID";
 export type AppNotification = { id: string; type: NotificationType; data: Record<string, unknown>; readAt: string | null; createdAt: string };
 
 function authHeaders(token: string) {
@@ -46,16 +46,16 @@ export function notificationText(n: AppNotification, t: Translate, isEn: boolean
       return `${t("notif.invitationAccepted")} · ${String(n.data.email ?? "")}`;
     case "EVENT_ACTIVATED":
       return `${t("notif.eventActivated")} · ${String(n.data.title ?? "")}`;
-    case "PAYOUT_SUCCEEDED":
-      return `${t("notif.payoutSucceeded")} · ${amount(n.data.amountCfa)} XOF`;
-    case "PAYOUT_FAILED":
-      return `${t("notif.payoutFailed")} · ${amount(n.data.amountCfa)} XOF`;
-    case "PARTNER_REQUEST_RECEIVED":
-      return `${t("notif.partnerRequestReceived")} · ${String(n.data.eventTitle ?? "")}`;
-    case "PARTNER_REQUEST_APPROVED":
-      return `${t("notif.partnerRequestApproved")} · ${String(n.data.title ?? "")}`;
-    case "PARTNER_REQUEST_REJECTED":
-      return `${t("notif.partnerRequestRejected")} · ${String(n.data.title ?? "")}`;
+    case "CONTRACT_SIGNED":
+      return t("notif.contractSigned");
+    case "COMMISSION_RATE_CHANGED":
+      return `${t("notif.commissionRateChanged")} · ${(Number(n.data.bps ?? 0) / 100).toLocaleString(isEn ? "en-GB" : "fr-FR")} %`;
+    case "WITHDRAWAL_APPROVED":
+      return `${t("notif.withdrawalApproved")} · ${amount(n.data.amountCfa)} XOF`;
+    case "WITHDRAWAL_REJECTED":
+      return `${t("notif.withdrawalRejected")} · ${amount(n.data.amountCfa)} XOF`;
+    case "WITHDRAWAL_PAID":
+      return `${t("notif.withdrawalPaid")} · ${amount(n.data.amountCfa)} XOF`;
     default:
       return isEn ? "New notification" : "Nouvelle notification";
   }
@@ -64,17 +64,18 @@ export function notificationText(n: AppNotification, t: Translate, isEn: boolean
 export function notificationHref(n: AppNotification): string {
   switch (n.type) {
     case "PAYMENT_SUCCEEDED":
-    case "PAYOUT_SUCCEEDED":
-    case "PAYOUT_FAILED":
       return "/dashboard";
+    case "WITHDRAWAL_APPROVED":
+    case "WITHDRAWAL_REJECTED":
+    case "WITHDRAWAL_PAID":
+      return "/dashboard/wallet";
+    case "COMMISSION_RATE_CHANGED":
+      return "/dashboard/offer";
+    case "CONTRACT_SIGNED":
+      return `/dashboard/events/${String(n.data.eventId ?? "")}/contract`;
     case "INVITATION_ACCEPTED":
       return "/dashboard/team";
     case "EVENT_ACTIVATED":
-      return `/dashboard/events/${String(n.data.eventId ?? "")}/candidates`;
-    case "PARTNER_REQUEST_RECEIVED":
-      return "/admin/partners";
-    case "PARTNER_REQUEST_APPROVED":
-    case "PARTNER_REQUEST_REJECTED":
       return `/dashboard/events/${String(n.data.eventId ?? "")}/candidates`;
     default:
       return "/dashboard";

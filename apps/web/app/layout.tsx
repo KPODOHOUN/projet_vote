@@ -70,7 +70,7 @@ const playfair = localFont({
 // pages /e/[slug] de produire des URLs OG absolues à partir de chemins relatifs.
 const DEFAULT_TITLE = `${SITE_NAME} · Plateforme de votes`;
 const DEFAULT_DESCRIPTION =
-  "SHADOMA Votes aide les organisateurs à piloter les votes payants pour leurs évènements : parcours simple, paiements sécurisés et suivi en temps réel.";
+  "SHADOMA Votes aide les organisateurs à piloter les votes payants pour leurs événements : parcours simple, paiements sécurisés et suivi en temps réel.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

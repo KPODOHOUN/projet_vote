@@ -4,24 +4,23 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-  NotFoundException,
-  ServiceUnavailableException
+  NotFoundException
 } from "@nestjs/common";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   EventStatus,
   PaymentPurpose,
-  PaymentProvider,
   PaymentStatus,
   TicketStatus,
   TicketTypeStatus
 } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
-import { env } from "../config/env";
 import { MailService } from "../mail/mail.service";
-import { ticketEmailHtml } from "./ticket-email.util";
+import { PaymentsService } from "../payments/payments.service";
+import { PspRegistry } from "../payments/psp/psp.registry";
 
 const createTicketTypeSchema = z.object({
   name: z.string().min(2).max(80),
@@ -48,8 +47,15 @@ const purchaseTicketSchema = z.object({
   ticketTypeId: z.string().min(1),
   quantity: z.number().int().positive().max(100),
   holderName: z.string().min(1).max(200).optional(),
-  holderPhone: z.string().min(8).max(20).optional(),
-  holderEmail: z.string().email().optional()
+  // Numéro Mobile Money qui paie : obligatoire, le paiement part sur ce numéro.
+  holderPhone: z.string().min(8).max(20),
+  holderEmail: z.string().email().optional(),
+  operator: z.string().max(20).optional()
+});
+
+const purchaseStatusSchema = z.object({
+  transactionId: z.string().min(1),
+  statusToken: z.string().min(1)
 });
 
 const validateTicketSchema = z.object({
@@ -67,14 +73,16 @@ export class TicketsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly mail: MailService
+    private readonly mail: MailService,
+    private readonly payments: PaymentsService,
+    private readonly psp: PspRegistry
   ) {}
 
   async createTicketType(eventId: string, payload: unknown) {
     const input = createTicketTypeSchema.parse(payload);
 
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true } });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
 
     try {
       return await this.prisma.client.ticketType.create({
@@ -91,7 +99,7 @@ export class TicketsService {
       });
     } catch (error: unknown) {
       if (error instanceof Error && "code" in error && (error as { code: string }).code === "P2002") {
-        throw new ConflictException("Un type de ticket avec ce nom existe déjà pour cet évènement.");
+        throw new ConflictException("Un type de ticket avec ce nom existe déjà pour cet événement.");
       }
       throw error;
     }
@@ -99,7 +107,7 @@ export class TicketsService {
 
   async listTicketTypes(eventId: string) {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true } });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
     return this.prisma.client.ticketType.findMany({
       where: { eventId },
       orderBy: { priceCfa: "asc" },
@@ -142,9 +150,14 @@ export class TicketsService {
     const input = updateTicketTypeSchema.parse(payload);
 
     const tt = await this.prisma.client.ticketType.findFirst({
-      where: { id: ticketTypeId, eventId }
+      where: { id: ticketTypeId, eventId },
+      include: { event: { select: { status: true } } }
     });
     if (!tt) throw new NotFoundException("Type de ticket introuvable.");
+    // Le prix des billets existants figure dans le contrat signé : il ne change plus après publication.
+    if (input.priceCfa !== undefined && tt.event.status !== EventStatus.DRAFT && input.priceCfa !== tt.priceCfa) {
+      throw new ConflictException("Le prix de ce billet est fixé par le contrat signé : il ne peut plus être modifié.");
+    }
 
     const data: Record<string, unknown> = {};
     if (input.name !== undefined) data.name = input.name;
@@ -187,7 +200,7 @@ export class TicketsService {
       where: { slug: eventSlug.toLowerCase() },
       select: { id: true, status: true }
     });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
 
     const now = new Date();
     const types = await this.prisma.client.ticketType.findMany({
@@ -211,132 +224,145 @@ export class TicketsService {
   }
 
   async purchaseTickets(eventSlug: string, payload: unknown) {
-    // No PSP is wired for tickets yet: outside demo mode a purchase would only
-    // create RESERVED tickets and a PENDING transaction nobody ever confirms.
-    if (!env.API_PAYMENT_DEMO_MODE) {
-      throw new ServiceUnavailableException("La vente en ligne n'est pas encore ouverte.");
-    }
     const input = purchaseTicketSchema.parse(payload);
 
     const event = await this.prisma.client.event.findUnique({
       where: { slug: eventSlug.toLowerCase() },
-      select: { id: true, tenantId: true, status: true }
+      select: { id: true, tenantId: true, status: true, title: true }
     });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
     if (event.status !== EventStatus.ACTIVE) {
-      throw new BadRequestException("Cet évènement n'est pas ouvert à la vente.");
+      throw new BadRequestException("Cet événement n'est pas ouvert à la vente.");
     }
 
-    const ticketType = await this.prisma.client.ticketType.findFirst({
-      where: { id: input.ticketTypeId, eventId: event.id, status: TicketTypeStatus.ACTIVE }
-    });
-    if (!ticketType) throw new NotFoundException("Type de ticket introuvable ou non disponible.");
+    const provider = await this.psp.resolveProvider({ eventId: event.id, tenantId: event.tenantId });
 
-    const now = new Date();
-    if (ticketType.saleStartsAt && now < ticketType.saleStartsAt) {
-      throw new BadRequestException("La vente de ce type de ticket n'a pas encore commencé.");
-    }
-    if (ticketType.saleEndsAt && now > ticketType.saleEndsAt) {
-      throw new BadRequestException("La vente de ce type de ticket est terminée.");
-    }
-
-    const sold = await this.prisma.client.ticket.count({
-      where: {
-        ticketTypeId: input.ticketTypeId,
-        status: { in: ["PAID", "CONFIRMED", "USED", "RESERVED"] }
-      }
-    });
-    const remaining = ticketType.quantity - sold;
-    if (remaining < input.quantity) {
-      throw new BadRequestException(
-        `Seulement ${remaining} ticket(s) disponible(s) sur ${input.quantity} demandé(s).`
-      );
-    }
-
-    const amountCfa = input.quantity * ticketType.priceCfa;
-
-    const tickets = await this.prisma.client.$transaction(async (trx) => {
-      const created: Array<{ id: string; qrSecret: string; amountCfa: number; status: string; createdAt: Date; updatedAt: Date; eventId: string; ticketTypeId: string; holderName: string | null; holderPhone: string | null; holderEmail: string | null; usedAt: Date | null; paidAt: Date | null; confirmedAt: Date | null; }> = [];
-      for (let i = 0; i < input.quantity; i++) {
-        const ticket = await trx.ticket.create({
-          data: {
-            ticketTypeId: input.ticketTypeId,
-            eventId: event.id,
-            holderName: input.holderName ?? null,
-            holderPhone: input.holderPhone ?? null,
-            holderEmail: input.holderEmail ?? null,
-            qrSecret: generateQrSecret(),
-            status: "RESERVED" as TicketStatus,
-            amountCfa: ticketType.priceCfa
-          }
-        });
-        created.push(ticket);
-      }
-      return created;
-    });
-
-    const paymentTransaction = await this.prisma.client.paymentTransaction.create({
-      data: {
-        tenantId: event.tenantId,
-        eventId: event.id,
-        amountCfa,
-        status: PaymentStatus.PENDING,
-        purpose: PaymentPurpose.TICKET,
-        provider: PaymentProvider.FEEXPAY,
-        idempotencyKey: `ticket-purchase-${tickets[0]!.id}-${Date.now()}`
-      }
-    });
-
-    if (env.API_PAYMENT_DEMO_MODE) {
-      await this.prisma.client.paymentTransaction.update({
-        where: { id: paymentTransaction.id },
-        data: { status: PaymentStatus.SUCCEEDED }
+    // Une seule transaction, verrou sur le type de billet : deux achats
+    // simultanés passent l'un après l'autre, le stock ne peut pas être dépassé.
+    const { tickets, transaction } = await this.prisma.client.$transaction(async (trx) => {
+      await trx.$queryRaw`SELECT id FROM "TicketType" WHERE id = ${input.ticketTypeId} FOR UPDATE`;
+      const ticketType = await trx.ticketType.findFirst({
+        where: { id: input.ticketTypeId, eventId: event.id, status: TicketTypeStatus.ACTIVE }
       });
-      await this.confirmTickets(tickets.map((t) => t.id));
+      if (!ticketType) throw new NotFoundException("Type de ticket introuvable ou non disponible.");
+
+      const now = new Date();
+      if (ticketType.saleStartsAt && now < ticketType.saleStartsAt) {
+        throw new BadRequestException("La vente de ce type de ticket n'a pas encore commencé.");
+      }
+      if (ticketType.saleEndsAt && now > ticketType.saleEndsAt) {
+        throw new BadRequestException("La vente de ce type de ticket est terminée.");
+      }
+      if (input.quantity > ticketType.maxPerPerson) {
+        throw new BadRequestException(`Maximum ${ticketType.maxPerPerson} ticket(s) par achat.`);
+      }
+
+      const sold = await trx.ticket.count({
+        where: {
+          ticketTypeId: input.ticketTypeId,
+          status: { in: [TicketStatus.PAID, TicketStatus.CONFIRMED, TicketStatus.USED, TicketStatus.RESERVED] }
+        }
+      });
+      const remaining = ticketType.quantity - sold;
+      if (remaining < input.quantity) {
+        throw new BadRequestException(
+          `Seulement ${Math.max(0, remaining)} ticket(s) disponible(s) sur ${input.quantity} demandé(s).`
+        );
+      }
+
+      const amountCfa = input.quantity * ticketType.priceCfa;
+      const transaction = await trx.paymentTransaction.create({
+        data: {
+          tenantId: event.tenantId,
+          eventId: event.id,
+          amountCfa,
+          status: PaymentStatus.PENDING,
+          purpose: PaymentPurpose.TICKET,
+          provider,
+          idempotencyKey: `ticket-purchase-${randomBytes(16).toString("hex")}`
+        }
+      });
+      const tickets: Array<{ id: string; qrSecret: string; amountCfa: number }> = [];
+      for (let i = 0; i < input.quantity; i++) {
+        tickets.push(
+          await trx.ticket.create({
+            data: {
+              ticketTypeId: input.ticketTypeId,
+              eventId: event.id,
+              holderName: input.holderName ?? null,
+              holderPhone: input.holderPhone,
+              holderEmail: input.holderEmail ?? null,
+              qrSecret: generateQrSecret(),
+              status: TicketStatus.RESERVED,
+              amountCfa: ticketType.priceCfa,
+              paymentTransactionId: transaction.id
+            }
+          })
+        );
+      }
+      return { tickets, transaction };
+    });
+
+    let payment: { status: PaymentStatus | string; statusToken: string };
+    try {
+      payment = await this.payments.startTicketPayment({
+        transactionId: transaction.id,
+        eventId: event.id,
+        tenantId: event.tenantId,
+        amountCfa: transaction.amountCfa,
+        payerPhone: input.holderPhone,
+        operator: input.operator,
+        description: `Billets — ${event.title}`
+      });
+    } catch (error) {
+      // Le prestataire a refusé l'envoi : on libère tout de suite le stock.
+      await this.prisma.client.$transaction([
+        this.prisma.client.paymentTransaction.updateMany({
+          where: { id: transaction.id, status: PaymentStatus.PENDING, providerRef: null },
+          data: { status: PaymentStatus.FAILED }
+        }),
+        this.prisma.client.ticket.updateMany({
+          where: { paymentTransactionId: transaction.id, status: TicketStatus.RESERVED },
+          data: { status: TicketStatus.CANCELLED }
+        })
+      ]);
+      throw error;
     }
 
     return {
       tickets: tickets.map((t) => ({ id: t.id, qrSecret: t.qrSecret, amountCfa: t.amountCfa })),
       transaction: {
-        id: paymentTransaction.id,
-        amountCfa,
-        status: paymentTransaction.status
+        id: transaction.id,
+        amountCfa: transaction.amountCfa,
+        status: payment.status,
+        statusToken: payment.statusToken
       }
     };
   }
 
-  async confirmTickets(ticketIds: string[]) {
-    await this.prisma.client.ticket.updateMany({
-      where: { id: { in: ticketIds }, status: "RESERVED" as TicketStatus },
-      data: { status: "PAID" as TicketStatus, paidAt: new Date(), confirmedAt: new Date() }
-    });
-
+  /** Suivi d'un achat : statut du paiement et des billets, lisible avec le jeton de l'achat. */
+  async getPurchaseStatus(payload: unknown) {
+    const input = purchaseStatusSchema.parse(payload);
+    const payment = await this.payments.refreshTicketPayment(input.transactionId, input.statusToken);
     const tickets = await this.prisma.client.ticket.findMany({
-      where: { id: { in: ticketIds } },
-      include: {
-        ticketType: { select: { name: true } },
-        event: { select: { title: true, slug: true } }
-      }
+      where: { paymentTransactionId: input.transactionId },
+      select: { id: true, qrSecret: true, status: true }
     });
+    return { transactionId: input.transactionId, status: payment.status, tickets };
+  }
 
-    for (const ticket of tickets) {
-      if (!ticket.holderEmail) continue;
-      const info = {
-        id: ticket.id,
-        qrSecret: ticket.qrSecret,
-        amountCfa: ticket.amountCfa,
-        holderName: ticket.holderName,
-        holderPhone: ticket.holderPhone,
-        holderEmail: ticket.holderEmail,
-        ticketType: ticket.ticketType,
-        event: ticket.event
-      };
-      this.mail.send({
-        to: [ticket.holderEmail],
-        subject: `🎟 Votre billet pour ${ticket.event.title}`,
-        html: ticketEmailHtml(info)
-      });
+  /**
+   * Lecture publique d'un billet : seulement avec son secret (celui du QR et du
+   * lien reçu). Sans lui, l'identifiant seul ne révèle rien.
+   */
+  async getPublicTicket(ticketId: string, secret: string | undefined) {
+    const ticket = await this.getTicket(ticketId);
+    const expected = Buffer.from(ticket.qrSecret, "utf8");
+    const given = Buffer.from(secret ?? "", "utf8");
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
+      throw new NotFoundException("Ticket introuvable.");
     }
+    return ticket;
   }
 
   async getTicket(ticketId: string) {
@@ -351,11 +377,30 @@ export class TicketsService {
     return ticket;
   }
 
-  async validateTicket(payload: unknown) {
+  /** L'événement doit appartenir à l'espace de l'organisateur connecté. */
+  async assertEventAccess(user: AuthUser, eventId: string) {
+    const event = await this.prisma.client.event.findFirst({
+      where: { id: eventId, tenantId: user.tenantId },
+      select: { id: true }
+    });
+    if (!event) throw new NotFoundException("Événement introuvable.");
+  }
+
+  /** Le type de billet doit appartenir à CET événement, lui-même à l'organisateur connecté. */
+  async assertTicketTypeAccess(user: AuthUser, eventId: string, ticketTypeId: string) {
+    await this.assertEventAccess(user, eventId);
+    const ticketType = await this.prisma.client.ticketType.findFirst({
+      where: { id: ticketTypeId, eventId },
+      select: { id: true }
+    });
+    if (!ticketType) throw new NotFoundException("Type de ticket introuvable.");
+  }
+
+  async validateTicket(user: AuthUser, payload: unknown) {
     const input = validateTicketSchema.parse(payload);
 
-    const ticket = await this.prisma.client.ticket.findUnique({
-      where: { id: input.ticketId },
+    const ticket = await this.prisma.client.ticket.findFirst({
+      where: { id: input.ticketId, event: { tenantId: user.tenantId } },
       include: {
         ticketType: { select: { name: true } },
         event: { select: { title: true, slug: true } }
@@ -375,10 +420,14 @@ export class TicketsService {
       throw new BadRequestException("Ce ticket n'a pas encore été payé.");
     }
 
-    await this.prisma.client.ticket.update({
-      where: { id: input.ticketId },
-      data: { status: "USED" as TicketStatus, usedAt: new Date() }
+    // Passage à USED conditionnel : deux scans simultanés, une seule entrée.
+    const used = await this.prisma.client.ticket.updateMany({
+      where: { id: ticket.id, status: { in: [TicketStatus.PAID, TicketStatus.CONFIRMED] } },
+      data: { status: TicketStatus.USED, usedAt: new Date() }
     });
+    if (used.count === 0) {
+      throw new BadRequestException("Ce ticket a déjà été utilisé.");
+    }
 
     return {
       valid: true,
@@ -394,7 +443,7 @@ export class TicketsService {
 
   async listTickets(eventId: string, query: { status?: string | undefined; ticketTypeId?: string | undefined }) {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true } });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
 
     return this.prisma.client.ticket.findMany({
       where: {
@@ -410,7 +459,7 @@ export class TicketsService {
 
   async getTicketStats(eventId: string) {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true } });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
 
     const [
       totalReserved,
@@ -460,7 +509,7 @@ export class TicketsService {
 
   async exportTicketsCsv(eventId: string): Promise<string> {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true, title: true } });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
 
     const tickets = await this.prisma.client.ticket.findMany({
       where: { eventId },

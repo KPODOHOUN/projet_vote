@@ -5,9 +5,6 @@ import { EventStatus, InvitationStatus, PaymentProvider, UserRole } from "@prism
 import { PrismaService } from "./prisma/prisma.service";
 import { VotesService } from "./votes/votes.service";
 import { EventsService } from "./events/events.service";
-import { OrganizerSecretsService } from "./organizer-secrets/organizer-secrets.service";
-import { PartnersService } from "./partners/partners.service";
-import { noopPartnerNotifications } from "./partners/partner-notifications.stub";
 import { candidateTestData } from "./test-utils/candidate-fixture";
 import { PlatformSecretsService } from "./platform-control/platform-secrets.service";
 import { InvitationsService } from "./invitations/invitations.service";
@@ -22,7 +19,6 @@ import { PspRegistry } from "./payments/psp/psp.registry";
 import { FeexpayGateway } from "./payments/psp/feexpay.gateway";
 import { parseStrictProviderAmount } from "./payments/psp/parse-provider-amount";
 import { FedapayGateway } from "./payments/psp/fedapay.gateway";
-import { KkiapayGateway } from "./payments/psp/kkiapay.gateway";
 import type { PspCredentials, PspPayinInitInput, PspPayinInitResult } from "./payments/psp/psp.types";
 import type {
   FeexpayInitRequest,
@@ -30,6 +26,7 @@ import type {
   FeexpayStatusPayload
 } from "./payments/feexpay/feexpay.types";
 import { assertTestDatabase, prisma, resetDatabase } from "./test-utils/db";
+import { env } from "./config/env";
 import { OfferSettingsService } from "./offers/offer-settings.service";
 import { WalletService } from "./offers/wallet.service";
 
@@ -57,11 +54,14 @@ class FakeFeexpay {
 }
 
 class FakeFeexpayGateway extends FeexpayGateway {
+  initPayinCalls = 0;
+
   constructor(private readonly fake: FakeFeexpay) {
     super();
   }
 
   async initPayin(input: PspPayinInitInput, _creds: PspCredentials): Promise<PspPayinInitResult> {
+    this.initPayinCalls += 1;
     return {
       reference: `fp_activation_${input.customId ?? "test"}`,
       status: "PENDING",
@@ -91,24 +91,20 @@ class FakeFeexpayGateway extends FeexpayGateway {
 const prismaService = new PrismaService();
 const notifications = new NotificationsService(prismaService);
 const votes = new VotesService(prismaService);
-const partners = new PartnersService(prismaService, noopPartnerNotifications());
 const offerSettings = new OfferSettingsService(prismaService);
 const wallet = new WalletService(prismaService);
-const events = new EventsService(prismaService, votes, notifications, partners, offerSettings);
-const secrets = new OrganizerSecretsService(prismaService);
+const events = new EventsService(prismaService, votes, notifications);
 const platformSecrets = new PlatformSecretsService(prismaService);
 const invitations = new InvitationsService(prismaService, new MailService());
 const auth = new AuthService(prismaService, notifications, new MailService());
 const platform = new PlatformControlService(prismaService, new VaultService(prismaService));
 const feexpay = new FakeFeexpay();
+const feexpayGateway = new FakeFeexpayGateway(feexpay);
 const pspRegistry = new PspRegistry(
   prismaService,
-  secrets,
   platformSecrets,
-  new FakeFeexpayGateway(feexpay),
-  new FedapayGateway(),
-  new KkiapayGateway()
-);
+  feexpayGateway,
+  new FedapayGateway());
 const verifyService = new PaymentVerifyService(
   prismaService,
   notifications,
@@ -260,7 +256,8 @@ test("intégrité bout-en-bout: un vote ne compte qu'après webhook SUCCEEDED (p
     voteId: vote.id,
     amountCfa: 500,
     idempotencyKey: "vote-paid-idem-0001",
-    payerPhone: "22990000001"
+    payerPhone: "22990000001",
+    operator: "mtn"
   });
   assert.equal(init.status, "PENDING");
   // The server-side payin push must have bound a providerRef — without it the
@@ -302,35 +299,6 @@ test("intégrité bout-en-bout: un vote ne compte qu'après webhook SUCCEEDED (p
     }),
     /Contexte de vote invalide/
   );
-});
-
-test("commission: chaîne événement → organisateur → plateforme", async () => {
-  const { tenant } = await seedEventWithCandidates();
-  const admin = { userId: "a", tenantId: tenant.id, email: "a@v.africa", role: UserRole.PLATFORM_ADMIN };
-
-  assert.equal(await platform.resolveCommissionBps(null, null), 0); // rien configuré
-  await platform.updateCommission(admin, { commissionBps: 1000 });
-  assert.equal(await platform.resolveCommissionBps(null, null), 1000); // défaut plateforme
-  assert.equal(await platform.resolveCommissionBps(null, 700), 700); // override organisateur
-  assert.equal(await platform.resolveCommissionBps(300, 700), 300); // override événement gagne
-
-  const res = await platform.setTenantCommission(admin, tenant.id, { commissionBps: 700 });
-  assert.equal(res.commissionBps, 700);
-  const refreshed = await prisma.tenant.findUnique({ where: { id: tenant.id } });
-  assert.equal(refreshed?.commissionBps, 700);
-});
-
-test("secret de paiement par événement: override événement, fallback organisateur", async () => {
-  const { tenant, event } = await seedEventWithCandidates();
-  const user = owner(tenant.id);
-  const key = "feexpay_api_secret";
-
-  await secrets.saveSecret(user, { key, value: "COMPTE_ORGANISATEUR" });
-  assert.equal(await secrets.resolvePaymentSecret(event.id, tenant.id, key), "COMPTE_ORGANISATEUR");
-
-  await secrets.saveEventSecret(user, event.id, { key, value: "COMPTE_EVENEMENT" });
-  assert.equal(await secrets.resolvePaymentSecret(event.id, tenant.id, key), "COMPTE_EVENEMENT");
-  assert.equal((await secrets.getEventSecret(user, event.id, key)).value, "COMPTE_EVENEMENT");
 });
 
 test("invitation: création → acceptation crée un STAFF + tokens", async () => {
@@ -375,49 +343,60 @@ test("invitation: refuse un e-mail déjà membre", async () => {
   );
 });
 
-test("activation: le forfait doit être payé pour activer (aucun quota gratuit)", async () => {
-  const tenant = await prisma.tenant.create({ data: { slug: "org-act", displayName: "Org Act" } });
-  await platform.updateSettings(admin(tenant.id), { activationFeeCfa: 25000 });
+test("vote : réseau absent ou numéro invalide → 400 et transaction FAILED (jamais « en attente »)", async () => {
+  const { tenant, event, c7 } = await seedEventWithCandidates();
+  const cases = [
+    { key: "vote-net-idem-0001", extra: {}, error: /Choisissez votre réseau Mobile Money/ },
+    { key: "vote-net-idem-0002", extra: { operator: "orange" }, error: /Le réseau ORANGE n'est pas accepté/ },
+    { key: "vote-net-idem-0003", extra: { operator: "mtn", payerPhone: "0766000001" }, error: /Numéro béninois invalide/ }
+  ];
+  for (const { key, extra, error } of cases) {
+    const vote = await votes.castVote({
+      tenantSlug: tenant.slug,
+      eventSlug: event.slug,
+      candidateNumber: c7.number,
+      quantity: 1,
+      voterPhone: "22990000001"
+    });
+    await assert.rejects(
+      payments.initPublicPayment({
+        tenantSlug: tenant.slug,
+        eventSlug: event.slug,
+        voteId: vote.id,
+        amountCfa: 500,
+        idempotencyKey: key,
+        payerPhone: "22990000001",
+        ...extra
+      }),
+      error
+    );
+    const tx = await prisma.paymentTransaction.findUnique({ where: { idempotencyKey: key } });
+    assert.equal(tx?.status, "FAILED", key);
+  }
+});
 
+async function seedDraftEvent(slug: string, provider: PaymentProvider) {
+  const tenant = await prisma.tenant.create({ data: { slug, displayName: slug, provider } });
   const now = Date.now();
   const event = await prisma.event.create({
     data: {
       tenantId: tenant.id,
-      slug: "act-1",
-      title: "act-1",
+      slug: `${slug}-ev`,
+      title: slug,
       status: EventStatus.DRAFT,
       startsAt: new Date(now - 86_400_000),
       endsAt: new Date(now + 86_400_000)
     }
   });
-  const user = owner(tenant.id);
+  return { tenant, event };
+}
 
-  // Forfait non payé → activation refusée (402)
-  await assert.rejects(
-    events.updateEvent(user, event.id, { status: "ACTIVE" }),
-    /Forfait d'activation requis/
-  );
-
-  // Paiement du forfait → webhook confirmé → activation débloquée
-  const init = await payments.initActivationPayment(user, {
-    eventId: event.id,
-    idempotencyKey: "activation-idem-000001",
-    payerPhone: "2290166000000"
-  });
-  assert.equal(init.status, "PENDING");
-  await simulateFeexpayWebhook({
-    providerRef: init.providerRef ?? "fp_activation_1",
-    idempotencyKey: "activation-idem-000001",
-    status: "SUCCEEDED"
-  });
-  assert.ok((await prisma.event.findUnique({ where: { id: event.id } }))?.activationPaidAt);
-
-  const activated = await events.updateEvent(user, event.id, { status: "ACTIVE" });
-  assert.equal(activated.status, EventStatus.ACTIVE);
-
-  // Le forfait d'activation NE génère PAS de commission.
-  const tx = await prisma.paymentTransaction.findUnique({ where: { idempotencyKey: "activation-idem-000001" } });
-  assert.equal(tx?.commissionCfa, null);
+test("réseaux proposés à l'organisateur : ceux du prestataire, événement d'un autre organisateur refusé", async () => {
+  const fedapay = await seedDraftEvent("org-net-fedapay", PaymentProvider.FEDAPAY);
+  const feexpay = await seedDraftEvent("org-net-feexpay", PaymentProvider.FEEXPAY);
+  assert.deepEqual(await payments.getPayinNetworks(owner(fedapay.tenant.id), fedapay.event.id), { paymentNetworks: ["mtn", "moov"] });
+  assert.deepEqual(await payments.getPayinNetworks(owner(feexpay.tenant.id)), { paymentNetworks: ["mtn", "moov", "celtiis"] });
+  await assert.rejects(payments.getPayinNetworks(owner(feexpay.tenant.id), fedapay.event.id), /Événement introuvable/);
 });
 
 test("suppression de vote: définitive et SILENCIEUSE (aucun log d'audit)", async () => {
@@ -452,29 +431,28 @@ test("suppression de vote: définitive et SILENCIEUSE (aucun log d'audit)", asyn
   assert.equal(await prisma.auditLog.count(), 0); // AUCUNE trace côté audit normal
 });
 
-test("commission: réglages globaux toujours silencieux, override event/tenant désormais audité et gelé à l'activation", async () => {
-  const { tenant, event } = await seedEventWithCandidates(); // event créé ACTIVE
-
-  // Réglages plateforme globaux (pas un override ciblé sur un event/tenant
-  // précis) : restent silencieux, choix de scope assumé — voir ADR-020.
-  await platform.updateCommission(admin(tenant.id), { commissionBps: 1000 });
-  await platform.updateSettings(admin(tenant.id), { commissionBps: 800, activationFeeCfa: 10000 });
-  assert.equal(await prisma.auditLog.count(), 0);
-
-  // Override event : gelé dès l'activation, sans exception (business plan
-  // §5.5) — l'event de seedEventWithCandidates() est déjà ACTIVE.
-  await assert.rejects(
-    () => platform.setEventCommission(admin(tenant.id), event.id, { commissionBps: 500 }),
-    /gelé/i
-  );
-  assert.equal(await prisma.auditLog.count(), 0);
-
-  // Sur un event encore DRAFT, l'override passe et écrit un AuditLog — la
-  // route "ultra-discrète" ne contourne plus le suivi (cf. audit sécurité
-  // 2026-09-06 : elle écrivait auparavant Event.commissionBps sans aucune
-  // trace, contournant les garanties de CommissionOverrideService).
-  await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.DRAFT } });
-  await platform.setEventCommission(admin(tenant.id), event.id, { commissionBps: 500 });
-  await platform.setTenantCommission(admin(tenant.id), tenant.id, { commissionBps: 700 });
-  assert.equal(await prisma.auditLog.count(), 2);
+test("ajout de votes par l'organisateur en mode démo : confirmé sans appeler le prestataire, commission de 12 % prélevée", async () => {
+  const { tenant, event, c7 } = await seedEventWithCandidates();
+  const mutableEnv = env as { API_PAYMENT_DEMO_MODE: boolean };
+  const callsBefore = feexpayGateway.initPayinCalls;
+  mutableEnv.API_PAYMENT_DEMO_MODE = true;
+  try {
+    const init = await payments.initOrganizerTopup(owner(tenant.id), {
+      eventId: event.id,
+      candidateId: c7.id,
+      votesCount: 2,
+      idempotencyKey: "topup-demo-idem-000001",
+      payerPhone: "0197000001",
+      operator: "mtn"
+    });
+    assert.equal(init.status, "SUCCEEDED");
+  } finally {
+    mutableEnv.API_PAYMENT_DEMO_MODE = false;
+  }
+  assert.equal(feexpayGateway.initPayinCalls, callsBefore);
+  const tx = await prisma.paymentTransaction.findUniqueOrThrow({ where: { idempotencyKey: "topup-demo-idem-000001" } });
+  assert.equal(tx.amountCfa, 1_000);
+  assert.equal(tx.commissionCfa, 120);
+  const w = await wallet.getWallet(tenant.id);
+  assert.equal(w.heldCfa + w.withdrawableCfa, 880);
 });

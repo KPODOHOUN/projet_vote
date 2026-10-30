@@ -1,8 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountPlanStatus, AccountPlanType, EventStatus } from "@prisma/client";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { EventStatus } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma/prisma.service";
 import { hashVoterPhone, voterPhoneLast4 } from "../common/voter-phone";
+import { payinNetworksFor } from "../common/mobile-operator";
+import { env } from "../config/env";
 
 const castVoteSchema = z
   .object({
@@ -67,7 +69,7 @@ export class VotesService {
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
 
     const candidates = await this.prisma.client.candidate.findMany({
@@ -96,12 +98,12 @@ export class VotesService {
       where: { slug: eventSlug.toLowerCase() },
       include: {
         tenant: {
-          select: { displayName: true, slug: true, logoUrl: true, brandColor: true }
+          select: { displayName: true, slug: true, logoUrl: true, brandColor: true, provider: true }
         }
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
 
     const candidates = await this.prisma.client.candidate.findMany({
@@ -113,6 +115,8 @@ export class VotesService {
 
     return {
       organizer: { displayName: event.tenant.displayName, slug: event.tenant.slug },
+      // Réseaux proposés au votant : ceux que le prestataire de ce concours sait débiter.
+      paymentNetworks: payinNetworksFor(event.provider ?? event.tenant.provider ?? env.DEFAULT_PSP_PROVIDER),
       event: {
         slug: event.slug,
         title: event.title,
@@ -161,9 +165,9 @@ export class VotesService {
   async getPublicCandidate(eventSlug: string, ref: string) {
     const event = await this.prisma.client.event.findUnique({
       where: { slug: eventSlug.toLowerCase() },
-      include: { tenant: { select: { displayName: true, slug: true, logoUrl: true, brandColor: true } } }
+      include: { tenant: { select: { displayName: true, slug: true, logoUrl: true, brandColor: true, provider: true } } }
     });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
 
     const candidate = await this.resolveCandidateByPublicRef(event.id, ref);
     if (!candidate) throw new NotFoundException("Candidat introuvable.");
@@ -171,6 +175,8 @@ export class VotesService {
     const counts = await this.paidVoteCountByCandidate(event.id);
     return {
       organizer: { displayName: event.tenant.displayName, slug: event.tenant.slug },
+      // Réseaux proposés au votant : ceux que le prestataire de ce concours sait débiter.
+      paymentNetworks: payinNetworksFor(event.provider ?? event.tenant.provider ?? env.DEFAULT_PSP_PROVIDER),
       event: {
         slug: event.slug,
         title: event.title,
@@ -250,7 +256,7 @@ export class VotesService {
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
     const { id, slug, title, status, startsAt, endsAt } = event;
     // Public ranking: expose vote COUNTS and ordering only — never the money
@@ -357,60 +363,21 @@ export class VotesService {
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
 
     if (event.status !== EventStatus.ACTIVE) {
-      throw new BadRequestException("Cet évènement n'est pas ouvert au vote.");
+      throw new BadRequestException("Cet événement n'est pas ouvert au vote.");
     }
     const now = new Date();
     if (now < event.startsAt || now > event.endsAt) {
-      throw new BadRequestException("Le vote est fermé pour cet évènement (hors période).");
-    }
-
-    if (!(process.env.NODE_ENV === "test" && process.env.BYPASS_SUBSCRIPTION !== "0")) {
-      // Subscription gate: organizer must have an active plan to receive votes.
-      // Exception 1: votes "in flight" are checked at castVote, not at payment
-      //   confirmation — a vote already created is always honored.
-      // Exception 2: Partner-expired events remain open until event.endsAt.
-      const activeSub = await this.prisma.client.accountSubscription.findFirst({
-        where: {
-          tenantId: tenant.id,
-          status: AccountPlanStatus.ACTIVE,
-          expiresAt: { gt: now }
-        },
-        select: { id: true }
-      });
-      if (!activeSub) {
-        // Check for the Partner grace-period exception: if the tenant had a
-        // Partner subscription that has expired but this event is still running.
-        const expiredPartnerSub = await this.prisma.client.accountSubscription.findFirst({
-          where: {
-            tenantId: tenant.id,
-            planType: AccountPlanType.PARTNER,
-            status: AccountPlanStatus.EXPIRED
-          },
-          orderBy: { expiresAt: "desc" },
-          select: { id: true, startsAt: true, expiresAt: true }
-        });
-        // Event must have been created during the partner period AND still be running.
-        const partnerGrace = expiredPartnerSub
-          && event.createdAt >= expiredPartnerSub.startsAt
-          && event.createdAt <= expiredPartnerSub.expiresAt
-          && event.endsAt > now
-          && event.status === EventStatus.ACTIVE;
-        if (!partnerGrace) {
-          throw new ForbiddenException(
-            "L'abonnement de l'organisateur a expiré. Les votes sont temporairement suspendus."
-          );
-        }
-      }
+      throw new BadRequestException("Le vote est fermé pour cet événement (hors période).");
     }
 
     // Per-event voting rule: when a unit price is set, amount must be a multiple of it.
     if (event.voteUnitPriceCfa === null || event.voteUnitPriceCfa <= 0) {
       throw new BadRequestException(
-        "Cet évènement n'a pas de prix unitaire défini. Impossible de voter."
+        "Cet événement n'a pas de prix unitaire défini. Impossible de voter."
       );
     }
     const amountCfa = input.quantity * event.voteUnitPriceCfa;

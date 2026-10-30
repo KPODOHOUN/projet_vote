@@ -1,5 +1,5 @@
-// app/e/[slug]/tickets/page.tsx — Billetterie publique d'un évènement.
-// Server Component : fetch SSR de l'évènement (metadata + shell brandé
+// app/e/[slug]/tickets/page.tsx — Billetterie publique d'un événement.
+// Server Component : fetch SSR de l'événement (metadata + shell brandé
 // PublicEventShell) ; le funnel d'achat vit dans tickets-client.tsx (React Query).
 // fetchPublicEvent partagé : lib/public-event-fetch.ts (Task B7).
 
@@ -54,7 +54,7 @@ export default async function PublicTicketsPage({ params }: PageProps) {
       branding={event.branding}
     >
       <main className="px-4 py-10">
-        <TicketsClient slug={event.slug} />
+        <TicketsClient slug={event.slug} paymentNetworks={data.paymentNetworks} />
       </main>
     </PublicEventShell>
   );

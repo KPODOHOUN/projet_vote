@@ -96,3 +96,14 @@ test("fetchPayoutStatus → normalized SUCCEEDED", async () => {
   assert.equal(res.status, "SUCCEEDED");
   assert.equal(res.amountCfa, 50);
 });
+
+test("initPayin Celtiis → chemin requesttopay/celtiis_bj (code FeexPay Bénin)", async () => {
+  let seenUrl = "";
+  mockFetch((url) => {
+    seenUrl = url;
+    return { status: 200, body: { reference: "fp-ref-c", status: "PENDING", amount: 100 } };
+  });
+  const gw = new FeexpayGateway();
+  await gw.initPayin({ amountCfa: 100, phoneNumber: "2290141000000", operator: "celtiis", customId: "tx-c" }, creds);
+  assert.equal(seenUrl, "https://api-v2.feexpay.me/api/transactions/public/requesttopay/celtiis_bj");
+});

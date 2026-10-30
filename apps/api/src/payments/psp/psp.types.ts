@@ -8,14 +8,10 @@ import type { PaymentProvider } from "@prisma/client";
  */
 export type PspNormalizedStatus = "PENDING" | "SUCCEEDED" | "FAILED";
 
-/** Credentials resolved per-request from the EventSecret → TenantSecret → env chain. */
+/** Identifiants du compte prestataire de la plateforme. */
 export interface PspCredentials {
   apiKey: string;
   shop: string;
-  // KkiaPay uses a three-key scheme; optional so Feexpay/Fedapay ignore them.
-  kkiapayPublicKey?: string | undefined;
-  kkiapayPrivateKey?: string | undefined;
-  kkiapaySecretKey?: string | undefined;
 }
 
 export interface PspPayinInitInput {
@@ -26,11 +22,6 @@ export interface PspPayinInitInput {
   description?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
-  /** Native marketplace split. Currently implemented by FedaPay sub-accounts. */
-  split?: {
-    beneficiaryReference: string;
-    amountCfa: number;
-  } | undefined;
 }
 
 export interface PspPayinInitResult {
@@ -46,10 +37,6 @@ export interface PspStatusResult {
   providerAmount?: string | number | undefined;
   currency: string;
   reason?: string | undefined;
-  split?: {
-    beneficiaryReference: string;
-    amountCfa: number;
-  } | undefined;
 }
 
 export interface PspPayoutInput {

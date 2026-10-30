@@ -15,7 +15,10 @@ import { runDataPurge, type PurgeResult } from "@/lib/platform-maintenance";
 import { showToast } from "@/lib/toast";
 import { Button, ConfirmDialog, DataTable, EmptyState, Input, LoadingState, StatusChip } from "@/components/ui";
 import type { DataTableColumn } from "@/components/ui";
-import { AdminErrorAlert, AdminFilterCard } from "@/components/admin/admin-shell";
+import { AdminErrorAlert, AdminFilterCard, AdminSelect } from "@/components/admin/admin-shell";
+import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES, auditActionLabel, roleLabel, shortRef, targetTypeLabel } from "@/lib/admin-labels";
+
+const PAGE_SIZES = [25, 50, 100] as const;
 
 type AuditLogPanelProps = {
   isEn: boolean;
@@ -27,9 +30,7 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
   const [limit, setLimit] = useState(50);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [filterAction, setFilterAction] = useState("");
-  const [filterActor, setFilterActor] = useState("");
   const [filterTarget, setFilterTarget] = useState("");
-  const [filterTenant, setFilterTenant] = useState("");
   const [auditRetentionDays, setAuditRetentionDays] = useState(30);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
@@ -40,11 +41,9 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
     (): AuditLogFilters => ({
       limit,
       action: filterAction,
-      actorUserId: filterActor,
-      targetType: filterTarget,
-      tenantId: filterTenant
+      targetType: filterTarget
     }),
-    [limit, filterAction, filterActor, filterTarget, filterTenant]
+    [limit, filterAction, filterTarget]
   );
 
   const load = useCallback(
@@ -143,8 +142,8 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
       setPurgeResult(result);
       showToast.success(
         isEn
-          ? `Purge done (${result.deletedAuditLogs} audit logs).`
-          : `Purge terminée (${result.deletedAuditLogs} logs).`
+          ? `Clean-up done (${result.deletedAuditLogs} entries).`
+          : `Nettoyage terminé (${result.deletedAuditLogs} entrées).`
       );
       await load();
     } catch (caught) {
@@ -157,11 +156,13 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
   const logColumns: Array<DataTableColumn<AuditLog>> = [
     {
       key: "select",
+      cardSlot: "action",
       header: (
         <input
           type="checkbox"
           checked={selected.size === logs.length && logs.length > 0}
           onChange={toggleAll}
+          className="size-4 align-middle"
           aria-label={isEn ? "Select all" : "Tout sélectionner"}
         />
       ),
@@ -170,6 +171,7 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
           type="checkbox"
           checked={selected.has(entry.id)}
           onChange={() => toggleOne(entry.id)}
+          className="size-4 align-middle"
           aria-label={isEn ? "Select log" : "Sélectionner"}
         />
       )
@@ -186,43 +188,46 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
     {
       key: "action",
       header: isEn ? "Action" : "Action",
+      primary: true,
       render: (entry) => (
-        <div className="flex items-center gap-2">
-          <StatusChip label={entry.actorRole} tone="muted" />
-          <span className="font-medium">{entry.action}</span>
-        </div>
+        <span className="font-medium">{auditActionLabel(entry.action, isEn)}</span>
       )
     },
     {
       key: "actor",
-      header: isEn ? "Actor" : "Acteur",
-      render: (entry) => <span className="text-muted-foreground">{entry.actorUserId}</span>
+      header: isEn ? "By" : "Par",
+      render: (entry) => (
+        <div className="flex items-center gap-2">
+          <StatusChip label={roleLabel(entry.actorRole, isEn)} tone="muted" />
+          <span className="font-mono text-xs text-muted-foreground">{shortRef(entry.actorUserId)}</span>
+        </div>
+      )
     },
     {
       key: "target",
       header: isEn ? "Target" : "Cible",
       render: (entry) => (
         <span className="text-muted-foreground">
-          {entry.targetType}
-          {entry.targetId ? ` · ${entry.targetId}` : ""}
+          {targetTypeLabel(entry.targetType, isEn)}
+          {entry.targetId ? <span className="ml-1.5 font-mono text-xs">{shortRef(entry.targetId)}</span> : null}
         </span>
       )
     },
     {
       key: "delete",
-      header: "",
+      header: <span className="sr-only">{isEn ? "Delete" : "Supprimer"}</span>,
       align: "right",
-      hideInCard: true,
+      cardSlot: "action",
       render: (entry) => (
         <ConfirmDialog
           disabled={isBusy}
           title={isEn ? "Delete this log?" : "Supprimer cette entrée ?"}
-          description={entry.action}
+          description={auditActionLabel(entry.action, isEn)}
           confirmLabel={isEn ? "Delete" : "Supprimer"}
           cancelLabel={isEn ? "Cancel" : "Annuler"}
           onConfirm={() => void onDeleteOne(entry.id)}
           trigger={
-            <Button type="button" size="sm" variant="ghost" className="text-destructive" aria-label={isEn ? "Delete log" : "Supprimer le log"}>
+            <Button type="button" size="icon-sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={isEn ? "Delete entry" : "Supprimer l'entrée"}>
               <Trash2 className="size-4" />
             </Button>
           }
@@ -233,126 +238,141 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
 
   return (
     <div className="space-y-6">
-      <AdminFilterCard columns="md:grid-cols-2 lg:grid-cols-3">
-        <Input
-          id="auditLimit"
-          label={isEn ? "Page size" : "Taille de page"}
-          type="number"
-          min={1}
-          max={100}
-          value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
-        />
-        <Input
+      <AdminFilterCard columns="sm:grid-cols-2 lg:grid-cols-[1fr_1fr_10rem]">
+        <AdminSelect
           id="filterAction"
           label={isEn ? "Action" : "Action"}
           value={filterAction}
-          onChange={(e) => setFilterAction(e.target.value)}
-          placeholder="maintenance.purge_executed"
+          onChange={setFilterAction}
+          options={[
+            { value: "", label: isEn ? "All actions" : "Toutes les actions" },
+            ...AUDIT_ACTIONS.map((a) => ({ value: a, label: auditActionLabel(a, isEn) }))
+          ]}
         />
-        <Input
-          id="filterActor"
-          label={isEn ? "Actor" : "Acteur"}
-          value={filterActor}
-          onChange={(e) => setFilterActor(e.target.value)}
-        />
-        <Input
+        <AdminSelect
           id="filterTarget"
-          label={isEn ? "Target type" : "Type de cible"}
+          label={isEn ? "Concerns" : "Concerne"}
           value={filterTarget}
-          onChange={(e) => setFilterTarget(e.target.value)}
+          onChange={setFilterTarget}
+          options={[
+            { value: "", label: isEn ? "Everything" : "Tout" },
+            ...AUDIT_TARGET_TYPES.map((t) => ({ value: t, label: targetTypeLabel(t, isEn) }))
+          ]}
         />
-        <Input
-          id="filterTenant"
-          label={isEn ? "Tenant ID" : "ID tenant"}
-          value={filterTenant}
-          onChange={(e) => setFilterTenant(e.target.value)}
-        />
-        <Input
-          id="auditRetention"
-          label={isEn ? "Retention purge (days, 0 = all)" : "Purge rétention (jours, 0 = tout)"}
-          type="number"
-          min={0}
-          max={3650}
-          value={auditRetentionDays}
-          onChange={(e) => setAuditRetentionDays(Number(e.target.value))}
+        <AdminSelect
+          id="auditLimit"
+          label={isEn ? "Rows" : "Lignes"}
+          value={String(limit)}
+          onChange={(v) => setLimit(Number(v))}
+          options={PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) }))}
         />
       </AdminFilterCard>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" disabled={selected.size === 0 || isBusy} onClick={() => void onDeleteSelected()}>
-          {isEn ? `Delete selected (${selected.size})` : `Supprimer la sélection (${selected.size})`}
-        </Button>
-        <ConfirmDialog
-          disabled={isBusy}
-          title={isEn ? "Delete matching logs?" : "Supprimer les logs filtrés ?"}
-          description={
-            isEn
-              ? "Deletes every audit log matching the current filters. This cannot be undone."
-              : "Supprime toutes les entrées correspondant aux filtres actuels. Irréversible."
-          }
-          confirmLabel={isEn ? "Delete matching" : "Supprimer le filtre"}
-          cancelLabel={isEn ? "Cancel" : "Annuler"}
-          onConfirm={() => void onDeleteMatching()}
-          trigger={
-            <Button type="button" variant="secondary" disabled={isBusy}>
-              {isEn ? "Delete matching filter" : "Supprimer selon filtres"}
-            </Button>
-          }
-        />
-        <ConfirmDialog
-          disabled={isBusy}
-          title={isEn ? "Run retention purge?" : "Lancer la purge par rétention ?"}
-          description={
-            isEn
-              ? `Deletes audit logs older than ${auditRetentionDays} day(s) plus expired technical data.`
-              : `Supprime les logs plus vieux que ${auditRetentionDays} jour(s) et les données techniques expirées.`
-          }
-          confirmLabel={isEn ? "Run purge" : "Lancer la purge"}
-          cancelLabel={isEn ? "Cancel" : "Annuler"}
-          onConfirm={() => void onRetentionPurge()}
-          trigger={
-            <Button type="button" variant="destructive" disabled={isBusy}>
-              {isEn ? "Purge by retention" : "Purger par rétention"}
-            </Button>
-          }
-        />
-      </div>
-
-      {purgeResult ? (
-        <p className="text-sm text-muted-foreground">
-          {isEn ? "Last purge:" : "Dernière purge :"}{" "}
-          {purgeResult.deletedAuditLogs} logs, {purgeResult.deletedIdempotencyKeys} idempotency,{" "}
-          {purgeResult.deletedRevokedSessions} sessions
-        </p>
-      ) : null}
-
       {error ? <AdminErrorAlert message={error} /> : null}
+
+      {logs.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {selected.size > 0
+              ? isEn ? `${selected.size} selected` : `${selected.size} sélectionnée(s)`
+              : isEn ? `${logs.length} entries shown` : `${logs.length} entrées affichées`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {selected.size > 0 ? (
+              <Button type="button" size="sm" variant="destructive" disabled={isBusy} onClick={() => void onDeleteSelected()}>
+                <Trash2 className="size-4" aria-hidden="true" />
+                {isEn ? "Delete selection" : "Supprimer la sélection"}
+              </Button>
+            ) : null}
+            {filterAction || filterTarget ? (
+              <ConfirmDialog
+                disabled={isBusy}
+                title={isEn ? "Delete all filtered entries?" : "Supprimer toutes les entrées filtrées ?"}
+                description={isEn ? "Every entry matching the filters. Cannot be undone." : "Toutes les entrées qui correspondent aux filtres. Irréversible."}
+                confirmLabel={isEn ? "Delete" : "Supprimer"}
+                cancelLabel={isEn ? "Cancel" : "Annuler"}
+                onConfirm={() => void onDeleteMatching()}
+                trigger={
+                  <Button type="button" size="sm" variant="outline" disabled={isBusy}>
+                    {isEn ? "Delete filtered" : "Supprimer le filtre"}
+                  </Button>
+                }
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <LoadingState variant="rows" count={5} label={isEn ? "Loading audit logs…" : "Chargement du journal…"} />
       ) : logs.length === 0 ? (
         <EmptyState
-          title={isEn ? "No audit logs" : "Aucun log"}
-          description={isEn ? "No entries match your filters." : "Aucune entrée ne correspond aux filtres."}
+          title={isEn ? "No entries" : "Aucune entrée"}
+          description={isEn ? "Nothing matches these filters." : "Rien ne correspond à ces filtres."}
         />
       ) : (
         <DataTable
           columns={logColumns}
           rows={logs}
           rowKey={(entry) => entry.id}
-          emptyLabel={isEn ? "No audit logs" : "Aucun log"}
+          emptyLabel={isEn ? "No entries" : "Aucune entrée"}
           ariaLabel={isEn ? "Audit log" : "Journal d'audit"}
         />
       )}
 
       {nextCursor ? (
         <div className="flex justify-center">
-          <Button type="button" variant="secondary" disabled={isBusy} onClick={() => void load(nextCursor)}>
+          <Button type="button" variant="outline" disabled={isBusy} onClick={() => void load(nextCursor)}>
             {isEn ? "Load more" : "Charger plus"}
           </Button>
         </div>
       ) : null}
+
+      <section className="rounded-xl border border-border bg-card p-4 sm:p-5" aria-labelledby="audit-cleanup">
+        <h2 id="audit-cleanup" className="text-base font-bold">{isEn ? "Clean-up" : "Nettoyage"}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {isEn ? "Delete entries older than:" : "Effacer les entrées de plus de :"}
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="w-32">
+            <Input
+              id="auditRetention"
+              label={isEn ? "Days" : "Jours"}
+              type="number"
+              min={0}
+              max={3650}
+              value={auditRetentionDays}
+              onChange={(e) => setAuditRetentionDays(Number(e.target.value))}
+            />
+          </div>
+          <ConfirmDialog
+            disabled={isBusy}
+            title={isEn ? "Delete old entries?" : "Effacer les anciennes entrées ?"}
+            description={
+              auditRetentionDays === 0
+                ? isEn ? "Deletes every entry and expired sessions." : "Efface toutes les entrées et les sessions expirées."
+                : isEn
+                  ? `Entries older than ${auditRetentionDays} day(s), and expired sessions.`
+                  : `Les entrées de plus de ${auditRetentionDays} jour(s), et les sessions expirées.`
+            }
+            confirmLabel={isEn ? "Delete" : "Effacer"}
+            cancelLabel={isEn ? "Cancel" : "Annuler"}
+            onConfirm={() => void onRetentionPurge()}
+            trigger={
+              <Button type="button" variant="outline" className="text-destructive hover:text-destructive" disabled={isBusy}>
+                {isEn ? "Clean up" : "Effacer"}
+              </Button>
+            }
+          />
+        </div>
+        {purgeResult ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {isEn
+              ? `Last clean-up: ${purgeResult.deletedAuditLogs} entries, ${purgeResult.deletedRevokedSessions} sessions.`
+              : `Dernier nettoyage : ${purgeResult.deletedAuditLogs} entrées, ${purgeResult.deletedRevokedSessions} sessions.`}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }

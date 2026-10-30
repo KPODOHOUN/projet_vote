@@ -2,7 +2,8 @@ import {
   ConflictException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import {
   PaymentPurpose,
@@ -10,23 +11,17 @@ import {
   PaymentStatus,
   TicketStatus,
   UserRole,
-  AccountPlanType,
-  AccountPlanStatus,
-  TenantOfferType,
   WalletLedgerKind
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { resolvePartnerVoteCommissionBps } from "../partners/partner-tier.util";
 import { WalletService } from "../offers/wallet.service";
 import { OfferSettingsService } from "../offers/offer-settings.service";
 import { PspRegistry } from "./psp/psp.registry";
+import { MailService } from "../mail/mail.service";
+import { ticketEmailHtml } from "../tickets/ticket-email.util";
 import { parseStrictProviderAmount } from "./psp/parse-provider-amount";
 import type { FeexpayStatusPayload } from "./feexpay/feexpay.types";
-import {
-  COMMISSION_BPS_KEY,
-  parseIntSetting
-} from "../common/platform-settings";
 
 /**
  * Verify-by-pull pipeline (ADR-017).
@@ -56,7 +51,9 @@ export class PaymentVerifyService {
     private readonly notifications: NotificationsService,
     private readonly pspRegistry: PspRegistry,
     private readonly wallet: WalletService,
-    private readonly offerSettings: OfferSettingsService
+    private readonly offerSettings: OfferSettingsService,
+    // Optionnel : les tests unitaires construisent ce service sans e-mail.
+    @Optional() private readonly mail?: MailService
   ) { }
 
   /**
@@ -166,115 +163,8 @@ export class PaymentVerifyService {
       });
       return { outcome: "rejected", reason: "currency_mismatch", transactionId: tx.id };
     }
-    if (
-      tx.splitBeneficiaryRef &&
-      (pull.split?.beneficiaryReference !== tx.splitBeneficiaryRef ||
-        pull.split.amountCfa !== tx.splitAmountCfa)
-    ) {
-      await this.auditReject({
-        tenantId: tx.tenantId,
-        transactionId: tx.id,
-        reason: "split_mismatch",
-        metadata: {
-          reference,
-          expectedBeneficiary: tx.splitBeneficiaryRef,
-          expectedSplitAmountCfa: tx.splitAmountCfa,
-          providerSplit: pull.split ?? null
-        }
-      });
-      return { outcome: "rejected", reason: "split_mismatch", transactionId: tx.id };
-    }
-
     // All invariants OK — commit atomically.
-    const commissionCfa = await this.resolveCommissionForTx(tx);
-
-    await this.prisma.client.$transaction(async (trx) => {
-      // CAS-style guard: only flip from PENDING. Prevents a concurrent
-      // reconciliation pull from double-applying.
-      const updated = await trx.paymentTransaction.updateMany({
-        where: { id: tx.id, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.SUCCEEDED,
-          ...(commissionCfa !== null ? { commissionCfa } : {})
-        }
-      });
-      if (updated.count === 0) {
-        // Lost a race against another worker — that worker also applied
-        // exactly the same state, so this is safe to no-op.
-        return;
-      }
-
-      if (
-        (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) &&
-        tx.voteId
-      ) {
-        await trx.vote.update({
-          where: { id: tx.voteId },
-          data: { paidAt: new Date() }
-        });
-      } else if (tx.purpose === PaymentPurpose.ACTIVATION) {
-        await trx.event.update({
-          where: { id: tx.eventId },
-          data: { activationPaidAt: new Date() }
-        });
-      } else if (tx.purpose === PaymentPurpose.SUBSCRIPTION) {
-        // Activate subscription: derive durationMonths from the paid amount.
-        await this.activateSubscriptionFromPayment(trx, tx.tenantId, tx.id, tx.amountCfa);
-      } else if (tx.purpose === PaymentPurpose.TICKET) {
-        await trx.ticket.updateMany({
-          where: { eventId: tx.eventId, status: TicketStatus.RESERVED },
-          data: { status: TicketStatus.PAID, paidAt: new Date(), confirmedAt: new Date() }
-        });
-      }
-
-      await this.applyOfferWalletEffects(
-        trx,
-        {
-          id: tx.id,
-          tenantId: tx.tenantId,
-          eventId: tx.eventId,
-          amountCfa: tx.amountCfa,
-          purpose: tx.purpose,
-          commissionCfa
-        }
-      );
-
-      await trx.auditLog.create({
-        data: {
-          tenantId: tx.tenantId,
-          actorUserId: "system:payment:verify",
-          actorRole: UserRole.PLATFORM_ADMIN,
-          action: "payment.verified_applied",
-          targetType: "PaymentTransaction",
-          targetId: tx.id,
-          metadata: {
-            providerRef: reference,
-            amountCfa: tx.amountCfa,
-            currency: tx.currency,
-            purpose: tx.purpose,
-            ...(commissionCfa !== null ? { commissionCfa } : {})
-          }
-        }
-      });
-    });
-
-    if (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) {
-      this.notifyPaymentSucceeded(tx.tenantId, tx.eventId, tx.amountCfa);
-    } else if (tx.purpose === PaymentPurpose.SUBSCRIPTION) {
-      this.notifications
-        .create(tx.tenantId, "SUBSCRIPTION_ACTIVATED", {
-          amountCfa: tx.amountCfa,
-          transactionId: tx.id
-        })
-        .catch((err) => {
-          this.logger.warn({
-            msg: "subscription.notify_failed",
-            tenantId: tx.tenantId,
-            err: err instanceof Error ? err.message : String(err)
-          });
-        });
-    }
-
+    await this.applySuccess(tx, "system:payment:verify", { providerRef: reference });
     return { outcome: "applied", transactionId: tx.id };
   }
 
@@ -311,82 +201,79 @@ export class PaymentVerifyService {
     return result;
   }
 
-  /** Mode démo : confirme un paiement PENDING sans pull PSP. */
+  /** Mode démo : confirme un paiement PENDING sans pull PSP, avec exactement les mêmes effets. */
   async applyDemoSuccess(transactionId: string): Promise<void> {
     const tx = await this.prisma.client.paymentTransaction.findUnique({ where: { id: transactionId } });
     if (!tx || tx.status !== PaymentStatus.PENDING) {
       return;
     }
+    await this.applySuccess(tx, "system:payments:demo", { providerRef: tx.providerRef, demo: true });
+  }
 
+  /**
+   * Seul chemin qui applique un paiement réussi (vérification réelle et mode
+   * démo) : passage SUCCEEDED + commission figée, effet métier (voix comptée,
+   * billets payés), crédit du portefeuille, audit — dans UNE transaction, avec
+   * garde CAS sur PENDING (un second passage ne fait rien : pas de double crédit).
+   */
+  private async applySuccess(
+    tx: { id: string; tenantId: string; eventId: string; amountCfa: number; currency: string; purpose: PaymentPurpose; voteId: string | null },
+    actorUserId: string,
+    metadata: Record<string, string | boolean | null>
+  ): Promise<boolean> {
     const commissionCfa = await this.resolveCommissionForTx(tx);
 
+    let applied = false;
     await this.prisma.client.$transaction(async (trx) => {
       const updated = await trx.paymentTransaction.updateMany({
         where: { id: tx.id, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.SUCCEEDED,
-          ...(commissionCfa !== null ? { commissionCfa } : {})
-        }
+        data: { status: PaymentStatus.SUCCEEDED, ...(commissionCfa !== null ? { commissionCfa } : {}) }
       });
       if (updated.count === 0) {
+        // Un autre passage (webhook rejoué, réconciliation) a déjà appliqué ce paiement.
         return;
       }
+      applied = true;
 
-      if (
-        (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) &&
-        tx.voteId
-      ) {
-        await trx.vote.update({
-          where: { id: tx.voteId },
-          data: { paidAt: new Date() }
-        });
-      } else if (tx.purpose === PaymentPurpose.ACTIVATION) {
-        await trx.event.update({
-          where: { id: tx.eventId },
-          data: { activationPaidAt: new Date() }
-        });
+      if ((tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) && tx.voteId) {
+        await trx.vote.update({ where: { id: tx.voteId }, data: { paidAt: new Date() } });
       } else if (tx.purpose === PaymentPurpose.TICKET) {
+        // Seulement les billets de CET achat : un paiement ne valide jamais les
+        // réservations d'un autre acheteur du même événement.
         await trx.ticket.updateMany({
-          where: { eventId: tx.eventId, status: TicketStatus.RESERVED },
+          where: { paymentTransactionId: tx.id, status: TicketStatus.RESERVED },
           data: { status: TicketStatus.PAID, paidAt: new Date(), confirmedAt: new Date() }
         });
       }
 
-      await this.applyOfferWalletEffects(
-        trx,
-        {
-          id: tx.id,
-          tenantId: tx.tenantId,
-          eventId: tx.eventId,
-          amountCfa: tx.amountCfa,
-          purpose: tx.purpose,
-          commissionCfa
-        }
-      );
+      await this.applyOfferWalletEffects(trx, { ...tx, commissionCfa });
 
       await trx.auditLog.create({
         data: {
           tenantId: tx.tenantId,
-          actorUserId: "system:payments:demo",
+          actorUserId,
           actorRole: UserRole.PLATFORM_ADMIN,
           action: "payment.verified_applied",
           targetType: "PaymentTransaction",
           targetId: tx.id,
           metadata: {
-            providerRef: tx.providerRef,
+            ...metadata,
             amountCfa: tx.amountCfa,
             currency: tx.currency,
             purpose: tx.purpose,
-            demo: true,
             ...(commissionCfa !== null ? { commissionCfa } : {})
           }
         }
       });
     });
 
-    if (tx.purpose === PaymentPurpose.VOTE) {
+    if (applied && tx.purpose === PaymentPurpose.TICKET) {
+      void this.sendTicketEmails(tx.id);
+    }
+    if (applied && (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP)) {
       this.notifyPaymentSucceeded(tx.tenantId, tx.eventId, tx.amountCfa);
     }
+    return applied;
   }
 
   private async fetchAuthoritativeStatus(
@@ -399,21 +286,8 @@ export class PaymentVerifyService {
     reference: string
   ): Promise<FeexpayStatusPayload> {
     const gateway = this.pspRegistry.get(tx.provider);
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tx.tenantId },
-      select: { offerType: true }
-    });
-    const usesPlatformMarketplaceAccount =
-      tx.provider === PaymentProvider.FEDAPAY &&
-      tx.purpose === PaymentPurpose.VOTE &&
-      tenant?.offerType === TenantOfferType.EXTERNAL;
-    const creds =
-      tx.purpose === PaymentPurpose.ACTIVATION || usesPlatformMarketplaceAccount
-        ? await this.pspRegistry.resolvePlatformCredentials(tx.provider)
-        : await this.pspRegistry.resolveVotePayinCredentials({
-            eventId: tx.eventId,
-            tenantId: tx.tenantId
-          });
+    // SHADOMA encaisse tous les paiements sur son propre compte prestataire.
+    const creds = await this.pspRegistry.resolvePlatformCredentials(tx.provider);
     const result = await gateway.fetchPayinStatus(reference, creds);
     const status: FeexpayStatusPayload["status"] =
       result.status === "SUCCEEDED" ? "SUCCESSFUL" : result.status;
@@ -421,9 +295,41 @@ export class PaymentVerifyService {
       status,
       amount: result.providerAmount ?? result.amountCfa,
       currency: result.currency,
-      reason: result.reason,
-      ...(result.split ? { split: result.split } : {})
+      reason: result.reason
     };
+  }
+
+  /** Envoie chaque billet payé de cet achat à son détenteur (une fois, après confirmation). */
+  private async sendTicketEmails(transactionId: string): Promise<void> {
+    if (!this.mail) return;
+    try {
+      const tickets = await this.prisma.client.ticket.findMany({
+        where: { paymentTransactionId: transactionId, status: TicketStatus.PAID },
+        include: { ticketType: { select: { name: true } }, event: { select: { title: true, slug: true } } }
+      });
+      for (const ticket of tickets) {
+        if (!ticket.holderEmail) continue;
+        this.mail.send({
+          to: [ticket.holderEmail],
+          subject: `Votre billet pour ${ticket.event.title}`,
+          html: ticketEmailHtml({
+            id: ticket.id,
+            qrSecret: ticket.qrSecret,
+            amountCfa: ticket.amountCfa,
+            holderName: ticket.holderName,
+            holderPhone: ticket.holderPhone,
+            holderEmail: ticket.holderEmail,
+            ticketType: ticket.ticketType,
+            event: ticket.event
+          })
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Envoi des billets impossible (transaction ${transactionId})`,
+        error instanceof Error ? error.message : error
+      );
+    }
   }
 
   private parseAmount(raw: string | number | undefined): number | null {
@@ -437,6 +343,11 @@ export class PaymentVerifyService {
         data: { status: PaymentStatus.FAILED }
       });
       if (updated.count === 0) return;
+      // Paiement de billets échoué : la réservation libère le stock.
+      await trx.ticket.updateMany({
+        where: { paymentTransactionId: txId, status: TicketStatus.RESERVED },
+        data: { status: TicketStatus.CANCELLED }
+      });
       await trx.auditLog.create({
         data: {
           tenantId,
@@ -470,295 +381,61 @@ export class PaymentVerifyService {
     });
   }
 
-  private async resolveCommissionForTx(tx: {
-    purpose: PaymentPurpose;
-    eventId: string;
-    amountCfa: number;
-    tenantId: string;
-  }): Promise<number | null> {
-    if (tx.purpose === PaymentPurpose.VOTE) {
-      const tenant = await this.prisma.client.tenant.findUnique({
-        where: { id: tx.tenantId },
-        select: { offerType: true }
-      });
-      if (tenant?.offerType === TenantOfferType.ESCROW) {
-        const bps = await this.offerSettings.resolveEscrowCommissionBps(tx.eventId);
-        return this.offerSettings.computeEscrowVoteCommissionCfaFromBps(tx.amountCfa, bps);
-      }
-      if (tenant?.offerType === TenantOfferType.EXTERNAL) {
-        const settings = await this.offerSettings.getSettings();
-        return this.offerSettings.computeExternalCommissionCfa(settings, tx.amountCfa);
-      }
-      return this.resolveCommissionCfa(tx.eventId, tx.amountCfa);
-    }
-    if (tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) {
-      const tenant = await this.prisma.client.tenant.findUnique({
-        where: { id: tx.tenantId },
-        select: { offerType: true }
-      });
-      if (tenant?.offerType === TenantOfferType.EXTERNAL) {
-        // Amount paid IS the platform commission.
-        return tx.amountCfa;
-      }
-      if (tenant?.offerType === TenantOfferType.ESCROW) {
-        const bps = await this.offerSettings.resolveEscrowCommissionBps(tx.eventId);
-        return this.offerSettings.computeEscrowVoteCommissionCfaFromBps(tx.amountCfa, bps);
-      }
-      return 0;
-    }
-    return null;
+  /**
+   * Commission figée sur le paiement à sa confirmation (règles centralisées
+   * dans OfferSettingsService). Votes, billets et votes ajoutés par
+   * l'organisateur suivent la même règle ; les anciens objets de paiement
+   * (activation, abonnement) n'en ont pas.
+   */
+  private async resolveCommissionForTx(tx: { purpose: PaymentPurpose; eventId: string; amountCfa: number }): Promise<number | null> {
+    if (!MONEY_PURPOSES.has(tx.purpose)) return null;
+    const bps = await this.offerSettings.resolveCommissionBps(tx.eventId);
+    return this.offerSettings.computeCommissionCfa(tx.amountCfa, bps);
   }
 
   /**
-   * ESCROW: for votes, the credit path MUST key off the exact same flag as the
-   * closure path in `EventSettlementService.closeEvent`
-   * (`offer2PerVoteCommissionEnabled`), otherwise the two halves of the
-   * settlement state machine disagree:
-   *   - flag ON  (new model)    : split the net amount between held (reserve)
-   *     and withdrawable per the event's `heldBps` snapshot; the held part is
-   *     released 48h after closure by `releaseMaturedHeld`.
-   *   - flag OFF (legacy model) : credit the whole net to `held` as a plain
-   *     VOTE_CREDIT; `closeEvent` then applies the legacy 5% retention and
-   *     releases the remainder at closure. Crediting straight to withdrawable
-   *     here would both destroy the reserve and make `closeEvent` throw
-   *     (insufficient held balance for the retention debit).
-   * For organizer top-ups, credit the full amount directly to withdrawable
-   * (it's the organizer's own money) — same in both models.
-   * EXTERNAL: no wallet mutation. Regular votes were already split natively
-   * by FedaPay; organizer top-ups contain only the platform commission.
+   * Crédit du portefeuille de l'organisateur : net = brut − commission, partagé
+   * entre réserve (heldBps figé par le contrat) et disponible. Le type
+   * d'écriture dit d'où vient l'argent (vote, billet, votes ajoutés).
    */
   private async applyOfferWalletEffects(
     trx: Parameters<Parameters<typeof this.prisma.client.$transaction>[0]>[0],
-    tx: {
-      id: string;
-      tenantId: string;
-      eventId: string;
-      amountCfa: number;
-      purpose: PaymentPurpose;
-      commissionCfa: number | null;
-    }
+    tx: { id: string; tenantId: string; eventId: string; amountCfa: number; purpose: PaymentPurpose; commissionCfa: number | null }
   ): Promise<void> {
-    if (
-      tx.purpose !== PaymentPurpose.VOTE &&
-      tx.purpose !== PaymentPurpose.ORGANIZER_VOTE_TOPUP
-    ) {
-      return;
-    }
-
-    const tenant = await trx.tenant.findUnique({
-      where: { id: tx.tenantId },
-      select: { offerType: true }
-    });
-    if (!tenant) return;
-
-    if (tenant.offerType === TenantOfferType.ESCROW) {
-      const commission = tx.commissionCfa ?? 0;
-      if (tx.purpose === PaymentPurpose.VOTE) {
-        const net = Math.max(0, tx.amountCfa - commission);
-        if (net > 0) {
-          const settings = await this.offerSettings.getSettings();
-          if (settings.offer2PerVoteCommissionEnabled) {
-            const event = await trx.event.findUnique({
-              where: { id: tx.eventId },
-              select: { heldBps: true }
-            });
-            await this.wallet.creditSplit(
-              {
-                tenantId: tx.tenantId,
-                netCfa: net,
-                heldBps: event?.heldBps ?? 0,
-                kind: WalletLedgerKind.VOTE_CREDIT,
-                eventId: tx.eventId,
-                paymentId: tx.id,
-                note: "Crédit vote (escrow)"
-              },
-              trx
-            );
-          } else {
-            // Legacy model: everything goes to the held reserve; closeEvent
-            // applies the 5% retention and releases the rest at closure.
-            await this.wallet.credit(
-              {
-                tenantId: tx.tenantId,
-                amountCfa: net,
-                kind: WalletLedgerKind.VOTE_CREDIT,
-                target: "held",
-                eventId: tx.eventId,
-                paymentId: tx.id,
-                note: "Crédit vote (escrow)"
-              },
-              trx
-            );
-          }
-        }
-      } else {
-        // ORGANIZER_VOTE_TOPUP: full amount credited directly to withdrawable
-        // (a top-up is the organizer's own money, not at-risk vote revenue —
-        // it does not go through the held reserve).
-        if (tx.amountCfa > 0) {
-          await this.wallet.credit(
-            {
-              tenantId: tx.tenantId,
-              amountCfa: tx.amountCfa,
-              kind: WalletLedgerKind.TOPUP_CREDIT,
-              target: "withdrawable",
-              eventId: tx.eventId,
-              paymentId: tx.id,
-              note: "Crédit top-up orga (escrow)"
-            },
-            trx
-          );
-        }
-      }
-      return;
-    }
-
-    if (tenant.offerType === TenantOfferType.EXTERNAL) {
-      this.logger.log({
-        msg: "payment.external.native_split_applied",
+    if (!MONEY_PURPOSES.has(tx.purpose)) return;
+    const net = tx.amountCfa - (tx.commissionCfa ?? 0);
+    if (net <= 0) return;
+    const event = await trx.event.findUnique({ where: { id: tx.eventId }, select: { heldBps: true } });
+    const heldBps = event?.heldBps ?? (await this.offerSettings.getSettings()).heldBps;
+    await this.wallet.creditSplit(
+      {
         tenantId: tx.tenantId,
+        netCfa: net,
+        heldBps,
+        kind: LEDGER_KIND_BY_PURPOSE[tx.purpose] ?? WalletLedgerKind.VOTE_CREDIT,
         eventId: tx.eventId,
         paymentId: tx.id,
-        purpose: tx.purpose,
-        commissionCfa: tx.commissionCfa
-      });
-    }
-  }
-
-  private async resolveCommissionCfa(eventId: string, amountCfa: number): Promise<number> {
-    // If the event belongs to a tenant with an active subscription, use the
-    // frozen commission rate from the subscription (if available).
-    const event = await this.prisma.client.event.findUnique({
-      where: { id: eventId },
-      select: {
-        commissionBps: true,
-        isPartnerEvent: true,
-        partnerPlatformShareBps: true,
-        tenantId: true,
-        createdAt: true,
-        tenant: { select: { commissionBps: true, isPartner: true, partnerCommissionBps: true } }
-      }
-    });
-
-    // Check for frozen commission from active account subscription first.
-    if (event?.tenantId) {
-      const activeSub = await this.prisma.client.accountSubscription.findFirst({
-        where: {
-          tenantId: event.tenantId,
-          status: AccountPlanStatus.ACTIVE,
-          expiresAt: { gt: new Date() }
-        },
-        orderBy: { expiresAt: "desc" },
-        select: { frozenCommissionBps: true, partnerCommissionBps: true, planType: true }
-      });
-      if (activeSub) {
-        // Partner subscriptions use their partner-specific rate.
-        const bps = activeSub.planType === AccountPlanType.PARTNER
-          ? (activeSub.partnerCommissionBps ?? activeSub.frozenCommissionBps)
-          : activeSub.frozenCommissionBps;
-        if (bps > 0) {
-          return Math.floor((amountCfa * bps) / 10_000);
-        }
-        return 0;
-      }
-
-      // Check if there was an active PARTNER subscription when the event was created (grace period).
-      if (event.createdAt) {
-        const subDuringCreation = await this.prisma.client.accountSubscription.findFirst({
-          where: {
-            tenantId: event.tenantId,
-            planType: AccountPlanType.PARTNER,
-            startsAt: { lte: event.createdAt },
-            expiresAt: { gte: event.createdAt }
-          },
-          orderBy: { expiresAt: "desc" },
-          select: { partnerCommissionBps: true, frozenCommissionBps: true }
-        });
-        if (subDuringCreation) {
-          const bps = subDuringCreation.partnerCommissionBps ?? subDuringCreation.frozenCommissionBps;
-          if (bps > 0) {
-            return Math.floor((amountCfa * bps) / 10_000);
-          }
-          return 0;
-        }
-      }
-    }
-
-    // Fallback to the existing resolution chain for tenants without a subscription.
-    let bps = event?.commissionBps ?? null;
-    if (bps === null && event?.isPartnerEvent && event.partnerPlatformShareBps != null) {
-      bps = await resolvePartnerVoteCommissionBps(
-        this.prisma.client,
-        eventId,
-        event.partnerPlatformShareBps,
-        amountCfa
-      );
-    }
-    if (bps === null && event?.tenant.isPartner && event.tenant.partnerCommissionBps != null) {
-      bps = event.tenant.partnerCommissionBps;
-    }
-    if (bps === null) {
-      bps = event?.tenant.commissionBps ?? null;
-    }
-    if (bps === null) {
-      const setting = await this.prisma.client.platformSetting.findUnique({
-        where: { key: COMMISSION_BPS_KEY }
-      });
-      bps = setting ? Number.parseInt(setting.value, 10) : 0;
-    }
-    if (!Number.isFinite(bps) || bps === null || bps <= 0) {
-      return 0;
-    }
-    return Math.floor((amountCfa * bps) / 10_000);
-  }
-
-  /**
-   * Activate a Standard subscription when a SUBSCRIPTION payment succeeds.
-   * Called within the atomic $transaction block.
-   * Tente de rattacher le Plan correspondant au montant payé.
-   */
-  private async activateSubscriptionFromPayment(
-    trx: Parameters<Parameters<typeof this.prisma.client.$transaction>[0]>[0],
-    tenantId: string,
-    transactionId: string,
-    amountCfa: number
-  ): Promise<void> {
-    // Derive durationMonths from the paid amount by matching against pricing.
-    const pricing = await this.prisma.client.subscriptionPricing.findFirst({
-      where: { priceCfa: amountCfa, active: true }
-    });
-    const durationMonths = pricing?.durationMonths ?? 1;
-
-    // Capture current platform commission as frozen rate.
-    const commissionSetting = await this.prisma.client.platformSetting.findUnique({
-      where: { key: COMMISSION_BPS_KEY }
-    });
-    const frozenCommissionBps = parseIntSetting(commissionSetting?.value, 0);
-
-    // Résoudre le Plan correspondant au montant (Starter, Pro, Enterprise).
-    // On cherche un plan dont le prix correspond au montant payé.
-    // Si on ne trouve pas, on utilise le plan Free par défaut (rétrocompatibilité).
-    const matchingPlan = await this.prisma.client.plan.findFirst({
-      where: { priceCfa: amountCfa, isActive: true }
-    });
-
-    const startsAt = new Date();
-    const expiresAt = new Date(startsAt);
-    expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
-
-    await trx.accountSubscription.create({
-      data: {
-        tenantId,
-        planType: AccountPlanType.STANDARD,
-        planId: matchingPlan?.id ?? null,
-        status: AccountPlanStatus.ACTIVE,
-        startsAt,
-        expiresAt,
-        durationMonths,
-        priceCfa: amountCfa,
-        frozenCommissionBps: matchingPlan?.commissionRate ?? frozenCommissionBps,
-        paymentTransactionId: transactionId
-      }
-    });
+        note: LEDGER_NOTE_BY_PURPOSE[tx.purpose] ?? null
+      },
+      trx
+    );
   }
 }
+
+const MONEY_PURPOSES: ReadonlySet<PaymentPurpose> = new Set([
+  PaymentPurpose.VOTE,
+  PaymentPurpose.TICKET,
+  PaymentPurpose.ORGANIZER_VOTE_TOPUP
+]);
+
+const LEDGER_KIND_BY_PURPOSE: Partial<Record<PaymentPurpose, WalletLedgerKind>> = {
+  [PaymentPurpose.VOTE]: WalletLedgerKind.VOTE_CREDIT,
+  [PaymentPurpose.TICKET]: WalletLedgerKind.TICKET_CREDIT,
+  [PaymentPurpose.ORGANIZER_VOTE_TOPUP]: WalletLedgerKind.TOPUP_CREDIT
+};
+
+const LEDGER_NOTE_BY_PURPOSE: Partial<Record<PaymentPurpose, string>> = {
+  [PaymentPurpose.VOTE]: "Votes",
+  [PaymentPurpose.TICKET]: "Billets",
+  [PaymentPurpose.ORGANIZER_VOTE_TOPUP]: "Votes ajoutés par l'organisateur"
+};

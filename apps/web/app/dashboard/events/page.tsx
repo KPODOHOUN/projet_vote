@@ -47,7 +47,7 @@ export default function DashboardEventsPage() {
   }, [router]);
 
   if (isLoading) {
-    return <LoadingState variant="rows" count={4} label={isEn ? "Loading events…" : "Chargement des évènements…"} />;
+    return <LoadingState variant="rows" count={4} label={isEn ? "Loading events…" : "Chargement des événements…"} />;
   }
 
   if (error) {
@@ -62,20 +62,20 @@ export default function DashboardEventsPage() {
     <div className="space-y-10">
       <header className="flex flex-col justify-between gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center">
         <div className="space-y-1">
-          <span className="block text-sm font-semibold text-slate-600">{isEn ? "Events" : "Évènements"}</span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{isEn ? "Your events" : "Vos évènements"}</h2>
+          <span className="block text-sm font-semibold text-slate-600">{isEn ? "Events" : "Événements"}</span>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-foreground">{isEn ? "Your events" : "Vos événements"}</h1>
         </div>
         <Button asChild>
-          <Link href="/dashboard/start">{isEn ? "+ New event" : "+ Nouvel évènement"}</Link>
+          <Link href="/dashboard/start">{isEn ? "+ New event" : "+ Nouvel événement"}</Link>
         </Button>
       </header>
       {events.length === 0 ? (
         <EmptyState
-          title={isEn ? "No events yet." : "Aucun évènement pour le moment."}
-          description={isEn ? "Get started by creating your first event." : "Commencez par créer votre premier évènement."}
+          title={isEn ? "No events yet." : "Aucun événement pour le moment."}
+          description={isEn ? "Get started by creating your first event." : "Commencez par créer votre premier événement."}
           action={
             <Button asChild className="mt-2">
-              <Link href="/dashboard/events/new">{isEn ? "Create event" : "Créer un évènement"}</Link>
+              <Link href="/dashboard/events/new">{isEn ? "Create event" : "Créer un événement"}</Link>
             </Button>
           }
         />

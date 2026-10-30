@@ -1,339 +1,113 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException
-} from "@nestjs/common";
-import {
-  EventStatus,
-  PaymentProvider,
-  PaymentPurpose,
-  PaymentStatus,
-  TenantOfferType,
-  WithdrawalStatus
-} from "@prisma/client";
-import { z } from "zod";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { PaymentPurpose, PaymentStatus } from "@prisma/client";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { OfferSettingsService } from "./offer-settings.service";
-import { WalletService } from "./wallet.service";
 
-const switchOfferSchema = z.object({
-  offerType: z.nativeEnum(TenantOfferType)
-});
-
-const fedapaySubAccountSchema = z.object({
-  reference: z.string().trim().regex(/^acc_[A-Za-z0-9_-]+$/, "Référence FedaPay invalide.")
-});
-
+/** Conditions financières de l'organisateur et devis d'ajout de votes. */
 @Injectable()
 export class OrganizerOffersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly offerSettings: OfferSettingsService,
-    private readonly wallet: WalletService
+    private readonly offerSettings: OfferSettingsService
   ) {}
 
+  /** Conditions applicables à l'organisateur connecté : taux en vigueur, réserve, numéro de retrait. */
   async getOffer(user: AuthUser) {
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: user.tenantId },
-      select: {
-        id: true,
-        offerType: true,
-        payoutNetwork: true,
-        payoutPhoneLast4: true,
-        payoutPhoneEnc: true,
-        provider: true,
-        fedapaySubAccountRef: true,
-        fedapaySubAccountSubmittedAt: true,
-        fedapaySubAccountVerifiedAt: true
-      }
+      select: { payoutNetwork: true, payoutPhoneLast4: true, payoutPhoneEnc: true }
     });
     if (!tenant) throw new NotFoundException("Organisation introuvable.");
 
-    const settings = await this.offerSettings.getOrganizerSummary();
+    const [rules, rate, upcoming] = await Promise.all([
+      this.offerSettings.getMoneyRules(),
+      this.offerSettings.resolveTenantCommissionBps(user.tenantId),
+      this.prisma.client.commissionRate.findFirst({
+        where: { tenantId: user.tenantId, effectiveFrom: { gt: new Date() } },
+        orderBy: { effectiveFrom: "asc" },
+        select: { bps: true, effectiveFrom: true }
+      })
+    ]);
     return {
-      offerType: tenant.offerType,
       payoutConfigured: Boolean(tenant.payoutPhoneEnc),
       payoutNetwork: tenant.payoutNetwork,
       payoutPhoneLast4: tenant.payoutPhoneLast4,
-      provider: tenant.provider,
-      fedapaySubAccount: {
-        reference: tenant.fedapaySubAccountRef,
-        submittedAt: tenant.fedapaySubAccountSubmittedAt,
-        verifiedAt: tenant.fedapaySubAccountVerifiedAt,
-        ready: Boolean(tenant.fedapaySubAccountRef && tenant.fedapaySubAccountVerifiedAt)
-      },
-      settings
+      commissionBps: rate.bps,
+      commissionSource: rate.source,
+      upcomingCommission: upcoming ? { bps: upcoming.bps, effectiveFrom: upcoming.effectiveFrom } : null,
+      heldBps: rules.heldBps,
+      heldReleaseDelayHours: rules.heldReleaseDelayHours
     };
   }
 
-  async submitFedaPaySubAccount(user: AuthUser, payload: unknown) {
-    const input = fedapaySubAccountSchema.parse(payload);
-    const now = new Date();
-    const tenant = await this.prisma.client.tenant.update({
-      where: { id: user.tenantId },
-      data: {
-        provider: PaymentProvider.FEDAPAY,
-        fedapaySubAccountRef: input.reference,
-        fedapaySubAccountSubmittedAt: now,
-        fedapaySubAccountVerifiedAt: null
-      },
-      select: {
-        id: true,
-        fedapaySubAccountRef: true,
-        fedapaySubAccountSubmittedAt: true
-      }
-    });
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorUserId: user.userId,
-        actorRole: user.role,
-        action: "offer.fedapay_subaccount_submitted",
-        targetType: "Tenant",
-        targetId: tenant.id,
-        metadata: { reference: input.reference }
-      }
-    });
-    return { ...tenant, verifiedAt: null, ready: false };
-  }
-
-  async listFedaPaySubAccounts() {
-    return this.prisma.client.tenant.findMany({
-      where: {
-        offerType: TenantOfferType.EXTERNAL,
-        fedapaySubAccountRef: { not: null }
-      },
-      select: {
-        id: true,
-        slug: true,
-        displayName: true,
-        fedapaySubAccountRef: true,
-        fedapaySubAccountSubmittedAt: true,
-        fedapaySubAccountVerifiedAt: true
-      },
-      orderBy: { fedapaySubAccountSubmittedAt: "desc" }
-    });
-  }
-
-  async verifyFedaPaySubAccount(admin: AuthUser, tenantId: string) {
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { id: true, fedapaySubAccountRef: true }
-    });
-    if (!tenant?.fedapaySubAccountRef) {
-      throw new NotFoundException("Aucun sous-compte FedaPay soumis pour cette organisation.");
-    }
-    const verifiedAt = new Date();
-    const updated = await this.prisma.client.tenant.update({
-      where: { id: tenant.id },
-      data: {
-        provider: PaymentProvider.FEDAPAY,
-        fedapaySubAccountVerifiedAt: verifiedAt
-      },
-      select: {
-        id: true,
-        fedapaySubAccountRef: true,
-        fedapaySubAccountVerifiedAt: true
-      }
-    });
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: tenant.id,
-        actorUserId: admin.userId,
-        actorRole: admin.role,
-        action: "offer.fedapay_subaccount_verified",
-        targetType: "Tenant",
-        targetId: tenant.id,
-        metadata: { reference: tenant.fedapaySubAccountRef }
-      }
-    });
-    return { ...updated, ready: true };
-  }
-
-  async switchOffer(user: AuthUser, payload: unknown) {
-    const input = switchOfferSchema.parse(payload);
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: user.tenantId },
-      select: { id: true, offerType: true }
-    });
-    if (!tenant) throw new NotFoundException("Organisation introuvable.");
-    if (tenant.offerType === input.offerType) {
-      return this.getOffer(user);
-    }
-
-    const settings = await this.offerSettings.getSettings();
-    const activeCount = await this.prisma.client.event.count({
-      where: { tenantId: user.tenantId, status: EventStatus.ACTIVE }
-    });
-
-    if (tenant.offerType === TenantOfferType.EXTERNAL && input.offerType === TenantOfferType.ESCROW) {
-      // 1 → 2
-      if (!settings.offer2EscrowEnabled) {
-        throw new ConflictException("L'offre Escrow n'est pas activée par la plateforme.");
-      }
-      if (activeCount > 0) {
-        throw new ConflictException(
-          "Impossible de passer à l'offre Escrow tant qu'un évènement est actif. Clôturez-les d'abord."
-        );
-      }
-    } else if (
-      tenant.offerType === TenantOfferType.ESCROW &&
-      input.offerType === TenantOfferType.EXTERNAL
-    ) {
-      // 2 → 1
-      if (!settings.offer1ExternalEnabled) {
-        throw new ConflictException("L'offre External n'est pas activée par la plateforme.");
-      }
-      if (activeCount > 0) {
-        throw new ConflictException(
-          "Impossible de passer à l'offre External tant qu'un évènement est actif. Clôturez-les d'abord."
-        );
-      }
-      const wallet = await this.wallet.getOrCreateWallet(user.tenantId);
-      if (wallet.withdrawableCfa > 0) {
-        throw new ConflictException(
-          `Solde disponible non nul (${wallet.withdrawableCfa} FCFA). Videz le portefeuille avant de changer d'offre.`
-        );
-      }
-      if (wallet.heldCfa > 0) {
-        throw new ConflictException(
-          `Solde en attente non nul (${wallet.heldCfa} FCFA). Clôturez les évènements concernés avant de changer d'offre.`
-        );
-      }
-      const pendingWithdrawal = await this.prisma.client.withdrawalRequest.count({
-        where: { tenantId: user.tenantId, status: WithdrawalStatus.PENDING }
-      });
-      if (pendingWithdrawal > 0) {
-        throw new ConflictException(
-          "Une demande de retrait est en cours. Attendez son traitement avant de changer d'offre."
-        );
-      }
-    } else {
-      throw new BadRequestException("Type d'offre invalide.");
-    }
-
-    await this.prisma.client.tenant.update({
-      where: { id: user.tenantId },
-      data: { offerType: input.offerType }
-    });
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorUserId: user.userId,
-        actorRole: user.role,
-        action: "offer.switched",
-        targetType: "Tenant",
-        targetId: user.tenantId,
-        metadata: { from: tenant.offerType, to: input.offerType }
-      }
-    });
-
-    return this.getOffer(user);
-  }
-
+  /**
+   * Devis d'ajout de votes par l'organisateur : il paie le prix public des
+   * votes ; la commission et la réserve s'appliquent comme pour un vote du
+   * public (mêmes règles, même calcul que la confirmation du paiement).
+   */
   async topupQuote(user: AuthUser, eventId: string, votesCountRaw: unknown) {
     const votesCount = Number.parseInt(String(votesCountRaw ?? ""), 10);
     if (!Number.isInteger(votesCount) || votesCount <= 0 || votesCount > 1_000_000) {
-      throw new BadRequestException("votesCount doit être un entier positif (max 1 000 000).");
+      throw new BadRequestException("Le nombre de votes doit être un entier positif (1 000 000 au plus).");
     }
 
     const event = await this.prisma.client.event.findFirst({
       where: { id: eventId, tenantId: user.tenantId },
-      select: {
-        id: true,
-        voteUnitPriceCfa: true,
-        status: true,
-        tenant: { select: { offerType: true } }
-      }
+      select: { id: true, voteUnitPriceCfa: true }
     });
-    if (!event) throw new NotFoundException("Évènement introuvable.");
+    if (!event) throw new NotFoundException("Événement introuvable.");
     const unitPrice = event.voteUnitPriceCfa;
     if (!unitPrice || unitPrice <= 0) {
-      throw new ConflictException(
-        "Définissez un prix unitaire de vote sur l'évènement avant d'ajouter des votes."
-      );
+      throw new ConflictException("Définissez un prix du vote avant d'ajouter des votes.");
     }
 
     const grossCfa = votesCount * unitPrice;
-    const settings = await this.offerSettings.getSettings();
-    const offerType = event.tenant.offerType;
-
-    if (offerType === TenantOfferType.EXTERNAL) {
-      const amountDueCfa = this.offerSettings.computeExternalCommissionCfa(settings, grossCfa);
-      return {
-        votesCount,
-        unitPriceCfa: unitPrice,
-        grossCfa,
-        amountDueCfa,
-        offerType,
-        breakdown: {
-          description:
-            "Offre External : vous ne payez que la commission plateforme sur le montant des votes ajoutés.",
-          commissionBps: settings.offer1CommissionBps,
-          commissionFixedCfa: settings.offer1CommissionFixedCfa,
-          platformCommissionCfa: amountDueCfa
-        }
-      };
-    }
-
-    // ESCROW: full amount. La commission affichée doit être celle qui sera
-    // réellement prélevée par payment-verify (event override → tenant override
-    // → taux plateforme), sinon le devis diverge du débit dès qu'un admin pose
-    // une surcharge.
-    const escrowCommissionBps = await this.offerSettings.resolveEscrowCommissionBps(event.id);
+    const [commissionBps, heldBps] = await Promise.all([
+      this.offerSettings.resolveCommissionBps(event.id),
+      this.offerSettings.resolveHeldBps(event.id)
+    ]);
+    const platformCommissionCfa = this.offerSettings.computeCommissionCfa(grossCfa, commissionBps);
+    const netCfa = grossCfa - platformCommissionCfa;
+    const heldCfa = Math.floor((netCfa * heldBps) / 10_000);
     return {
       votesCount,
       unitPriceCfa: unitPrice,
       grossCfa,
       amountDueCfa: grossCfa,
-      offerType,
       breakdown: {
         description:
-          "Offre Escrow : le montant total (votes × prix) est encaissé puis crédité sur votre portefeuille.",
-        platformCommissionCfa: this.offerSettings.computeEscrowVoteCommissionCfaFromBps(
-          grossCfa,
-          escrowCommissionBps
-        )
+          "Vous payez le prix public des votes. Comme pour un vote du public, la commission est prélevée et votre part suit les règles de réserve.",
+        commissionBps,
+        platformCommissionCfa,
+        organizerNetCfa: netCfa,
+        heldCfa,
+        availableCfa: netCfa - heldCfa
       }
     };
   }
 
-  async adminRevenueByOfferType() {
-    const rows = await this.prisma.client.paymentTransaction.findMany({
+  /** Recettes de la plateforme, par type de paiement (même commission que celle enregistrée au paiement). */
+  async adminRevenue() {
+    const rows = await this.prisma.client.paymentTransaction.groupBy({
+      by: ["purpose"],
       where: {
         status: PaymentStatus.SUCCEEDED,
-        purpose: { in: [PaymentPurpose.VOTE, PaymentPurpose.ORGANIZER_VOTE_TOPUP] },
-        commissionCfa: { not: null }
+        purpose: { in: [PaymentPurpose.VOTE, PaymentPurpose.TICKET, PaymentPurpose.ORGANIZER_VOTE_TOPUP] }
       },
-      select: {
-        commissionCfa: true,
-        amountCfa: true,
-        purpose: true,
-        tenant: { select: { offerType: true } }
-      }
+      _sum: { amountCfa: true, commissionCfa: true },
+      _count: { _all: true }
     });
-
-    const byOffer: Record<
-      TenantOfferType,
-      { commissionCfa: number; grossCfa: number; transactions: number }
-    > = {
-      [TenantOfferType.EXTERNAL]: { commissionCfa: 0, grossCfa: 0, transactions: 0 },
-      [TenantOfferType.ESCROW]: { commissionCfa: 0, grossCfa: 0, transactions: 0 }
-    };
-
-    for (const r of rows) {
-      const bucket = byOffer[r.tenant.offerType];
-      bucket.commissionCfa += r.commissionCfa ?? 0;
-      bucket.grossCfa += r.amountCfa;
-      bucket.transactions += 1;
-    }
-
+    const byPurpose = Object.fromEntries(
+      rows.map((r) => [
+        r.purpose,
+        { grossCfa: r._sum.amountCfa ?? 0, commissionCfa: r._sum.commissionCfa ?? 0, transactions: r._count._all }
+      ])
+    );
     return {
-      byOfferType: byOffer,
-      totalCommissionCfa:
-        byOffer.EXTERNAL.commissionCfa + byOffer.ESCROW.commissionCfa
+      byPurpose,
+      totalGrossCfa: rows.reduce((s, r) => s + (r._sum.amountCfa ?? 0), 0),
+      totalCommissionCfa: rows.reduce((s, r) => s + (r._sum.commissionCfa ?? 0), 0)
     };
   }
 }

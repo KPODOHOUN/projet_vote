@@ -12,14 +12,12 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
 import { candidateTestData } from "../test-utils/candidate-fixture";
 import { PlatformSecretsService } from "../platform-control/platform-secrets.service";
-import { OrganizerSecretsService } from "../organizer-secrets/organizer-secrets.service";
 import { PaymentVerifyService } from "./payment-verify.service";
 import { PaymentReconciliationService } from "./payment-reconciliation.service";
 import type { FeexpayStatusPayload } from "./feexpay/feexpay.types";
 import { FeexpayGateway } from "./psp/feexpay.gateway";
 import { parseStrictProviderAmount } from "./psp/parse-provider-amount";
 import { FedapayGateway } from "./psp/fedapay.gateway";
-import { KkiapayGateway } from "./psp/kkiapay.gateway";
 import { PspRegistry } from "./psp/psp.registry";
 import type { PspCredentials } from "./psp/psp.types";
 import { OfferSettingsService } from "../offers/offer-settings.service";
@@ -64,16 +62,12 @@ class FakeFeexpayGateway extends FeexpayGateway {
 
 const prismaService = new PrismaService();
 const fake = new FakeFeexpay();
-const secrets = new OrganizerSecretsService(prismaService);
 const platformSecrets = new PlatformSecretsService(prismaService);
 const pspRegistry = new PspRegistry(
   prismaService,
-  secrets,
   platformSecrets,
   new FakeFeexpayGateway(fake),
-  new FedapayGateway(),
-  new KkiapayGateway()
-);
+  new FedapayGateway());
 const verify = new PaymentVerifyService(
   prismaService,
   new NotificationsService(prismaService),

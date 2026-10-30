@@ -18,6 +18,8 @@ import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
+import { CurrentUser } from "../auth/current-user.decorator";
+import type { AuthUser } from "../auth/auth.types";
 import { TicketsService } from "./tickets.service";
 import { env } from "../config/env";
 
@@ -30,81 +32,103 @@ export class TicketsController {
   @Get("events/:eventId/ticket-types")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  listTicketTypes(@Param("eventId") eventId: string) {
+  async listTicketTypes(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string) {
+    await this.tickets.assertEventAccess(user, eventId);
     return this.tickets.listTicketTypes(eventId);
   }
 
   @Post("events/:eventId/ticket-types")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  createTicketType(@Param("eventId") eventId: string, @Body() body: unknown) {
+  async createTicketType(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string, @Body() body: unknown) {
+    await this.tickets.assertEventAccess(user, eventId);
     return this.tickets.createTicketType(eventId, body);
   }
 
   @Get("events/:eventId/ticket-types/:id")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  getTicketType(@Param("id") id: string) {
+  async getTicketType(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string, @Param("id") id: string) {
+    await this.tickets.assertTicketTypeAccess(user, eventId, id);
     return this.tickets.getTicketType(id);
   }
 
   @Patch("events/:eventId/ticket-types/:id")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  updateTicketType(@Param("eventId") eventId: string, @Param("id") id: string, @Body() body: unknown) {
+  async updateTicketType(
+    @CurrentUser() user: AuthUser,
+    @Param("eventId") eventId: string,
+    @Param("id") id: string,
+    @Body() body: unknown
+  ) {
+    await this.tickets.assertTicketTypeAccess(user, eventId, id);
     return this.tickets.updateTicketType(eventId, id, body);
   }
 
   @Delete("events/:eventId/ticket-types/:id")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  deleteTicketType(@Param("eventId") eventId: string, @Param("id") id: string) {
+  async deleteTicketType(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string, @Param("id") id: string) {
+    await this.tickets.assertTicketTypeAccess(user, eventId, id);
     return this.tickets.deleteTicketType(eventId, id);
   }
 
   @Get("events/:eventId/ticket-types/:id/design")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  getDesign(@Param("id") id: string) {
+  async getDesign(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string, @Param("id") id: string) {
+    await this.tickets.assertTicketTypeAccess(user, eventId, id);
     return this.tickets.getDesign(id);
   }
 
   @Put("events/:eventId/ticket-types/:id/design")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  saveDesign(@Param("id") id: string, @Body() body: unknown) {
+  async saveDesign(
+    @CurrentUser() user: AuthUser,
+    @Param("eventId") eventId: string,
+    @Param("id") id: string,
+    @Body() body: unknown
+  ) {
+    await this.tickets.assertTicketTypeAccess(user, eventId, id);
     return this.tickets.saveDesign(id, body);
   }
 
   @Get("events/:eventId/tickets")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  listTickets(
+  async listTickets(
+    @CurrentUser() user: AuthUser,
     @Param("eventId") eventId: string,
     @Query("status") status?: string,
     @Query("ticketTypeId") ticketTypeId?: string
   ) {
+    await this.tickets.assertEventAccess(user, eventId);
     return this.tickets.listTickets(eventId, { status, ticketTypeId });
   }
 
   @Get("events/:eventId/tickets/stats")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  getTicketStats(@Param("eventId") eventId: string) {
+  async getTicketStats(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string) {
+    await this.tickets.assertEventAccess(user, eventId);
     return this.tickets.getTicketStats(eventId);
   }
 
   @Get("events/:eventId/tickets/stats/daily")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  getDailySales(@Param("eventId") eventId: string) {
+  async getDailySales(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string) {
+    await this.tickets.assertEventAccess(user, eventId);
     return this.tickets.getDailySales(eventId);
   }
 
   @Get("events/:eventId/tickets/export/csv")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  async exportCsv(@Param("eventId") eventId: string, @Res() res: Response) {
+  async exportCsv(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string, @Res() res: Response) {
+    await this.tickets.assertEventAccess(user, eventId);
     const csv = await this.tickets.exportTicketsCsv(eventId);
     const date = new Date().toISOString().slice(0, 10);
     res.set({
@@ -117,8 +141,8 @@ export class TicketsController {
   @Post("tickets/validate")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(...EVENT_ROLES)
-  validateTicket(@Body() body: unknown) {
-    return this.tickets.validateTicket(body);
+  validateTicket(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.tickets.validateTicket(user, body);
   }
 
   @Get("public/events/:eventSlug/ticket-types")
@@ -132,14 +156,20 @@ export class TicketsController {
     return this.tickets.purchaseTickets(eventSlug, body);
   }
 
+  @Post("public/events/:eventSlug/tickets/purchase-status")
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  getPurchaseStatus(@Body() body: unknown) {
+    return this.tickets.getPurchaseStatus(body);
+  }
+
   @Get("public/tickets/:id")
-  getTicket(@Param("id") id: string) {
-    return this.tickets.getTicket(id);
+  getTicket(@Param("id") id: string, @Query("s") secret?: string) {
+    return this.tickets.getPublicTicket(id, secret);
   }
 
   @Get("public/tickets/:id/qr")
-  async getTicketQr(@Param("id") id: string, @Res() res: Response) {
-    const ticket = await this.tickets.getTicket(id);
+  async getTicketQr(@Param("id") id: string, @Query("s") secret: string | undefined, @Res() res: Response) {
+    const ticket = await this.tickets.getPublicTicket(id, secret);
     const publicUrl = env.APP_PUBLIC_URL;
     const qrData = `${publicUrl}/t/${ticket.id}?s=${ticket.qrSecret}`;
     const qrBuffer = await QRCode.toBuffer(qrData, { type: "png", margin: 2, width: 400 });

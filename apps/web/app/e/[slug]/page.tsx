@@ -1,6 +1,6 @@
-// app/e/[slug]/page.tsx — Mini-plateforme publique d'un évènement (event-as-platform, ADR-016).
+// app/e/[slug]/page.tsx — Mini-plateforme publique d'un événement (event-as-platform, ADR-016).
 // Server Component : fetch SSR pour le SEO + generateMetadata dynamique (OG par
-// évènement). Hub annuaire : liste les candidats (photo + votes) en cartes-liens
+// événement). Hub annuaire : liste les candidats (photo + votes) en cartes-liens
 // vers leur profil /e/{slug}/c/{number} (où se fait le vote). Câblé sur le
 // contrat RÉEL de GET /votes/public/event/:slug → { organizer, event, candidates }.
 
@@ -80,7 +80,7 @@ export default async function PublicEventPage({ params }: PageProps) {
     <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates" headerInHero>
       <main>
         {/* Bandeau dans le style choisi par l'organisateur (Affiche, Soirée, Billet). */}
-        <EventHero event={event} organizer={organizer} phase={phase} locale={locale} now={now} />
+        <EventHero event={event} organizer={organizer} phase={phase} locale={locale} now={now} paymentNetworks={data.paymentNetworks} />
 
         <div className="space-y-14 px-[clamp(20px,4vw,56px)] pb-24 pt-14">
           <PhaseNotice phase={phase} locale={locale} startLabel={startLabel} resultsHref={resultsHref} />

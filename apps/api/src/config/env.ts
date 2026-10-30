@@ -77,15 +77,8 @@ export const envSchema = z.object({
   FEDAPAY_BASE_URL: z.string().url().default("https://sandbox-api.fedapay.com/v1"),
   FEDAPAY_API_KEY: z.string().min(16).default("sk_sandbox_dev_only_fedapay_key_change_me_xxxx"),
   FEDAPAY_HTTP_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(8_000),
-  // -- KkiaPay (front widget payin + server verify-by-pull) ----------------
-  // Three keys: public (x-api-key), private (x-private-key), secret (x-secret-key).
-  KKIAPAY_BASE_URL: z.string().url().default("https://api-sandbox.kkiapay.me"),
-  KKIAPAY_PUBLIC_KEY: z.string().min(8).default("dev_only_kkiapay_public_key_change_me"),
-  KKIAPAY_PRIVATE_KEY: z.string().min(8).default("dev_only_kkiapay_private_key_change_me"),
-  KKIAPAY_SECRET_KEY: z.string().min(8).default("dev_only_kkiapay_secret_key_change_me"),
-  KKIAPAY_HTTP_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(8_000),
   // Platform-wide default PSP when neither event nor tenant pins one.
-  DEFAULT_PSP_PROVIDER: z.enum(["FEEXPAY", "KKIAPAY", "FEDAPAY"]).default("FEEXPAY"),
+  DEFAULT_PSP_PROVIDER: z.enum(["FEEXPAY", "FEDAPAY"]).default("FEEXPAY"),
   // Platform settlement (Flow A) master account: where the platform's own
   // commission/activation/confiscation share is paid out.
   PLATFORM_PAYOUT_NETWORK: z.string().min(2).default("MTN"),
@@ -125,6 +118,23 @@ export const envSchema = z.object({
   MAIL_ADMIN_EXTRA_RECIPIENTS: z.string().optional(),
   // URL publique du frontend (liens dans e-mails et webhooks).
   APP_PUBLIC_URL: z.string().url().default("http://localhost:3000"),
+  // Identité légale de l'exploitant de SHADOMA, reprise dans chaque contrat de
+  // concours. Jamais inventée : tant qu'une valeur manque, le contrat affiche
+  // « à renseigner » et la signature est refusée en production.
+  PLATFORM_LEGAL_NAME: z.string().trim().default(""),
+  PLATFORM_LEGAL_FORM: z.string().trim().default(""),
+  PLATFORM_LEGAL_ADDRESS: z.string().trim().default(""),
+  PLATFORM_LEGAL_REGISTRATION: z.string().trim().default(""),
+  PLATFORM_LEGAL_REPRESENTATIVE: z.string().trim().default(""),
+  PLATFORM_LEGAL_EMAIL: z.string().trim().default(""),
+  CONTRACT_JURISDICTION: z.string().trim().default(""),
+  // Passe à true une fois le modèle de contrat relu et validé par un juriste.
+  // Tant que false, chaque contrat porte la mention « modèle en attente de
+  // validation juridique ».
+  CONTRACT_TEMPLATE_LEGALLY_REVIEWED: z
+    .string()
+    .default("false")
+    .transform((value) => value.trim().toLowerCase() === "true"),
   /** Webhook Slack / alertes (POST JSON) pour les demandes partenaires. */
   PLATFORM_ALERT_WEBHOOK_URL: z.string().url().optional(),
   /** Confirme automatiquement les paiements sans PSP (développement / démo). */
@@ -141,9 +151,9 @@ export const envSchema = z.object({
   // par le client est validé contre cette liste avant d'atteindre l'URL du PSP,
   // ce qui interdit toute injection de segment de chemin. Extensible sans
   // redéploiement selon le contrat PSP de la plateforme.
-  PSP_SUPPORTED_OPERATORS: z.string().min(2).default("mtn,moov,orange"),
+  PSP_SUPPORTED_OPERATORS: z.string().min(2).default("mtn,moov,celtiis"),
   // Indicatifs pays (CSV, sans +) réellement chargeables par les PSP intégrés
-  // (FeexPay/FedaPay/KkiaPay). Défaut = zone UEMOA/XOF couverte par les trois :
+  // (FeexPay/FedaPay). Défaut = zone UEMOA/XOF couverte par les deux :
   // Bénin 229, Côte d'Ivoire 225, Togo 228, Sénégal 221, Niger 227,
   // Burkina 226, Mali 223, Guinée 224. Un numéro hors de cette liste est refusé
   // AVANT l'appel PSP (message clair plutôt qu'un échec opaque du PSP).
@@ -218,20 +228,6 @@ export const envSchema = z.object({
       {
         key: "FEDAPAY_API_KEY",
         value: "sk_sandbox_dev_only_fedapay_key_change_me_xxxx"
-      }
-    ],
-    KKIAPAY: [
-      {
-        key: "KKIAPAY_PUBLIC_KEY",
-        value: "dev_only_kkiapay_public_key_change_me"
-      },
-      {
-        key: "KKIAPAY_PRIVATE_KEY",
-        value: "dev_only_kkiapay_private_key_change_me"
-      },
-      {
-        key: "KKIAPAY_SECRET_KEY",
-        value: "dev_only_kkiapay_secret_key_change_me"
       }
     ]
   } as const;

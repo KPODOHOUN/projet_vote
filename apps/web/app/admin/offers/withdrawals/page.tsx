@@ -10,6 +10,7 @@ import { showToast } from "@/lib/toast";
 import {
   useAdminWithdrawalsQuery,
   useAdminWithdrawalActionMutation,
+  revealWithdrawalDestination,
   type WithdrawalRow,
   type WithdrawalStatus
 } from "@/lib/hooks/use-admin-withdrawals";
@@ -64,6 +65,17 @@ export default function AdminWithdrawalsPage() {
 
   const [statusFilter, setStatusFilter] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Numéros révélés (consultation journalisée côté API), en mémoire seulement.
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+
+  const reveal = async (row: WithdrawalRow) => {
+    try {
+      const destination = await revealWithdrawalDestination(row.id);
+      setRevealed((prev) => ({ ...prev, [row.id]: `${destination.network} ${destination.phone}` }));
+    } catch (caught) {
+      showToast.error(caught instanceof Error ? caught.message : isEn ? "Could not show the number." : "Numéro indisponible.");
+    }
+  };
   const [rejectReason, setRejectReason] = useState("");
 
   const withdrawalsQuery = useAdminWithdrawalsQuery(statusFilter, hasToken);
@@ -133,6 +145,15 @@ export default function AdminWithdrawalsPage() {
           </>
         ) : null}
         {row.status === "APPROVED" ? (
+          revealed[row.id] ? (
+            <span className="inline-flex min-h-11 items-center rounded-md bg-muted px-3 font-mono text-sm">{revealed[row.id]}</span>
+          ) : (
+            <Button size="sm" variant="secondary" className="min-h-11" onClick={() => void reveal(row)}>
+              {isEn ? "Show the number to pay" : "Voir le numéro à créditer"}
+            </Button>
+          )
+        ) : null}
+        {row.status === "APPROVED" ? (
           <ConfirmDialog
             trigger={
               <Button size="sm" className="min-h-11" loading={busy}>
@@ -172,7 +193,11 @@ export default function AdminWithdrawalsPage() {
       render: (row) => (
         <div>
           <p className="font-semibold">{row.tenant.displayName}</p>
-          <p className="text-xs text-muted-foreground">{row.tenant.slug}</p>
+          <p className="text-xs text-muted-foreground">
+            {row.payoutNetwork && row.payoutPhoneLast4
+              ? `${isEn ? "To" : "Vers"} ${row.payoutNetwork} ···· ${row.payoutPhoneLast4}`
+              : isEn ? "No number recorded" : "Aucun numéro enregistré"}
+          </p>
         </div>
       )
     },

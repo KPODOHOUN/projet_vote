@@ -1,7 +1,16 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { EventStatus, UserRole, WithdrawalStatus } from "@prisma/client";
+import { compare } from "bcryptjs";
+import { z } from "zod";
 import JSZip from "jszip";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthUser } from "../auth/auth.types";
+
+// Mot de passe actuel ; un compte Google sans mot de passe confirme par son e-mail.
+const deleteAccountSchema = z.object({
+  currentPassword: z.string().min(1).max(200).optional(),
+  confirmEmail: z.string().email().optional()
+});
 
 @Injectable()
 export class PrivacyService {
@@ -50,7 +59,37 @@ export class PrivacyService {
     return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
   }
 
-  async anonymizeUserData(user: AuthUser) {
+  /**
+   * Droit à l'effacement : confirmé par le mot de passe actuel, refusé tant
+   * qu'un responsable a de l'argent ou un événement en cours (sinon fonds et
+   * votants seraient abandonnés). Efface toutes les données personnelles.
+   */
+  async anonymizeUserData(user: AuthUser, payload: unknown) {
+    const input = deleteAccountSchema.parse(payload);
+    const dbUser = await this.prisma.client.user.findUnique({ where: { id: user.userId } });
+    const confirmed = dbUser?.passwordHash
+      ? Boolean(input.currentPassword) && (await compare(input.currentPassword!, dbUser.passwordHash))
+      : Boolean(dbUser && input.confirmEmail && input.confirmEmail.toLowerCase() === dbUser.email.toLowerCase());
+    if (!dbUser || !confirmed) {
+      throw new UnauthorizedException(dbUser?.passwordHash ? "Mot de passe incorrect." : "Adresse e-mail incorrecte.");
+    }
+
+    if (user.role === UserRole.ORGANIZER_OWNER) {
+      const [wallet, pendingWithdrawals, liveEvents] = await Promise.all([
+        this.prisma.client.organizerWallet.findUnique({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.withdrawalRequest.count({
+          where: { tenantId: user.tenantId, status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED] } }
+        }),
+        this.prisma.client.event.count({ where: { tenantId: user.tenantId, status: EventStatus.ACTIVE } })
+      ]);
+      if (liveEvents > 0) {
+        throw new BadRequestException("Terminez d'abord vos événements en cours.");
+      }
+      if (pendingWithdrawals > 0 || (wallet && wallet.withdrawableCfa + wallet.heldCfa > 0)) {
+        throw new BadRequestException("Retirez d'abord le solde de votre portefeuille.");
+      }
+    }
+
     const anonymizedEmail = `deleted+${user.userId}@anonymized.vzp`;
     const now = new Date();
 
@@ -64,6 +103,10 @@ export class PrivacyService {
         data: {
           email: anonymizedEmail,
           passwordHash: `deleted-${user.userId}`,
+          firstName: null,
+          lastName: null,
+          phone: null,
+          photoUrl: null,
           updatedAt: now
         }
       }),

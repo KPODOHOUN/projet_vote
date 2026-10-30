@@ -21,15 +21,15 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        // min-h-11 (44px) = cible tactile WCAG sur les tailles interactives courantes ;
-        // xs/sm/icon-* restent compacts pour les toolbars denses (usage desktop).
-        default: "h-9 min-h-11 px-4 py-2 has-[>svg]:px-3",
-        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
-        lg: "h-10 min-h-11 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-11",
-        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-8",
+        // Échelle unique alignée sur les champs (Input/Select) : 44px au téléphone
+        // (cible tactile), 40px dès sm — bouton et champ côte à côte ont la même hauteur.
+        default: "h-11 px-4 py-2 sm:h-10 has-[>svg]:px-3",
+        xs: "h-7 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-9 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
+        lg: "h-11 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-11 sm:size-10",
+        "icon-xs": "size-7 rounded-md [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-9",
         "icon-lg": "size-11",
       },
     },

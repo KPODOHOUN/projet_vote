@@ -32,7 +32,9 @@ export class AccountService {
       email: row.email,
       role: row.role,
       tenant: { displayName: tenant.displayName, slug: tenant.slug },
-      createdAt: row.createdAt.toISOString()
+      createdAt: row.createdAt.toISOString(),
+      // Compte Google sans mot de passe : la suppression se confirme par l'e-mail.
+      hasPassword: Boolean(row.passwordHash)
     };
   }
 

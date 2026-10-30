@@ -11,6 +11,7 @@ import { useI18n } from "../../lib/i18n-provider";
 import { authLoginUrl } from "../../lib/auth-navigation";
 import { AuthSimpleLayout } from "@/components/auth-simple-layout";
 import { Button, Card, FormError, Input } from "@/components/ui";
+import { ArrowLeft } from "lucide-react";
 
 const DEV_OTP_STORAGE_KEY = "vp.dev.emailOtp";
 
@@ -258,7 +259,8 @@ function CheckEmailContent() {
           </Link>
         </p>
         <div className="mt-6 flex flex-col items-center gap-2 text-xs text-muted-foreground">
-          <Link href="/" className="text-muted-foreground/60 transition-colors hover:text-foreground">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            <ArrowLeft className="size-4" aria-hidden="true" />
             {t("authpages.22")}
           </Link>
         </div>

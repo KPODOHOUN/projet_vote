@@ -38,35 +38,6 @@ export class PlatformControlController {
     return this.platformSecrets.saveFeexpayCredentials(user, body);
   }
 
-  @Put("settings/commission")
-  updateCommission(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.platformControl.updateCommission(user, body);
-  }
-
-  // Commission + activation quota/fee in one call.
-  @Put("settings")
-  updateSettings(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.platformControl.updateSettings(user, body);
-  }
-
-  @Put("events/:eventId/commission")
-  setEventCommission(
-    @CurrentUser() user: AuthUser,
-    @Param("eventId") eventId: string,
-    @Body() body: unknown
-  ) {
-    return this.platformControl.setEventCommission(user, eventId, body);
-  }
-
-  @Put("tenants/:tenantId/commission")
-  setTenantCommission(
-    @CurrentUser() user: AuthUser,
-    @Param("tenantId") tenantId: string,
-    @Body() body: unknown
-  ) {
-    return this.platformControl.setTenantCommission(user, tenantId, body);
-  }
-
   @Get("votes")
   listVotes(@Query() query: unknown) {
     return this.platformControl.listVotes(query);

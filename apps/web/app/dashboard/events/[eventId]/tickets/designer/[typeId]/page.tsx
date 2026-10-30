@@ -315,7 +315,7 @@ export default function TicketDesignerPage() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <DashboardBreadcrumb items={[
-            { label: isEn ? "Events" : "Évènements", href: "/dashboard/events" },
+            { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
             { label: isEn ? "Tickets" : "Billets", href: `/dashboard/events/${eventId}/tickets` },
             { label: isEn ? "Design" : "Design", href: "#" }
           ]} />

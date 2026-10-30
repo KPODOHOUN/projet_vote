@@ -1,6 +1,6 @@
 /**
  * Libellé humanisé unique pour un statut de paiement, partagé par tous les
- * tunnels (vote public, activation organisateur). Le PSP n'est jamais exposé.
+ * tunnels (vote public, billets, votes ajoutés par l'organisateur). Le PSP n'est jamais exposé.
  */
 export function paymentStatusLabel(status: string, isEn: boolean): string {
   switch (status.toUpperCase()) {
