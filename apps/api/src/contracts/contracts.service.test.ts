@@ -204,6 +204,33 @@ test("mauvais code ou nom différent du contrat → refus, contrat toujours à s
   assert.equal((await prisma.eventContract.findUniqueOrThrow({ where: { id: contract.id } })).status, ContractStatus.PENDING_SIGNATURE);
 });
 
+test("code de signature : des essais en rafale ne dépassent jamais 5 tentatives", async () => {
+  const ctx = await seed();
+  const { contract, code } = await generateAndCode(ctx);
+  const wrong = code === "000000" ? "111111" : "000000";
+  const burst = await Promise.allSettled(
+    Array.from({ length: 12 }, () => contracts.sign(ctx.user, ctx.event.id, contract.id, signPayload(contract.contentHash, wrong), meta))
+  );
+  assert.equal(burst.filter((r) => r.status === "fulfilled").length, 0);
+  const challenge = await prisma.authOtpChallenge.findFirstOrThrow({ where: { userId: ctx.user.userId, purpose: "CONTRACT_SIGNATURE" }, orderBy: { createdAt: "desc" } });
+  assert.equal(challenge.attempts, challenge.maxAttempts, "le compteur s'arrête pile à la limite");
+  // Même le bon code est refusé une fois la limite atteinte.
+  await assert.rejects(contracts.sign(ctx.user, ctx.event.id, contract.id, signPayload(contract.contentHash, code), meta), /Trop de tentatives/);
+});
+
+test("code de signature : une signature refusée après vérification du code ne le brûle pas", async () => {
+  const ctx = await seed();
+  const { contract, code } = await generateAndCode(ctx);
+  // La transaction de signature échoue (concours publié entre-temps par un autre chemin).
+  await prisma.event.update({ where: { id: ctx.event.id }, data: { status: EventStatus.ACTIVE } });
+  await assert.rejects(contracts.sign(ctx.user, ctx.event.id, contract.id, signPayload(contract.contentHash, code), meta), /brouillon/);
+  await prisma.event.update({ where: { id: ctx.event.id }, data: { status: EventStatus.DRAFT } });
+  const challenge = await prisma.authOtpChallenge.findFirstOrThrow({ where: { userId: ctx.user.userId, purpose: "CONTRACT_SIGNATURE" }, orderBy: { createdAt: "desc" } });
+  assert.equal(challenge.consumedAt, null);
+  const result = await contracts.sign(ctx.user, ctx.event.id, contract.id, signPayload(contract.contentHash, code), meta);
+  assert.equal(result.eventStatus, EventStatus.ACTIVE);
+});
+
 test("double soumission : une seule signature aboutit", async () => {
   const ctx = await seed();
   const { contract, code } = await generateAndCode(ctx);

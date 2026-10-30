@@ -9,6 +9,7 @@ import { PaymentReconciliationController } from "./payment-reconciliation.contro
 import { PaymentsService } from "./payments.service";
 import { PaymentVerifyService } from "./payment-verify.service";
 import { PaymentReconciliationService } from "./payment-reconciliation.service";
+import { InternalSchedulerService } from "./internal-scheduler.service";
 import { FeexpayGateway } from "./psp/feexpay.gateway";
 import { FedapayGateway } from "./psp/fedapay.gateway";
 import { PspRegistry } from "./psp/psp.registry";
@@ -26,6 +27,7 @@ import { PspRegistry } from "./psp/psp.registry";
     PaymentsService,
     PaymentVerifyService,
     PaymentReconciliationService,
+    InternalSchedulerService,
     // Provider-neutral PSP seam: the three stateless gateways and the registry
     // that routes by the organizer's choice (event → tenant → platform default).
     FeexpayGateway,

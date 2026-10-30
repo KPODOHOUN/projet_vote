@@ -5,9 +5,9 @@ import {
   Headers,
   Post
 } from "@nestjs/common";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { createHash } from "crypto";
 import { z } from "zod";
-import { env } from "../config/env";
+import { CRON_ROUTES, CRON_SIGNATURE_HEADER, assertSignedCronRequest, stableStringify } from "../common/cron-signature";
 import { UserRole } from "@prisma/client";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -20,28 +20,13 @@ const cronPurgeSchema = z
     auditLogsRetentionDays: z.coerce.number().int().min(7).max(3650).default(365),
     idempotencyRetentionDays: z.coerce.number().int().min(1).max(365).default(30),
     revokedSessionsRetentionDays: z.coerce.number().int().min(1).max(365).default(30),
-    // Optional: helps deterministic idempotency across retries when the caller provides a run time.
-    runAtIso: z.string().min(1).optional()
+    runAtIso: z.string().min(1)
   })
   .refine((v) => Boolean(v.tenantId) || Boolean(v.tenantSlug), {
     message: "tenantId ou tenantSlug requis"
   });
 
 type CronPurgeInput = z.infer<typeof cronPurgeSchema>;
-
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
-  }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
-    .join(",")}}`;
-}
 
 @Controller("maintenance/cron")
 export class MaintenanceCronController {
@@ -53,39 +38,15 @@ export class MaintenanceCronController {
   @Post("purge")
   async purgeScheduled(
     @Body() body: unknown,
-    @Headers("x-maintenance-cron-signature") signature?: string
+    @Headers(CRON_SIGNATURE_HEADER) signature?: string
   ) {
-    if (!signature) {
-      throw new BadRequestException("Signature cron manquante.");
-    }
+    const runAt = assertSignedCronRequest(CRON_ROUTES.purge, body, signature);
 
     const parsed = cronPurgeSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten().fieldErrors);
     }
-
-    // Signature: HMAC-SHA256 sur une représentation stable du body.
-    const expected = createHmac("sha256", env.API_MAINTENANCE_CRON_SECRET)
-      .update(stableStringify(body))
-      .digest("hex");
-
-    const sigBuffer = Buffer.from(signature, "utf8");
-    const expectedBuffer = Buffer.from(expected, "utf8");
-    if (sigBuffer.length !== expectedBuffer.length || !timingSafeEqual(sigBuffer, expectedBuffer)) {
-      throw new BadRequestException("Signature cron invalide.");
-    }
-
     const input = parsed.data satisfies CronPurgeInput;
-
-    const runAt = input.runAtIso ? new Date(input.runAtIso) : new Date();
-    if (Number.isNaN(runAt.getTime())) {
-      throw new BadRequestException("runAtIso invalide.");
-    }
-    const skewMs = Math.abs(Date.now() - runAt.getTime());
-    const maxSkewMs = env.API_MAINTENANCE_CRON_MAX_SKEW_SECONDS * 1000;
-    if (skewMs > maxSkewMs) {
-      throw new BadRequestException("runAtIso hors fenêtre autorisée.");
-    }
 
     const dateKey = runAt.toISOString().slice(0, 10); // YYYY-MM-DD UTC
 

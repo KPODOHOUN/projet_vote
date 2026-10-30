@@ -1,6 +1,6 @@
 import { ConflictException, BadRequestException, ForbiddenException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
-import { AuthOtpPurpose, InvitationStatus, UserRole } from "@prisma/client";
+import { AuthOtpPurpose, InvitationStatus, UserRole, type Prisma } from "@prisma/client";
 import { compare, hash } from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
@@ -585,9 +585,7 @@ export class AuthService {
     if (challenge.expiresAt.getTime() < Date.now()) {
       throw new BadRequestException("Code invalide ou expiré.");
     }
-    if (challenge.attempts >= challenge.maxAttempts) {
-      throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
-    }
+    const attempt = await this.claimOtpAttempt(challenge);
 
     const expected = Buffer.from(challenge.codeHash, "utf8");
     const provided = Buffer.from(
@@ -597,10 +595,6 @@ export class AuthService {
     const matches = expected.length === provided.length && timingSafeEqual(expected, provided);
 
     if (!matches) {
-      const updated = await this.prisma.client.authOtpChallenge.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } }
-      });
       await this.auditOtp(
         "auth.otp_failed",
         user.tenantId,
@@ -609,7 +603,7 @@ export class AuthService {
         input.purpose,
         meta
       );
-      if (updated.attempts >= updated.maxAttempts) {
+      if (attempt.exhausted) {
         throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
       }
       throw new BadRequestException("Code invalide ou expiré.");
@@ -855,9 +849,24 @@ export class AuthService {
     return { sent: result.sent, ...(exposeCode ? { devCode: result.code } : {}) };
   }
 
-  /** Vérifie et consomme le code de signature (essais limités, expiration). */
-  async verifyContractSignatureCode(userId: string, code: string): Promise<void> {
-    await this.verifyAndConsumeOtpChallenge(userId, code, AuthOtpPurpose.CONTRACT_SIGNATURE);
+  /**
+   * Vérifie le code de signature (essais limités, expiration) SANS le consommer :
+   * la consommation se fait dans la transaction de signature
+   * (`consumeOtpChallengeOnce`), pour qu'un échec de signature ne brûle pas le code.
+   */
+  async checkContractSignatureCode(userId: string, code: string): Promise<string> {
+    return this.verifyOtpChallenge(userId, code, AuthOtpPurpose.CONTRACT_SIGNATURE);
+  }
+
+  /** Consomme un code une seule fois : de deux validations concurrentes, une seule réussit. */
+  async consumeOtpChallengeOnce(challengeId: string, db: Pick<Prisma.TransactionClient, "authOtpChallenge"> = this.prisma.client): Promise<void> {
+    const consumed = await db.authOtpChallenge.updateMany({
+      where: { id: challengeId, consumedAt: null },
+      data: { consumedAt: new Date() }
+    });
+    if (consumed.count === 0) {
+      throw new BadRequestException("Code invalide ou expiré.");
+    }
   }
 
   private async signAccessToken(user: AuthUser): Promise<string> {
@@ -1009,19 +1018,28 @@ export class AuthService {
   }
 
   private async consumeOtpChallenge(challengeId: string) {
-    await this.prisma.client.authOtpChallenge.update({
-      where: { id: challengeId },
-      data: { consumedAt: new Date() }
-    });
+    await this.consumeOtpChallengeOnce(challengeId);
   }
 
-  private async verifyAndConsumeOtpChallenge(
-    userId: string,
-    code: string,
-    purpose: AuthOtpPurpose
-  ): Promise<void> {
-    const codeHash = this.hashOtpCode(userId, purpose, code);
-    const provided = Buffer.from(codeHash, "utf8");
+  /**
+   * Réserve un essai sur un défi : l'incrément est conditionné au compteur, donc
+   * des requêtes parallèles ne dépassent jamais `maxAttempts`. `exhausted` indique
+   * que cet essai était le dernier autorisé.
+   */
+  private async claimOtpAttempt(challenge: { id: string; attempts: number; maxAttempts: number }): Promise<{ exhausted: boolean }> {
+    const claimed = await this.prisma.client.authOtpChallenge.updateMany({
+      where: { id: challenge.id, consumedAt: null, attempts: { lt: challenge.maxAttempts } },
+      data: { attempts: { increment: 1 } }
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
+    }
+    return { exhausted: challenge.attempts + 1 >= challenge.maxAttempts };
+  }
+
+  /** Vérifie un code (essais comptés, expiration) et renvoie l'identifiant du défi, sans le consommer. */
+  private async verifyOtpChallenge(userId: string, code: string, purpose: AuthOtpPurpose): Promise<string> {
+    const provided = Buffer.from(this.hashOtpCode(userId, purpose, code), "utf8");
 
     const challenge = await this.prisma.client.authOtpChallenge.findFirst({
       where: { userId, purpose, consumedAt: null },
@@ -1034,24 +1052,21 @@ export class AuthService {
     if (challenge.expiresAt.getTime() < Date.now()) {
       throw new BadRequestException("Code invalide ou expiré.");
     }
-    if (challenge.attempts >= challenge.maxAttempts) {
-      throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
-    }
+    const attempt = await this.claimOtpAttempt(challenge);
 
     const expected = Buffer.from(challenge.codeHash, "utf8");
     const matches = expected.length === provided.length && timingSafeEqual(expected, provided);
-
     if (!matches) {
-      const updated = await this.prisma.client.authOtpChallenge.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } }
-      });
-      if (updated.attempts >= updated.maxAttempts) {
+      if (attempt.exhausted) {
         throw new BadRequestException("Trop de tentatives. Demandez un nouveau code.");
       }
       throw new BadRequestException("Code invalide ou expiré.");
     }
+    return challenge.id;
+  }
 
-    await this.consumeOtpChallenge(challenge.id);
+  private async verifyAndConsumeOtpChallenge(userId: string, code: string, purpose: AuthOtpPurpose): Promise<void> {
+    const challengeId = await this.verifyOtpChallenge(userId, code, purpose);
+    await this.consumeOtpChallengeOnce(challengeId);
   }
 }

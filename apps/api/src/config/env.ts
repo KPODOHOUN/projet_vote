@@ -107,6 +107,9 @@ export const envSchema = z.object({
   API_SINGLE_INSTANCE: envFlag(false),
   // Réservé aux tests e2e ; refusé en production.
   API_DISABLE_THROTTLE: envFlag(false),
+  // Balayages de secours toutes les 5 min dans l'API (rapprochement, clôtures,
+  // réserves), en plus du worker cron. false pour ne garder que le worker.
+  API_INTERNAL_SCHEDULER: envFlag(true),
   // -- OAuth (Google, Facebook) ---------------------------------------------
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),

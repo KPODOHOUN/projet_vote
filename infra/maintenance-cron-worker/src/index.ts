@@ -58,9 +58,14 @@ function parseRetention(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
-/** Signs `payload` and POSTs it to `path`, throwing on a non-2xx response. */
+/**
+ * Signs `<path>\n<canonical payload>` and POSTs it to `path`, throwing on a
+ * non-2xx response. Same signing input as the API
+ * (apps/api/src/common/cron-signature.ts): the route path is part of it, so a
+ * captured signature is only valid for its own route.
+ */
 async function signedPost(env: Env, path: string, payload: Record<string, unknown>): Promise<void> {
-  const signature = await signPayload(env.API_MAINTENANCE_CRON_SECRET, stableStringify(payload));
+  const signature = await signPayload(env.API_MAINTENANCE_CRON_SECRET, `${path}\n${stableStringify(payload)}`);
   const response = await fetch(`${env.API_BASE_URL}${path}`, {
     method: "POST",
     headers: {

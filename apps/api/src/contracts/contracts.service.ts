@@ -209,7 +209,9 @@ export class ContractsService {
       throw new ConflictException("La signature tracée est vide ou illisible : effacez-la ou signez à nouveau.");
     }
 
-    await this.auth.verifyContractSignatureCode(user.userId, input.code);
+    // Code vérifié ici, consommé dans la transaction de signature : si celle-ci
+    // échoue, le code reste utilisable.
+    const otpChallengeId = await this.auth.checkContractSignatureCode(user.userId, input.code);
     const otpVerifiedAt = new Date();
     const signedAt = new Date();
     const pdf = await renderContractPdf(buildContractDocument(snapshot, contract.id), {
@@ -229,6 +231,7 @@ export class ContractsService {
 
     assertEventTransition(EventStatus.DRAFT, EventStatus.ACTIVE, "contract");
     await this.prisma.client.$transaction(async (tx) => {
+      await this.auth.consumeOtpChallengeOnce(otpChallengeId, tx);
       const signed = await tx.eventContract.updateMany({
         where: { id: contract.id, status: ContractStatus.PENDING_SIGNATURE, contentHash: input.contentHash },
         data: {

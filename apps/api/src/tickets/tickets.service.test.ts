@@ -132,6 +132,23 @@ test("purchaseTickets: des achats simultanés ne dépassent jamais le stock", as
   assert.equal(await prisma.ticket.count({ where: { ticketTypeId: ticketType.id } }), 4);
 });
 
+test("purchaseTickets: une réservation de plus de 15 min ne bloque plus le stock, et reste payable", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { quantity: 2, maxPerPerson: 10 } });
+  const stale = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
+  await assert.rejects(tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 1, ...buyer }), /disponible/);
+
+  // Paiement jamais validé par l'acheteur : la réservation vieillit.
+  await prisma.ticket.updateMany({ where: { paymentTransactionId: stale.transaction.id }, data: { createdAt: new Date(Date.now() - 16 * 60_000) } });
+  const fresh = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
+  assert.equal(fresh.tickets.length, 2);
+
+  // Si le premier paiement aboutit quand même, ses billets passent payés (l'argent fait foi).
+  await prisma.paymentTransaction.update({ where: { id: stale.transaction.id }, data: { providerRef: `demo_${stale.transaction.id}` } });
+  await verify.applyDemoSuccess(stale.transaction.id);
+  assert.equal(await prisma.ticket.count({ where: { paymentTransactionId: stale.transaction.id, status: "PAID" } }), 2);
+});
+
 test("purchaseTickets: prestataire indisponible → paiement échoué et stock libéré", async () => {
   const { event, ticketType } = await seedTicketType();
   failNextPayment = true;

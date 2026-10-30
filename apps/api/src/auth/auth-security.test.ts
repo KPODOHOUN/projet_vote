@@ -139,7 +139,21 @@ test("un OTP consommé ne peut pas être rejoué pendant une fenêtre de grâce"
     client: {
       platformSetting: { findUnique: async () => null },
       authOtpChallenge: {
-        updateMany: async () => ({ count: 0 }),
+        // Simule les écritures conditionnelles de Postgres (essai réservé, consommation unique).
+        updateMany: async ({
+          where,
+          data
+        }: {
+          where: { consumedAt?: null; attempts?: { lt: number } };
+          data: { consumedAt?: Date; attempts?: { increment: number } };
+        }) => {
+          if (!challenge) return { count: 0 };
+          if ("consumedAt" in where && challenge.consumedAt) return { count: 0 };
+          if (where.attempts && challenge.attempts >= where.attempts.lt) return { count: 0 };
+          if (data.consumedAt) challenge.consumedAt = data.consumedAt;
+          if (data.attempts) challenge.attempts += data.attempts.increment;
+          return { count: 1 };
+        },
         create: async ({
           data
         }: {

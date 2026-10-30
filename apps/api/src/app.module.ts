@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule, ThrottlerModuleOptions } from "@nestjs/throttler";
 import { ThrottlerStorageRedisService } from "@nest-lab/throttler-storage-redis";
 import { Redis } from "ioredis";
@@ -54,6 +55,7 @@ const throttleProviders =
 @Module({
   imports: [
     ThrottlerModule.forRoot(throttlerOptions),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     EventsModule,

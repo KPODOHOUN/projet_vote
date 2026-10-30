@@ -117,6 +117,24 @@ const validateTicketSchema = z.object({
   secret: z.string().min(1)
 });
 
+/**
+ * Durée pendant laquelle un billet réservé (paiement lancé, pas encore
+ * confirmé) bloque le stock. Au-delà, la demande Mobile Money a expiré côté
+ * opérateur : la réservation cesse de compter, sans être annulée, pour qu'un
+ * paiement confirmé en retard valide encore ses billets.
+ */
+export const TICKET_RESERVATION_MINUTES = 15;
+
+/** Billets qui occupent le stock : vendus, ou réservés depuis moins de 15 minutes. */
+function stockHoldingTickets(now: Date): Prisma.TicketWhereInput {
+  return {
+    OR: [
+      { status: { in: [TicketStatus.PAID, TicketStatus.CONFIRMED, TicketStatus.USED] } },
+      { status: TicketStatus.RESERVED, createdAt: { gt: new Date(now.getTime() - TICKET_RESERVATION_MINUTES * 60_000) } }
+    ]
+  };
+}
+
 function generateQrSecret(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -295,7 +313,7 @@ export class TicketsService {
       orderBy: { priceCfa: "asc" },
       include: {
         _count: {
-          select: { tickets: { where: { status: { in: ["PAID", "CONFIRMED", "USED", "RESERVED"] } } } }
+          select: { tickets: { where: stockHoldingTickets(now) } }
         }
       }
     });
@@ -342,10 +360,7 @@ export class TicketsService {
       }
 
       const sold = await trx.ticket.count({
-        where: {
-          ticketTypeId: input.ticketTypeId,
-          status: { in: [TicketStatus.PAID, TicketStatus.CONFIRMED, TicketStatus.USED, TicketStatus.RESERVED] }
-        }
+        where: { ticketTypeId: input.ticketTypeId, ...stockHoldingTickets(now) }
       });
       const remaining = ticketType.quantity - sold;
       if (remaining < input.quantity) {
@@ -491,7 +506,9 @@ export class TicketsService {
       }
     });
     if (!ticket) throw new NotFoundException("Ticket introuvable.");
-    if (ticket.qrSecret !== input.secret) {
+    const expectedSecret = Buffer.from(ticket.qrSecret, "utf8");
+    const givenSecret = Buffer.from(input.secret, "utf8");
+    if (expectedSecret.length !== givenSecret.length || !timingSafeEqual(expectedSecret, givenSecret)) {
       throw new ForbiddenException("Code QR invalide pour ce ticket.");
     }
     if (ticket.status === "USED") {

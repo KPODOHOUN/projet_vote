@@ -168,12 +168,18 @@ export class TicketsController {
   }
 
   @Get("public/tickets/:id/qr")
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   async getTicketQr(@Param("id") id: string, @Query("s") secret: string | undefined, @Res() res: Response) {
     const ticket = await this.tickets.getPublicTicket(id, secret);
     const publicUrl = env.APP_PUBLIC_URL;
     const qrData = `${publicUrl}/t/${ticket.id}?s=${ticket.qrSecret}`;
     const qrBuffer = await QRCode.toBuffer(qrData, { type: "png", margin: 2, width: 400 });
-    res.set({ "Content-Type": "image/png", "Content-Length": qrBuffer.length.toString() });
+    // Le QR d'un billet ne change jamais : le navigateur le garde (privé, l'URL porte le secret).
+    res.set({
+      "Content-Type": "image/png",
+      "Content-Length": qrBuffer.length.toString(),
+      "Cache-Control": "private, max-age=86400, immutable"
+    });
     res.send(qrBuffer);
   }
 }

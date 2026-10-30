@@ -1,6 +1,6 @@
 import "reflect-metadata";
-import { createHmac } from "node:crypto";
 import cookieParser from "cookie-parser";
+import { CRON_ROUTES, signCronRequest } from "./common/cron-signature";
 import { test, before, after } from "node:test";
 import type { TestContext } from "node:test";
 import * as assert from "node:assert/strict";
@@ -496,14 +496,10 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
     auditLogsRetentionDays: 7,
     idempotencyRetentionDays: 1,
     revokedSessionsRetentionDays: 1,
-    tenantSlug
+    tenantSlug,
+    runAtIso: new Date().toISOString()
   };
-  const maintenanceCronSignature = createHmac(
-    "sha256",
-    "dev-only-maintenance-cron-secret-change-me-32chars"
-  )
-    .update(JSON.stringify(maintenanceCronPayload))
-    .digest("hex");
+  const maintenanceCronSignature = signCronRequest(CRON_ROUTES.purge, maintenanceCronPayload);
 
   const maintenanceCronResponse1 = await request(app.getHttpServer())
     .post("/api/v1/maintenance/cron/purge")
