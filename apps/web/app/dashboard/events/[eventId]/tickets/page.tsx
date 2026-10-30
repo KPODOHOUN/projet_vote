@@ -186,10 +186,12 @@ export default function TicketsPage() {
             <Ticket className="w-4 h-4 mr-1" />
             {showTickets ? (isEn ? "Hide sales" : "Masquer les ventes") : (isEn ? "View sales" : "Voir les ventes")}
           </Button>
-          <Button size="sm" onClick={() => setShowCreateForm(true)}>
-            <Plus className="w-4 h-4 mr-1" />
-            {isEn ? "Add type" : "Ajouter un type"}
-          </Button>
+          {eventStatus === "DRAFT" ? (
+            <Button size="sm" onClick={() => setShowCreateForm(true)}>
+              <Plus className="w-4 h-4 mr-1" />
+              {isEn ? "Add type" : "Ajouter un type"}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -328,7 +330,7 @@ function TicketTypeForm({ eventId, isEn, initial, priceLocked = false, onClose, 
   eventId: string;
   isEn: boolean;
   initial?: TicketType;
-  /** Concours publié : le prix de ce billet figure au contrat signé. */
+  /** Concours publié : nom, prix et quantité de ce billet figurent au contrat signé. */
   priceLocked?: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -385,7 +387,7 @@ function TicketTypeForm({ eventId, isEn, initial, priceLocked = false, onClose, 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Name" : "Nom"}</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1" placeholder="VIP, Standard, Early Bird..." />
+            <Input value={name} onChange={(e) => setName(e.target.value)} required disabled={priceLocked} className="mt-1" placeholder="VIP, Standard, Early Bird..." />
           </div>
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Description" : "Description"}</label>
@@ -396,12 +398,14 @@ function TicketTypeForm({ eventId, isEn, initial, priceLocked = false, onClose, 
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Price (FCFA)" : "Prix (FCFA)"}</label>
               <Input type="number" min={1} value={priceCfa} onChange={(e) => setPriceCfa(Number(e.target.value))} required disabled={priceLocked} className="mt-1" />
               {priceLocked && (
-                <p className="mt-1 text-xs text-muted-foreground">{isEn ? "Fixed by the signed contract." : "Fixé par le contrat signé."}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {isEn ? "Name, price and quantity are fixed by the signed contract." : "Nom, prix et quantité sont fixés par le contrat signé."}
+                </p>
               )}
             </div>
             <div>
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Quantity" : "Quantité"}</label>
-              <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} required className="mt-1" />
+              <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} required disabled={priceLocked} className="mt-1" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

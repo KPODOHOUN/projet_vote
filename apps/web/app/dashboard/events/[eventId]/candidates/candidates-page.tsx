@@ -63,7 +63,6 @@ export default function EventCandidatesPage() {
   const [editName, setEditName] = useState("");
   const [editNumber, setEditNumber] = useState("");
   const [editUrl, setEditUrl] = useState("");
-  const [editVoteCount, setEditVoteCount] = useState("");
 
   const loadCandidates = async (token: string) => {
     const [event, list, dashboard] = await Promise.all([
@@ -139,7 +138,6 @@ export default function EventCandidatesPage() {
     setEditName(candidate.fullName);
     setEditNumber(candidate.number != null ? String(candidate.number) : "");
     setEditUrl(candidate.photoUrl ?? "");
-    setEditVoteCount(String(statsByCandidate[candidate.id]?.voteCount ?? 0));
   };
 
   const onSaveCandidate = async (candidateId: string) => {
@@ -156,14 +154,6 @@ export default function EventCandidatesPage() {
           photoUrl: editUrl.trim() || undefined
         })
       });
-      const targetVotes = Number.parseInt(editVoteCount, 10);
-      if (!Number.isNaN(targetVotes)) {
-        await apiFetch(`/events/${eventId}/candidates/${candidateId}/vote-count`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ voteCount: targetVotes, reason: "Ajustement organisateur" })
-        });
-      }
       setEditingId(null);
       await loadCandidates(token);
       showToast.success(isEn ? "Candidate updated." : "Candidat mis à jour.");
@@ -306,14 +296,6 @@ export default function EventCandidatesPage() {
                     <div className="mt-5 grid gap-4 border-t border-border/50 pt-5 md:grid-cols-2">
                       <Input label={isEn ? "Full name" : "Nom complet"} value={editName} onChange={(e) => setEditName(e.target.value)} />
                       <Input label={isEn ? "Number" : "Numéro"} type="number" min={1} value={editNumber} onChange={(e) => setEditNumber(e.target.value)} />
-                      <Input
-                        label={isEn ? "Vote count" : "Nombre de votes"}
-                        type="number"
-                        min={0}
-                        value={editVoteCount}
-                        onChange={(e) => setEditVoteCount(e.target.value)}
-                        helpText={isEn ? "Manual adjustment (owner only)." : "Ajustement manuel (propriétaire)."}
-                      />
                       <div className="md:col-span-2">
                         <PhotoUploadField value={editUrl} onChange={setEditUrl} token={token} label={isEn ? "Photo" : "Photo"} fullName={editName} />
                       </div>

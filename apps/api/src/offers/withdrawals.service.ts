@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { env } from "../config/env";
 import { NotificationsService } from "../notifications/notifications.service";
-import { PayoutDestinationService } from "../payouts/payout-destination.service";
+import { PAYOUT_DESTINATION_COOLDOWN_HOURS, PayoutDestinationService } from "../payouts/payout-destination.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "./wallet.service";
 
@@ -31,10 +31,17 @@ export class WithdrawalsService {
 
   async requestWithdrawal(user: AuthUser, payload: unknown) {
     const input = requestWithdrawalSchema.parse(payload);
-    const destination = await this.destinations.snapshotForTenant(user.tenantId);
-    if (!destination) {
+    const snapshot = await this.destinations.snapshotForTenant(user.tenantId);
+    if (!snapshot) {
       throw new ConflictException("Enregistrez d'abord votre numéro Mobile Money de retrait.");
     }
+    if (snapshot.withdrawalsAvailableAt) {
+      const when = snapshot.withdrawalsAvailableAt.toLocaleString("fr-FR", { timeZone: "Africa/Porto-Novo" });
+      throw new ConflictException(
+        `Votre numéro de retrait a été modifié il y a moins de ${PAYOUT_DESTINATION_COOLDOWN_HOURS} h : par sécurité, retrait possible à partir du ${when}.`
+      );
+    }
+    const destination = snapshot.destination;
 
     return this.prisma.client.$transaction(async (tx) => {
       const wallet = await this.wallet.getOrCreateWallet(user.tenantId, tx);

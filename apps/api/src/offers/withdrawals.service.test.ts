@@ -61,6 +61,27 @@ async function ledgerTotal(tenantId: string) {
   }, 0);
 }
 
+test("numéro de retrait : réseau inconnu refusé ; un changement est journalisé et bloque les retraits 24 h", async () => {
+  const destinations = new PayoutDestinationService(prismaService);
+  const { tenant, organizer } = await seedOrganizer(10_000);
+  await assert.rejects(destinations.setForTenant(organizer, { phone: "0197000001", network: "ORANGE_XX" }), /non accepté/);
+
+  const summary = await destinations.setForTenant(organizer, { phone: "0197000001", network: "mtn" });
+  assert.equal(summary.network, "MTN");
+  assert.equal(summary.last4, "0001");
+  assert.ok(summary.withdrawalsAvailableAt);
+  const audit = await prisma.auditLog.findFirst({ where: { tenantId: tenant.id, action: "payout_destination.changed" } });
+  assert.ok(audit, "le changement est journalisé");
+
+  await assert.rejects(withdrawals.requestWithdrawal(organizer, { amountCfa: 1_000 }), /moins de 24 h/);
+  assert.deepEqual(await balances(tenant.id), { held: 0, withdrawable: 10_000 });
+
+  // Délai écoulé : le retrait repart vers le nouveau numéro.
+  await prisma.tenant.update({ where: { id: tenant.id }, data: { payoutUpdatedAt: new Date(Date.now() - 25 * 3_600_000) } });
+  const request = await withdrawals.requestWithdrawal(organizer, { amountCfa: 1_000 });
+  assert.equal(request.payoutPhoneLast4, "0001");
+});
+
 test("retrait: la demande débite tout de suite le disponible et le ledger reste égal aux soldes", async () => {
   const { tenant, organizer } = await seedOrganizer(10_000);
   const request = await withdrawals.requestWithdrawal(organizer, { amountCfa: 4_000 });

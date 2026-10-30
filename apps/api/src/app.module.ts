@@ -39,24 +39,10 @@ const throttlerOptions: ThrottlerModuleOptions = {
     : {})
 };
 
-// In production on a multi-instance runtime (Cloud Run), an in-memory throttler
-// store means per-endpoint limits are enforced per instance and reset on every
-// cold start — materially weaker abuse protection on a paid-vote platform.
-// We do NOT hard-fail boot (single-instance deploys are legitimate) but we emit
-// a loud, structured warning so it is visible in the log pipeline.
-if (env.NODE_ENV === "production" && !env.API_REDIS_URL) {
-  process.stdout.write(
-    `${JSON.stringify({
-      level: "warn",
-      msg: "throttler.in_memory_store",
-      detail:
-        "API_REDIS_URL is unset in production — rate limits are per-instance and reset on cold start. Configure Redis for a shared store.",
-      timestamp: new Date().toISOString()
-    })}\n`
-  );
-}
+// En production sans Redis, env.ts exige API_SINGLE_INSTANCE=true : un store
+// en mémoire sur plusieurs instances compterait les limites par instance.
 const throttleProviders =
-  process.env.API_DISABLE_THROTTLE === "1"
+  env.API_DISABLE_THROTTLE
     ? []
     : [
         {

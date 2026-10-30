@@ -8,7 +8,8 @@ export type NotificationType =
   | "COMMISSION_RATE_CHANGED"
   | "WITHDRAWAL_APPROVED"
   | "WITHDRAWAL_REJECTED"
-  | "WITHDRAWAL_PAID";
+  | "WITHDRAWAL_PAID"
+  | "PAYOUT_DESTINATION_CHANGED";
 export type AppNotification = { id: string; type: NotificationType; data: Record<string, unknown>; readAt: string | null; createdAt: string };
 
 function authHeaders(token: string) {
@@ -56,6 +57,8 @@ export function notificationText(n: AppNotification, t: Translate, isEn: boolean
       return `${t("notif.withdrawalRejected")} · ${amount(n.data.amountCfa)} XOF`;
     case "WITHDRAWAL_PAID":
       return `${t("notif.withdrawalPaid")} · ${amount(n.data.amountCfa)} XOF`;
+    case "PAYOUT_DESTINATION_CHANGED":
+      return `${t("notif.payoutDestinationChanged")} · ${String(n.data.network ?? "")} ••${String(n.data.last4 ?? "")}`;
     default:
       return isEn ? "New notification" : "Nouvelle notification";
   }
@@ -75,6 +78,8 @@ export function notificationHref(n: AppNotification): string {
       return `/dashboard/events/${String(n.data.eventId ?? "")}/contract`;
     case "INVITATION_ACCEPTED":
       return "/dashboard/team";
+    case "PAYOUT_DESTINATION_CHANGED":
+      return "/dashboard/account#payout-destination";
     case "EVENT_ACTIVATED":
       return `/dashboard/events/${String(n.data.eventId ?? "")}/candidates`;
     default:

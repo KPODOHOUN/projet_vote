@@ -200,10 +200,12 @@ export class EventSettlementService {
     const delayHours = parseIntSetting(delaySetting?.value, DEFAULT_HELD_RELEASE_DELAY_HOURS);
     const cutoff = new Date(Date.now() - delayHours * 60 * 60 * 1000);
 
+    // Un concours clôturé puis archivé garde sa réserve à libérer : on se fie à
+    // closedAt, pas au seul statut CLOSED.
     const matured = await this.prisma.client.event.findMany({
       where: {
-        status: EventStatus.CLOSED,
-        closedAt: { lte: cutoff }
+        status: { in: [EventStatus.CLOSED, EventStatus.ARCHIVED] },
+        closedAt: { not: null, lte: cutoff }
       },
       select: { id: true, tenantId: true },
       orderBy: [{ closedAt: "asc" }, { id: "asc" }],

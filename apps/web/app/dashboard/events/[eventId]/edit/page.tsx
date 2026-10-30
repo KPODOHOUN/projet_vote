@@ -98,8 +98,7 @@ export default function EditEventPage() {
           title,
           startsAt: new Date(startsAt).toISOString(),
           endsAt: new Date(endsAt).toISOString(),
-          // Le prix ne se change qu'en brouillon : une fois signé, il est fixé par le contrat.
-          ...(status === "DRAFT" && votePrice ? { voteUnitPriceCfa: Number.parseInt(votePrice, 10) } : {})
+          ...(votePrice ? { voteUnitPriceCfa: Number.parseInt(votePrice, 10) } : {})
         })
       });
       showToast.success(isEn ? "Changes saved." : "Modifications enregistrées.");
@@ -111,6 +110,9 @@ export default function EditEventPage() {
     }
   };
 
+
+  // Publié (ou terminé) : nom, dates et prix sont fixés par le contrat signé.
+  const isLocked = status !== "DRAFT";
 
   if (isLoading) {
     return <LoadingState variant="rows" count={4} label={isEn ? "Loading event…" : "Chargement de l'événement…"} />;
@@ -180,12 +182,20 @@ export default function EditEventPage() {
         <form className="space-y-8" onSubmit={onSubmit}>
           <div className="space-y-6">
             <h3 className="text-lg font-semibold">{isEn ? "General Information" : "Informations Générales"}</h3>
+            {isLocked ? (
+              <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                {isEn
+                  ? "This contest is published: its name, dates and vote price are fixed by the signed contract. Its look can still be changed."
+                  : "Ce concours est publié : son nom, ses dates et le prix du vote sont fixés par le contrat signé. Son apparence reste modifiable."}
+              </p>
+            ) : null}
             <Input
               id="title"
               label={isEn ? "Event name" : "Nom de l'événement"}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              required
+              disabled={isLocked}
+              required={!isLocked}
             />
           </div>
 
@@ -227,7 +237,8 @@ export default function EditEventPage() {
                 type="datetime-local"
                 value={startsAt}
                 onChange={(event) => setStartsAt(event.target.value)}
-                required
+                disabled={isLocked}
+                required={!isLocked}
               />
               <Input
                 id="endsAt"
@@ -235,18 +246,21 @@ export default function EditEventPage() {
                 type="datetime-local"
                 value={endsAt}
                 onChange={(event) => setEndsAt(event.target.value)}
-                required
+                disabled={isLocked}
+                required={!isLocked}
               />
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-4 pt-6">
             <Button type="button" variant="ghost" onClick={() => router.push(`/dashboard/events/${eventId}/candidates`)}>
-              {isEn ? "Cancel" : "Annuler"}
+              {isLocked ? (isEn ? "Back" : "Retour") : isEn ? "Cancel" : "Annuler"}
             </Button>
-            <Button type="submit" loading={isSaving} size="lg">
-              {isEn ? "Save changes" : "Enregistrer"}
-            </Button>
+            {isLocked ? null : (
+              <Button type="submit" loading={isSaving} size="lg">
+                {isEn ? "Save changes" : "Enregistrer"}
+              </Button>
+            )}
           </div>
         </form>
       </Card>

@@ -160,6 +160,8 @@ model Tenant {
   payoutNetwork    String?
   payoutPhoneEnc   String?
   payoutPhoneLast4 String?
+  // Dernier changement du numéro de retrait : aucun retrait dans les 24 h qui suivent.
+  payoutUpdatedAt  DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -685,6 +687,7 @@ enum NotificationType {
   WITHDRAWAL_APPROVED
   WITHDRAWAL_REJECTED
   WITHDRAWAL_PAID
+  PAYOUT_DESTINATION_CHANGED
 }
 
 model Notification {

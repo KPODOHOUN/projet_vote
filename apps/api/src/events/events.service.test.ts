@@ -214,3 +214,65 @@ test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre o
   assert.equal(pub.event.branding.logoUrl, null);
   assert.equal(pub.event.branding.brandColor, null);
 });
+
+async function publishedEvent(slug: string, status: EventStatus = EventStatus.ACTIVE) {
+  const t = await tenant(`${slug}-t`);
+  const ev = await prisma.event.create({
+    data: {
+      tenantId: t.id,
+      slug,
+      title: "Concours publié",
+      startsAt: new Date(past()),
+      endsAt: new Date(future()),
+      status,
+      voteUnitPriceCfa: 100,
+      ...(status === EventStatus.CLOSED ? { closedAt: new Date() } : {})
+    }
+  });
+  return { t, ev };
+}
+
+test("updateEvent: après publication, nom, dates et prix sont figés par le contrat ; l'apparence reste libre", async () => {
+  const { t, ev } = await publishedEvent("locked-evt");
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { title: "Autre nom" }), /nom du concours/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { endsAt: new Date(Date.now() + 9 * 86_400_000).toISOString() }), /date de fin/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { startsAt: past() }), /date de début/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { voteUnitPriceCfa: 200 }), /prix du vote/);
+  // Renvoyer les valeurs actuelles (formulaire complet) reste accepté.
+  await events.updateEvent(owner(t.id), ev.id, { title: ev.title, endsAt: ev.endsAt.toISOString(), tagline: "Nouveau slogan" });
+  const after = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(after.tagline, "Nouveau slogan");
+  assert.equal(after.title, "Concours publié");
+});
+
+test("deleteEvent: un concours en ligne doit d'abord être clôturé", async () => {
+  const { t, ev } = await publishedEvent("del-active");
+  await assert.rejects(events.deleteEvent(owner(t.id), ev.id), /clôturez-le/);
+  assert.equal((await prisma.event.findUniqueOrThrow({ where: { id: ev.id } })).status, EventStatus.ACTIVE);
+});
+
+test("deleteEvent: un concours clôturé est archivé et garde sa date de clôture (réserve libérable)", async () => {
+  const { t, ev } = await publishedEvent("del-closed", EventStatus.CLOSED);
+  const result = await events.deleteEvent(owner(t.id), ev.id);
+  assert.equal(result.archived, true);
+  const after = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(after.status, EventStatus.ARCHIVED);
+  assert.ok(after.closedAt);
+});
+
+test("deleteEvent: un brouillon avec un projet de contrat non signé est supprimé", async () => {
+  const t = await tenant("del-draft");
+  const ev = await events.createEvent(owner(t.id), { slug: "del-draft-evt", title: "Brouillon", startsAt: past(), endsAt: future() });
+  await prisma.eventContract.create({
+    data: { id: "ctr_test_draft", eventId: ev.id, tenantId: t.id, templateVersion: "test", snapshot: {}, contentText: "projet", contentHash: "x".repeat(64) }
+  });
+  const result = await events.deleteEvent(owner(t.id), ev.id);
+  assert.equal(result.deleted, true);
+  assert.equal(await prisma.event.count({ where: { id: ev.id } }), 0);
+});
+
+test("candidats : figés une fois le concours clôturé", async () => {
+  const { t, ev } = await publishedEvent("cand-closed", EventStatus.CLOSED);
+  await assert.rejects(events.createCandidate(owner(t.id), ev.id, { fullName: "Tardif" }), /terminé/);
+  await assert.rejects(events.importCandidates(owner(t.id), ev.id, { candidates: [{ fullName: "Tardif" }] }), /terminé/);
+});

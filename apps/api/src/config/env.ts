@@ -34,11 +34,20 @@ function loadEnv() {
       // ignore
     }
   }
-  if (process.env.NODE_ENV === "test") {
-    process.env.API_PAYMENT_DEMO_MODE = "false";
-  }
 }
 loadEnv();
+
+/**
+ * Drapeau booléen d'environnement : seules « true/1 » et « false/0 » sont
+ * acceptées (absente ou vide = valeur par défaut). `z.coerce.boolean()` est
+ * proscrit ici : il convertit la chaîne "false" en true.
+ */
+export function envFlag(fallback: boolean) {
+  return z.preprocess(
+    (value) => (value === undefined || value === "" ? String(fallback) : String(value).trim().toLowerCase()),
+    z.enum(["true", "false", "1", "0"]).transform((value) => value === "true" || value === "1")
+  );
+}
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -93,6 +102,11 @@ export const envSchema = z.object({
   // rate limiter uses a shared Redis store so limits hold across all instances
   // (Cloud Run). When unset, falls back to the per-instance in-memory store.
   API_REDIS_URL: z.string().min(1).optional(),
+  // Sans Redis, la production doit déclarer explicitement tourner sur une seule
+  // instance : sinon les limites de débit seraient comptées par instance.
+  API_SINGLE_INSTANCE: envFlag(false),
+  // Réservé aux tests e2e ; refusé en production.
+  API_DISABLE_THROTTLE: envFlag(false),
   // -- OAuth (Google, Facebook) ---------------------------------------------
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
@@ -131,14 +145,11 @@ export const envSchema = z.object({
   // Passe à true une fois le modèle de contrat relu et validé par un juriste.
   // Tant que false, chaque contrat porte la mention « modèle en attente de
   // validation juridique ».
-  CONTRACT_TEMPLATE_LEGALLY_REVIEWED: z
-    .string()
-    .default("false")
-    .transform((value) => value.trim().toLowerCase() === "true"),
+  CONTRACT_TEMPLATE_LEGALLY_REVIEWED: envFlag(false),
   /** Webhook Slack / alertes (POST JSON) pour les demandes partenaires. */
   PLATFORM_ALERT_WEBHOOK_URL: z.string().url().optional(),
   /** Confirme automatiquement les paiements sans PSP (développement / démo). */
-  API_PAYMENT_DEMO_MODE: z.coerce.boolean().default(false),
+  API_PAYMENT_DEMO_MODE: envFlag(false),
   // -- Couverture pan-africaine des paiements ------------------------------
   // Indicatif pays (sans +) appliqué UNIQUEMENT aux numéros locaux saisis sans
   // indicatif. Les numéros déjà internationaux (avec + / 00 / indicatif connu)
@@ -181,6 +192,23 @@ export const envSchema = z.object({
       code: "custom",
       path: ["API_PAYMENT_DEMO_MODE"],
       message: "API_PAYMENT_DEMO_MODE ne doit jamais etre active en production."
+    });
+  }
+
+  if (value.API_DISABLE_THROTTLE) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["API_DISABLE_THROTTLE"],
+      message: "API_DISABLE_THROTTLE ne doit jamais etre active en production."
+    });
+  }
+
+  if (!value.API_REDIS_URL && !value.API_SINGLE_INSTANCE) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["API_REDIS_URL"],
+      message:
+        "API_REDIS_URL doit etre defini en production (limites de debit partagees), ou API_SINGLE_INSTANCE=true si l'API tourne sur une seule instance."
     });
   }
 

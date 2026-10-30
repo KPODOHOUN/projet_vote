@@ -43,6 +43,60 @@ const updateTicketTypeSchema = z.object({
   status: z.nativeEnum(TicketTypeStatus).optional()
 });
 
+// Design de billet (éditeur visuel) : structure bornée, URLs d'image http(s)
+// ou chemin local, valeurs CSS sans url()/expression (injectées dans un style).
+const designImageUrlSchema = z
+  .string()
+  .max(2048)
+  .refine((value) => value.startsWith("/") || /^https?:\/\//.test(value), "URL d'image invalide.");
+const designCssValueSchema = z
+  .string()
+  .max(300)
+  .regex(/^[#(),.%\-\w\s]*$/, "Valeur de style invalide.")
+  .refine((value) => !/url|expression|javascript/i.test(value), "Valeur de style invalide.");
+const designNumberSchema = z.number().finite().min(-10_000).max(10_000);
+const designLayerSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    type: z.enum(["text", "image"]),
+    content: z.string().max(2048),
+    x: designNumberSchema,
+    y: designNumberSchema,
+    width: designNumberSchema,
+    height: designNumberSchema,
+    zIndex: z.number().int().min(0).max(1000),
+    visible: z.boolean(),
+    rotation: designNumberSchema.optional(),
+    style: z
+      .object({
+        fontSize: z.number().min(1).max(400).optional(),
+        fontWeight: z.string().max(20).regex(/^[\w ]*$/).optional(),
+        color: designCssValueSchema.optional(),
+        textAlign: z.enum(["left", "center", "right"]).optional(),
+        fontStyle: z.string().max(20).regex(/^[\w ]*$/).optional(),
+        textDecoration: z.string().max(40).regex(/^[\w -]*$/).optional(),
+        objectFit: z.enum(["contain", "cover", "fill"]).optional(),
+        opacity: z.number().min(0).max(1).optional(),
+        borderRadius: z.number().min(0).max(1000).optional()
+      })
+      .default({})
+  })
+  .superRefine((layer, ctx) => {
+    if (layer.type === "image" && !designImageUrlSchema.safeParse(layer.content).success) {
+      ctx.addIssue({ code: "custom", path: ["content"], message: "URL d'image invalide." });
+    }
+    if (layer.type === "text" && layer.content.length > 500) {
+      ctx.addIssue({ code: "custom", path: ["content"], message: "Texte trop long (500 caractères au plus)." });
+    }
+  });
+const ticketDesignSchema = z.object({
+  width: z.number().int().min(100).max(4000),
+  height: z.number().int().min(100).max(4000),
+  background: z.object({ type: z.enum(["color", "gradient"]), value: designCssValueSchema }),
+  backgroundImage: designImageUrlSchema.nullable(),
+  layers: z.array(designLayerSchema).max(50)
+});
+
 const purchaseTicketSchema = z.object({
   ticketTypeId: z.string().min(1),
   quantity: z.number().int().positive().max(100),
@@ -81,8 +135,12 @@ export class TicketsService {
   async createTicketType(eventId: string, payload: unknown) {
     const input = createTicketTypeSchema.parse(payload);
 
-    const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true } });
+    const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true, status: true } });
     if (!event) throw new NotFoundException("Événement introuvable.");
+    // Les billets en vente figurent au contrat signé : pas de nouveau type après publication.
+    if (event.status !== EventStatus.DRAFT) {
+      throw new ConflictException("Ce concours est publié : ses billets sont fixés par le contrat signé, aucun nouveau type ne peut être ajouté.");
+    }
 
     try {
       return await this.prisma.client.ticketType.create({
@@ -134,16 +192,29 @@ export class TicketsService {
   }
 
   async saveDesign(ticketTypeId: string, payload: unknown) {
-    if (!payload || typeof payload !== "object") {
-      throw new BadRequestException("Design invalide.");
+    const parsed = ticketDesignSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new BadRequestException("Design invalide : vérifiez les images et les couleurs utilisées.");
     }
-    const design = payload as Record<string, unknown>;
+    const design = parsed.data;
     const tt = await this.prisma.client.ticketType.findUnique({ where: { id: ticketTypeId }, select: { id: true } });
     if (!tt) throw new NotFoundException("Type de ticket introuvable.");
     return this.prisma.client.ticketType.update({
       where: { id: ticketTypeId },
       data: { design: design as Prisma.InputJsonValue }
     });
+  }
+
+  /** Vrai si un type de billet de ce nom figure au contrat signé du concours (ou si le concours n'a pas de contrat : concours antérieur). */
+  private async isInSignedContract(eventId: string, ticketTypeName: string): Promise<boolean> {
+    const contract = await this.prisma.client.eventContract.findFirst({
+      where: { eventId, signedAt: { not: null } },
+      orderBy: { signedAt: "desc" },
+      select: { snapshot: true }
+    });
+    if (!contract) return true;
+    const snapshot = contract.snapshot as { event?: { ticketTypes?: Array<{ name: string }> } };
+    return (snapshot.event?.ticketTypes ?? []).some((t) => t.name === ticketTypeName);
   }
 
   async updateTicketType(eventId: string, ticketTypeId: string, payload: unknown) {
@@ -154,9 +225,22 @@ export class TicketsService {
       include: { event: { select: { status: true } } }
     });
     if (!tt) throw new NotFoundException("Type de ticket introuvable.");
-    // Le prix des billets existants figure dans le contrat signé : il ne change plus après publication.
-    if (input.priceCfa !== undefined && tt.event.status !== EventStatus.DRAFT && input.priceCfa !== tt.priceCfa) {
-      throw new ConflictException("Le prix de ce billet est fixé par le contrat signé : il ne peut plus être modifié.");
+    // Nom, prix et quantité des billets figurent dans le contrat signé : ils ne
+    // changent plus après publication. Un type absent du contrat ne peut pas
+    // être mis en vente.
+    if (tt.event.status !== EventStatus.DRAFT) {
+      const locked: string[] = [];
+      if (input.priceCfa !== undefined && input.priceCfa !== tt.priceCfa) locked.push("le prix");
+      if (input.name !== undefined && input.name !== tt.name) locked.push("le nom");
+      if (input.quantity !== undefined && input.quantity !== tt.quantity) locked.push("la quantité");
+      if (locked.length) {
+        throw new ConflictException(
+          `Ces éléments du billet sont fixés par le contrat signé et ne peuvent plus être modifiés : ${locked.join(", ")}.`
+        );
+      }
+      if (input.status === TicketTypeStatus.ACTIVE && tt.status !== TicketTypeStatus.ACTIVE && !(await this.isInSignedContract(eventId, tt.name))) {
+        throw new ConflictException("Ce billet ne figure pas au contrat signé : il ne peut pas être mis en vente.");
+      }
     }
 
     const data: Record<string, unknown> = {};

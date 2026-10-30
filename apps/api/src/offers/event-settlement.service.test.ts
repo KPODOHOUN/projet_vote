@@ -109,3 +109,28 @@ test("releaseMaturedHeld: libère le held des events clôturés il y a plus de 4
   assert.equal(w.heldCfa, 1_000);
   assert.equal(w.withdrawableCfa, 1_500 + 500);
 });
+
+test("releaseMaturedHeld: un concours clôturé puis archivé voit quand même sa réserve libérée", async () => {
+  const tenant = await prisma.client.tenant.create({
+    data: { slug: `archived-${Date.now().toString(36)}`, displayName: "Archived Held" }
+  });
+  const event = await prisma.client.event.create({
+    data: {
+      tenantId: tenant.id,
+      title: "Archived",
+      slug: `ev-archived-${Date.now().toString(36)}`,
+      startsAt: new Date(Date.now() - 300_000_000),
+      endsAt: new Date(Date.now() - 200_000_000),
+      status: EventStatus.ARCHIVED,
+      closedAt: new Date(Date.now() - 172_800_000),
+      heldBps: 5_000
+    }
+  });
+  await wallet.creditSplit({ tenantId: tenant.id, netCfa: 1_000, heldBps: 5_000, kind: WalletLedgerKind.VOTE_CREDIT, eventId: event.id });
+
+  await settlement.releaseMaturedHeld();
+
+  const w = await wallet.getWallet(tenant.id);
+  assert.equal(w.heldCfa, 0);
+  assert.equal(w.withdrawableCfa, 1_000);
+});

@@ -24,6 +24,6 @@ export class PayoutDestinationController {
 
   @Post()
   setDestination(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.destinations.setForTenant(user.tenantId, body);
+    return this.destinations.setForTenant(user, body);
   }
 }

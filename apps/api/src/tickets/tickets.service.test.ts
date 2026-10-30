@@ -212,18 +212,68 @@ test("validateTicket : deux scans simultanés du même billet → une seule entr
   assert.equal((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "USED");
 });
 
-test("concours publié : le prix d'un billet existant est figé par le contrat, le reste se modifie", async () => {
+test("concours publié : prix, nom et quantité d'un billet sont figés par le contrat, le reste se modifie", async () => {
   const { event, ticketType } = await seedTicketType();
-  await assert.rejects(
-    tickets.updateTicketType(event.id, ticketType.id, { priceCfa: 5_000 }),
-    /prix de ce billet est fixé par le contrat signé/
-  );
-  // Même prix renvoyé par le formulaire, quantité modifiée : accepté.
-  const updated = await tickets.updateTicketType(event.id, ticketType.id, { priceCfa: 2_000, quantity: 80 });
-  assert.equal(updated.priceCfa, 2_000);
-  assert.equal(updated.quantity, 80);
+  await assert.rejects(tickets.updateTicketType(event.id, ticketType.id, { priceCfa: 5_000 }), /fixés par le contrat signé.*le prix/);
+  await assert.rejects(tickets.updateTicketType(event.id, ticketType.id, { quantity: ticketType.quantity + 50 }), /la quantité/);
+  await assert.rejects(tickets.updateTicketType(event.id, ticketType.id, { name: "Autre" }), /le nom/);
+  // Mêmes valeurs renvoyées par le formulaire, description et plafond par achat modifiés : accepté.
+  const updated = await tickets.updateTicketType(event.id, ticketType.id, {
+    priceCfa: ticketType.priceCfa,
+    quantity: ticketType.quantity,
+    description: "Entrée générale",
+    maxPerPerson: 4
+  });
+  assert.equal(updated.description, "Entrée générale");
+  assert.equal(updated.maxPerPerson, 4);
 
-  // En brouillon (avant signature), le prix reste libre.
+  // En brouillon (avant signature), tout reste libre.
   await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.DRAFT } });
   assert.equal((await tickets.updateTicketType(event.id, ticketType.id, { priceCfa: 5_000 })).priceCfa, 5_000);
+});
+
+test("concours publié : aucun nouveau type de billet ; un type hors contrat ne peut pas être mis en vente", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await assert.rejects(
+    tickets.createTicketType(event.id, { name: "VIP tardif", priceCfa: 10_000, quantity: 10 }),
+    /aucun nouveau type/
+  );
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { status: "PAUSED" } });
+  await prisma.eventContract.create({
+    data: {
+      id: `ctr_tix_${event.id}`,
+      eventId: event.id,
+      tenantId: event.tenantId,
+      templateVersion: "test",
+      status: "SIGNED",
+      signedAt: new Date(),
+      snapshot: { event: { ticketTypes: [{ name: "Autre billet", priceCfa: 1_000, quantity: 10 }] } },
+      contentText: "contrat",
+      contentHash: "y".repeat(64)
+    }
+  });
+  await assert.rejects(tickets.updateTicketType(event.id, ticketType.id, { status: "ACTIVE" }), /ne figure pas au contrat/);
+  // Mettre en pause reste toujours possible.
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { status: "ACTIVE" } });
+  assert.equal((await tickets.updateTicketType(event.id, ticketType.id, { status: "PAUSED" })).status, "PAUSED");
+});
+
+test("saveDesign : design valide enregistré ; URL javascript et CSS url() refusés", async () => {
+  const { ticketType } = await seedTicketType();
+  const design = {
+    width: 600,
+    height: 300,
+    background: { type: "color", value: "#ffffff" },
+    backgroundImage: "https://res.cloudinary.com/demo/fond.png",
+    layers: [
+      { id: "l1", type: "text", content: "Gala", x: 10, y: 10, width: 200, height: 40, zIndex: 1, visible: true, style: { color: "#111111", fontSize: 24 } }
+    ]
+  };
+  await tickets.saveDesign(ticketType.id, design);
+  await assert.rejects(tickets.saveDesign(ticketType.id, { ...design, backgroundImage: "javascript:alert(1)" }), /Design invalide/);
+  await assert.rejects(
+    tickets.saveDesign(ticketType.id, { ...design, background: { type: "color", value: "url(https://evil.example/x)" } }),
+    /Design invalide/
+  );
+  await assert.rejects(tickets.saveDesign(ticketType.id, { foo: "bar" }), /Design invalide/);
 });
