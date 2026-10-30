@@ -1,140 +1,95 @@
-# Déploiement staging/production (P0)
+# Déploiement staging / production
 
-Ce document couvre le déploiement serverless opérationnel de SHADOMA Votes sans VPS.
+Ce document décrit ce qui est **réellement** livré dans le dépôt pour déployer SHADOMA,
+et les vérifications à faire. Aucun hébergeur n'est imposé : l'API est une image Docker,
+le front une app Next.js, le cron un Worker Cloudflare.
 
-## Cible runtime
+## Ce que contient le dépôt
 
-- Frontend: Cloudflare Pages (Next.js)
-- API: Google Cloud Run
-- Cron de maintenance: Cloudflare Worker Cron Trigger
-- Base de données : Neon PostgreSQL
+| Composant | Fichier | État |
+|---|---|---|
+| Intégration continue | `.github/workflows/ci.yml` | typecheck, lint, tests API (`npm test` + `test:offers`), tests web, e2e Playwright |
+| Image API | `apps/api/Dockerfile` + `apps/api/docker-entrypoint.sh` | construite et démarrée en `NODE_ENV=production` le 30/10/2026 |
+| Worker cron | `infra/maintenance-cron-worker` (`wrangler.toml`) | crons : 5 min (balayages) + quotidien (purge) |
+| Front | `apps/web` (`next build`) | à déployer sur l'hébergeur Next.js choisi |
+| Modèles d'hébergeur | `docs/deployment/templates/*.example` | non testés (Render, Vercel) |
 
-## Pipelines GitHub Actions
+Aucun workflow de déploiement automatique n'est versionné : le déploiement se fait depuis
+l'hébergeur (build de l'image, ou intégration Git) une fois la CI verte.
 
-- `CI`: `.github/workflows/ci.yml` (typecheck, build, tests API)
-- `E2E`: `.github/workflows/e2e.yml` (Playwright, déclenché sur PR + manuel)
-- `Deploy API (Cloud Run)`: `.github/workflows/deploy-api.yml`
-- `Deploy Maintenance Cron Worker`: `.github/workflows/deploy-maintenance-cron.yml`
-- `Deploy Web (Cloudflare Pages Hook)`: `.github/workflows/deploy-web-pages.yml`
-- `Ops Healthchecks`: `.github/workflows/ops-healthchecks.yml` (cron */5 min)
+## API (image Docker)
 
-## Variables/Secrets GitHub requis
+```bash
+docker build -f apps/api/Dockerfile -t shadoma-api .
+docker run -p 3001:3001 --env-file <fichier de secrets> shadoma-api
+```
 
-### Repository variables
+- Au démarrage, le conteneur applique les migrations (`prisma migrate deploy`) puis lance
+  l'API. Une migration en échec arrête le conteneur. Si l'hébergeur lance les migrations
+  dans une étape séparée (ex. `preDeployCommand`), poser `RUN_MIGRATIONS_ON_START=false`.
+- Toutes les variables sont listées dans `.env.example` ; la validation est dans
+  `apps/api/src/config/env.ts`. En production, l'API **refuse de démarrer** si :
+  un secret garde sa valeur `dev-only-*`, `API_PAYMENT_DEMO_MODE=true`,
+  `API_DISABLE_THROTTLE=true`, `MAIL_RESEND_API_KEY` manque, ou ni `API_REDIS_URL` ni
+  `API_SINGLE_INSTANCE=true` ne sont définis.
+- **Plusieurs instances** : définir `API_REDIS_URL` (limites de débit et plafonds de
+  l'assistant partagés). **Une seule instance** : `API_SINGLE_INSTANCE=true`.
+- Service **toujours actif** recommandé : le planificateur interne (rapprochement des
+  paiements, clôtures, réserves, toutes les 5 min) ne tourne que si une instance est
+  démarrée. Le worker cron reste le déclencheur de référence.
 
-- `GCP_PROJECT_ID`
-- `GCP_REGION`
-- `CLOUD_RUN_SERVICE`
-- `CLOUD_RUN_CPU` (optionnel, défaut `1`)
-- `CLOUD_RUN_MEMORY` (optionnel, défaut `512Mi`)
-- `CLOUD_RUN_MIN_INSTANCES` (optionnel, défaut `0`)
-- `CLOUD_RUN_MAX_INSTANCES` (optionnel, défaut `10`)
-- `CLOUDFLARE_ACCOUNT_ID`
+## Front (Next.js)
 
-### Secrets GitHub
-
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT_EMAIL`
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_PAGES_DEPLOY_HOOK_STAGING`
-- `CLOUDFLARE_PAGES_DEPLOY_HOOK_PRODUCTION`
-
-### Variables du front figées au build
-
-`NEXT_PUBLIC_*` et `CSP_REPORT_URI` sont lues par `next build`. En changer la valeur
-impose un nouveau build et un nouveau déploiement du front.
+`NEXT_PUBLIC_*` et `CSP_REPORT_URI` sont lues par `next build` : en changer la valeur
+impose un nouveau build.
 
 | Variable | Défaut | Effet |
 |---|---|---|
-| `NEXT_PUBLIC_TICKET_SALES_OPEN` | `false` | `true` ouvre le formulaire d'achat de billets. Réservé à la démo : l'API refuse l'achat hors `API_PAYMENT_DEMO_MODE`. |
-| `NEXT_PUBLIC_DEMO_EVENT_SLUG` | vide | Slug d'un concours de démonstration lié depuis la Home. Vide : aucun lien. |
-| `CSP_REPORT_URI` | vide | Collecteur des violations CSP (voir `security-headers.md`). |
+| `NEXT_PUBLIC_API_BASE_URL` / `API_BASE_URL` | — | URL de l'API (navigateur / proxy serveur) |
+| `NEXT_PUBLIC_TICKET_SALES_OPEN` | `true` | `false` ferme le formulaire d'achat de billets (interrupteur d'urgence). Le paiement des billets est réel, comme celui des votes. |
+| `NEXT_PUBLIC_DEMO_EVENT_SLUG` | vide | Slug d'un concours de démonstration lié depuis la Home |
+| `CSP_REPORT_URI` | vide | Collecteur des violations CSP (voir `security-headers.md`) |
 
-### Plafonds de l'assistant (API)
-
-`CHAT_DAILY_LIMIT` (500) et `CHAT_DAILY_LIMIT_PER_IP` (30). Avec `API_REDIS_URL`, les compteurs
-sont partagés (clé par jour) ; sans Redis, chaque instance compte de son côté.
-
-## Déploiement API Cloud Run
-
-1. Ouvrir l'action **Deploy API (Cloud Run)**.
-2. Choisir `environment=staging` ou `environment=production`.
-3. Laisser `api_image_tag` vide pour utiliser le commit SHA.
-4. Le workflow:
-   - exécute quality gates (`typecheck`, `test`, `build`)
-   - build/push l'image de `apps/api`
-   - déploie la révision Cloud Run
-   - lance un smoke test sur `/api/v1/health/ready`
-
-## Déploiement Web Cloudflare Pages
-
-1. Configurer les deux deploy hooks Pages dans les secrets GitHub:
-   - `CLOUDFLARE_PAGES_DEPLOY_HOOK_STAGING`
-   - `CLOUDFLARE_PAGES_DEPLOY_HOOK_PRODUCTION`
-2. Lancer l'action **Deploy Web (Cloudflare Pages Hook)**.
-3. Choisir l'environnement cible.
-4. Vérifier la fin de build dans l'onglet Deployments Cloudflare Pages.
-
-## Déploiement Worker Cron
-
-Le worker est versionné dans `infra/maintenance-cron-worker`.
-
-Avant premier déploiement, configurer les secrets/vars worker par environnement :
+## Worker cron
 
 ```bash
 cd infra/maintenance-cron-worker
-
-# Staging
-npx wrangler secret put API_MAINTENANCE_CRON_SECRET --env staging
-npx wrangler secret put TENANT_SLUG --env staging
-npx wrangler secret put API_BASE_URL --env staging
-
-# Production
-npx wrangler secret put API_MAINTENANCE_CRON_SECRET --env production
+npm install
+npx wrangler secret put API_MAINTENANCE_CRON_SECRET --env production   # même valeur que l'API
+npx wrangler secret put API_BASE_URL --env production                  # ex. https://api.exemple.com
 npx wrangler secret put TENANT_SLUG --env production
-npx wrangler secret put API_BASE_URL --env production
+npm run deploy:production
 ```
 
-Puis lancer l'action **Deploy Maintenance Cron Worker** avec l'environnement cible.
+Les appels sont signés (HMAC sur le chemin + le corps, `runAtIso` obligatoire, fenêtre
+`API_MAINTENANCE_CRON_MAX_SKEW_SECONDS`). **Déployer le worker et l'API ensemble** : depuis
+le 30/10/2026, une version antérieure du worker est refusée par l'API.
 
-## Post-déploiement obligatoire
+## Base de données
 
-**Premier passage en paiement réel** : suivre `docs/runbooks/premier-paiement-reel.md` (sandbox puis live 100 FCFA, requêtes de contrôle, idempotence, retrait). Ne pas ouvrir au public avant que toutes les cases soient cochées.
-
-### Migrations base de données
-
-Les migrations s'appliquent **automatiquement** au démarrage du conteneur API (`docker-entrypoint.api.sh`).
-Pour une application manuelle (Neon console, bastion) :
+Migrations : automatiques au démarrage du conteneur API, ou manuelles :
 
 ```bash
 DATABASE_URL="postgresql://…" npm run db:migrate:deploy
 ```
 
-Migrations récentes à vérifier en prod :
-- `20260704170000_candidate_public_ref` — `publicRef` candidat + numéro optionnel
-- `20260704120000_partner_program_platform_secrets` — programme partenaires
-- `20260702120000_product_events` — événements produit
+Migrations récentes à vérifier en production (**faire une sauvegarde avant**) :
+- `20261029100000_contract_finance_cleanup` — **destructive** : archive les données des
+  fonctionnalités retirées dans `LegacyArchive`, puis supprime leurs tables et colonnes
+  (abonnements, forfait d'activation, offre partenaire, EXTERNAL, anciens versements).
+- `20261029110000_backfill_counts_ledger_labels` — corrige les quantités de votes, les
+  écritures de billets et les libellés du grand livre.
+- `20261030160000_payout_cooldown_archived_reserve` — délai de 24 h après changement du
+  numéro de retrait ; date de clôture rattrapée pour les concours archivés qui détenaient
+  une réserve.
 
-### Smoke test
+## Après déploiement
 
-```bash
-# API (base Cloud Run ou URL healthcheck complète)
-bash scripts/smoke-deploy.sh https://api.example.com
-
-# Front public
-bash scripts/smoke-deploy.sh --web https://votes.example.com
-```
-
-### API
-
-- `GET /api/v1/health` renvoie `200`
-- `GET /api/v1/health/ready` renvoie `200` (base joignable ; `503` avec `checks.database: "unreachable"` si Postgres est coupé ou ne répond pas en 2 s). `GET /api/v1/health` (vivacité) ne dépend pas de la base.
-- endpoints sécurisés critiques :
-  - `POST /api/v1/payments/init` exige auth + role
-  - `POST /api/v1/payments/webhooks/feexpay` valide strictement `FEEXPAY_WEBHOOK_SECRET`
-
-### Cron
-
-- vérifier dans Cloudflare que le trigger cron est actif
-- vérifier la présence des exécutions dans les logs Worker
-- vérifier dans l'API que `maintenance/cron/purge` retourne `alreadyExecuted` selon l'idempotence
+- `GET /api/v1/health` → `200` (vivacité, sans base).
+- `GET /api/v1/health/ready` → `200` avec `checks.database: "ok"` (`503` si Postgres ne
+  répond pas en 2 s).
+- `POST /api/v1/payments/organizer/topup` sans jeton → `401`.
+- Logs du worker : exécutions toutes les 5 min, réponses `2xx`.
+- `POST /api/v1/maintenance/cron/purge` renvoie `alreadyExecuted: true` au second appel du jour.
+- **Premier passage en paiement réel** : suivre `docs/runbooks/premier-paiement-reel.md`.
+  Ne pas ouvrir au public avant que toutes les cases soient cochées.

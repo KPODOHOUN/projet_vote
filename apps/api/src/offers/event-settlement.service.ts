@@ -36,10 +36,6 @@ export class EventSettlementService {
   ) {}
 
   /**
-   * Manual close: set closedAt + CLOSED. For ESCROW, apply retention % on the
-   * event's pending credits and release the remainder to available.
-   */
-  /**
    * Clôture d'un concours (manuelle ou automatique). Aucune retenue ici : la
    * commission a été prélevée à chaque paiement et la réserve de ce concours se
    * libère après le délai réglé (releaseMaturedHeld).
@@ -145,7 +141,7 @@ export class EventSettlementService {
   }
 
   /**
-   * Libère heldCfa → withdrawableCfa pour les events Escrow clôturés depuis
+   * Libère heldCfa → withdrawableCfa pour les concours clôturés depuis
    * plus de `held_release_delay_hours` (défaut 48h, business plan §4 Phase D).
    * Ne touche jamais un event dont le held a déjà été entièrement libéré :
    * on somme les entrées HELD_ALLOCATION vs HELD_RELEASE déjà écrites pour cet

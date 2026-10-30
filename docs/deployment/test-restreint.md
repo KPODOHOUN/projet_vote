@@ -38,7 +38,7 @@ RUN_SEED=true npm run db:seed
 ### Option A — Blueprint (recommandé)
 
 1. [render.com](https://render.com) → **New → Blueprint** → connecte ce dépôt GitHub.
-2. Render lit `render.yaml` (build Docker via `Dockerfile.api`).
+2. Copier `docs/deployment/templates/render.yaml.example` en `render.yaml` à la racine ; Render construit l'image `apps/api/Dockerfile`.
 3. Complète les variables marquées *sync: false* dans le dashboard :
 
 | Variable | Valeur |
@@ -55,8 +55,8 @@ RUN_SEED=true npm run db:seed
 
 1. **New → Web Service** → repo GitHub.
 2. **Environment** : Docker.
-3. **Dockerfile Path** : `Dockerfile.api`.
-4. **Docker Command** : `./docker-entrypoint.api.sh`.
+3. **Dockerfile Path** : `apps/api/Dockerfile` (contexte : racine du dépôt).
+4. **Docker Command** : laisser vide (l'image applique les migrations puis démarre l'API).
 5. **Health Check Path** : `/api/v1/health`.
 6. **Plan** : Free.
 7. Colle toutes les variables ci-dessous.
@@ -185,7 +185,7 @@ Conservez ces identifiants dans `.env.owner.local` (gitignored), pas dans le gui
 | Besoin | Alternative |
 | --- | --- |
 | Pas de cold start | **Google Cloud Run** (workflow `deploy-api.yml` déjà dans le repo) + Neon |
-| Tout Docker, autre hébergeur | **Fly.io** (`fly launch` + `Dockerfile.api`) + Neon |
+| Tout Docker, autre hébergeur | **Fly.io** (`fly launch` + `apps/api/Dockerfile`) + Neon |
 | Front + back serverless | Cloudflare Pages (front) + Cloud Run (API) — voir `docs/deployment/staging-production.md` |
 
 ---

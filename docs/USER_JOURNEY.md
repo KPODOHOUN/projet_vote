@@ -193,9 +193,9 @@ x-feexpay-signature: <HMAC-SHA256(body, FEEXPAY_WEBHOOK_SECRET)>
 | Action | Endpoint | Périmètre |
 |--------|----------|-----------|
 | Suivi votes/paiements | `/dashboard/events/[id]`, `/dashboard/payments` (UI) | son tenant |
-| Revenus / abonnement | `GET /api/v1/admin/subscriptions/overview?from=&to=` | **forcé** sur son `tenantId` |
+| Portefeuille et revenus | `GET /api/v1/organizer/wallet` (UI `/dashboard/wallet`) | son tenant |
 | Journal d'audit | `GET /api/v1/admin/audit-logs` | son tenant uniquement |
-| Encaissement back-office | `POST /api/v1/payments/init` (Bearer) | `tenantId`/`eventId`/`voteId` **doivent** appartenir à son tenant (`403`/`404` sinon) |
+| Votes ajoutés par l'organisateur | `POST /api/v1/payments/organizer/topup` (Bearer) | paiement réel, commission et réserve comprises ; concours de son tenant uniquement |
 
 ⚙️ Pour un `ORGANIZER_OWNER`, toutes les agrégations admin sont **scopées à son `tenantId`** — il ne voit jamais un autre tenant.
 
@@ -206,15 +206,12 @@ x-feexpay-signature: <HMAC-SHA256(body, FEEXPAY_WEBHOOK_SECRET)>
 ### 5.1 Vue globale (cross-tenant, réservée `PLATFORM_ADMIN`)
 - `GET /api/v1/admin/users` (option `?tenantId=`, sinon tous)
 - `GET /api/v1/admin/audit-logs` (cross-tenant)
-- `GET /api/v1/admin/subscriptions/overview` → revenus **par tenant** (MRR plateforme)
 - `GET /api/v1/admin/jobs/overview` → paiements pending/échoués, sessions à purger, clés d'idempotence expirées
 
-### 5.2 Feature flags
-```http
-POST /api/v1/admin/feature-flags   (Bearer admin)
-{ "key": "new_vote_ui", "enabled": true, "rolloutPercent": 50, "tenantId": "<optionnel>" }
-```
-⚙️ Stockés comme secrets chiffrés `feature_flag.*` par tenant. Clé invalide (`!!`) → `400`.
+### 5.2 Finance
+- `GET/PUT /api/v1/admin/offers/settings` → taux par défaut (12 %), part en réserve, délai de libération
+- Taux négocié d'un organisateur : historique non rétroactif, avec date d'effet (fiche compte `/admin/users/[userId]`)
+- `GET /api/v1/admin/offers/withdrawals` → retraits à approuver, payer, rejeter
 
 ### 5.3 Maintenance
 - Manuelle : `POST /api/v1/admin/maintenance/purge` (réservé `PLATFORM_ADMIN`).
@@ -297,7 +294,7 @@ x-maintenance-cron-signature: <HMAC(body, API_MAINTENANCE_CRON_SECRET)>
 | Vote public | `GET /votes/public/:tenantSlug/events` ; `GET …/events/:eventSlug` ; `POST /votes/cast` | public |
 | Paiements | `POST /payments/public/init` ; `POST /payments/public/status` ; `GET /payments/public/status/stream` (SSE) ; `POST /payments/webhooks/feexpay` (HMAC) ; `POST /payments/init` | public / signé / Bearer |
 | Secrets | `POST /organizer/secrets` ; `GET /organizer/secrets/:key` | Bearer |
-| Admin | `GET /admin/audit-logs`, `/admin/users`, `/admin/jobs/overview`, `/admin/subscriptions/overview` ; `GET/POST /admin/feature-flags` ; `POST /admin/maintenance/purge`, `/admin/maintenance/migrate-secrets` | Bearer + RBAC |
+| Admin | `GET /admin/audit-logs`, `/admin/users`, `/admin/jobs/overview`, `/admin/offers/*` ; `POST /admin/maintenance/purge` | Bearer + RBAC |
 | Maintenance cron | `POST /maintenance/cron/purge` | HMAC signé |
 | Ops / santé | `GET /ops/metrics` (x-ops-token) ; `GET /health`, `/health/ready` | token / public |
 | RGPD | `GET /privacy/export` ; `DELETE /privacy/delete` | Bearer |

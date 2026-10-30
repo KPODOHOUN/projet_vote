@@ -13,7 +13,7 @@ type LedgerSummary = { walletsChecked: number; driftCount: number; unverifiableC
 
 type Overview = {
   pendingWithdrawals: number | null;
-  activeEscrowEvents: number | null;
+  activeEvents: number | null;
   ledger: LedgerSummary | null;
   maintenance: boolean | null;
   jobs: JobsOverview | null;
@@ -43,7 +43,7 @@ export default function AdminHomePage() {
       setPartialError([withdrawals, events, ledger, maintenance, jobs].some((r) => r.status === "rejected"));
       setData({
         pendingWithdrawals: withdrawals.status === "fulfilled" ? withdrawals.value.length : null,
-        activeEscrowEvents: events.status === "fulfilled" ? events.value.length : null,
+        activeEvents: events.status === "fulfilled" ? events.value.length : null,
         ledger: ledger.status === "fulfilled" ? ledger.value : null,
         maintenance: maintenance.status === "fulfilled" ? maintenance.value.enabled : null,
         jobs: jobs.status === "fulfilled" ? jobs.value : null
@@ -77,7 +77,7 @@ export default function AdminHomePage() {
         <AdminStatTile
           href="/admin/offers/events"
           label={t("adminHome.activeEvents")}
-          value={dash(data.activeEscrowEvents)}
+          value={dash(data.activeEvents)}
         />
         <AdminStatTile
           href="/admin/jobs"

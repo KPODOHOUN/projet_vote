@@ -1,17 +1,24 @@
-# Modèle non testé. Copier en render.yaml (exclu par le .gitignore).
+# Modèle non testé. Copier en render.yaml à la racine (exclu par le .gitignore).
 # Aucun hébergeur n'est retenu : ce fichier illustre un service API toujours actif
 # (pas de mise en veille : le rapprochement des paiements et les webhooks en dépendent).
 services:
   - type: web
     name: shadoma-api
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
     plan: starter            # un plan sans mise en veille
     healthCheckPath: /api/v1/health
-    preDeployCommand: npm run db:migrate:deploy
+    preDeployCommand: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
     envVars:
       - key: NODE_ENV
         value: production
+      # Migrations faites par preDeployCommand : ne pas les relancer au démarrage.
+      - key: RUN_MIGRATIONS_ON_START
+        value: "false"
+      # Une seule instance sans Redis ; sinon définir API_REDIS_URL.
+      - key: API_SINGLE_INSTANCE
+        value: "true"
       - key: DATABASE_URL
         sync: false
       - key: API_JWT_SECRET

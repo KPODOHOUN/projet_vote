@@ -7,9 +7,11 @@ Durée : 30 à 45 minutes. Il faut : un accès admin, un accès lecture à la ba
 ## 0. Préparation
 
 - [ ] Dernier `main` déployé, CI verte, `GET /api/v1/health/ready` → `200` avec `checks.database: "ok"`.
-- [ ] `API_PAYMENT_DEMO_MODE=false` en production (le démarrage est refusé sinon, mais vérifier la variable).
-- [ ] Clés PSP **plateforme** posées ; noter le préfixe : FeexPay `test_` = sandbox, `fp_` = live. FedaPay / KKiaPay : `*_BASE_URL` sandbox ou live.
-- [ ] Un événement Escrow de test, **activé**, avec 2 candidats, prix du vote **100 FCFA**. Noter son slug.
+- [ ] `API_PAYMENT_DEMO_MODE=false` (ou variable absente) en production : `true` fait refuser le démarrage.
+- [ ] Clés PSP **plateforme** posées ; noter le préfixe : FeexPay `test_` = sandbox, `fp_` = live. FedaPay : `FEDAPAY_BASE_URL` sandbox ou live.
+- [ ] Worker cron déployé **avec la même version que l'API** (la signature des appels cron couvre le chemin depuis le 30/10/2026 : un ancien worker est refusé).
+- [ ] Un concours de test **en ligne** (contrat signé), avec 2 candidats, prix du vote **100 FCFA**. Noter son slug.
+- [ ] Numéro de retrait de l'organisateur de test enregistré **au moins 24 h avant** l'étape de retrait (délai de sécurité après tout changement).
 
 ## 1. Sandbox (aucun argent réel)
 
@@ -28,19 +30,19 @@ SELECT v.id, v."votesCount", v."paidAt", v."cancelledAt"
 FROM "Vote" v JOIN "Event" e ON e.id = v."eventId"
 WHERE e.slug = '<slug>' ORDER BY v."createdAt" DESC LIMIT 5;
 
--- Le portefeuille : une écriture VOTE_CREDIT liée au paiement
+-- Le portefeuille : une écriture VOTE_CREDIT (disponible) et une HELD_ALLOCATION (réserve) liées au paiement
 SELECT le.kind, le."amountCfa", le.direction, le.bucket, le."paymentId", le."createdAt"
 FROM "WalletLedgerEntry" le JOIN "OrganizerWallet" w ON w.id = le."walletId"
 JOIN "Event" e ON e."tenantId" = w."tenantId"
 WHERE e.slug = '<slug>' ORDER BY le."createdAt" DESC LIMIT 5;
 ```
 
-- [ ] `status = SUCCEEDED`, `commissionCfa` = 10 % du montant (offre Escrow).
+- [ ] `status = SUCCEEDED`, `commissionCfa` = taux figé par le contrat du concours (`Event.commissionBps`, 12 % par défaut : 12 FCFA sur 100), arrondi à l'inférieur.
 - [ ] Le vote compte sur `/e/<slug>/results` (+1 voix).
-- [ ] Une seule écriture `VOTE_CREDIT` pour ce `paymentId`.
+- [ ] Une seule écriture `VOTE_CREDIT` et une seule `HELD_ALLOCATION` pour ce `paymentId` ; leur somme = montant − commission.
 
 4. **Idempotence** : relancer la vérification du même paiement (rafraîchir l'écran de statut, ou rejouer le webhook FeexPay depuis le tableau de bord PSP s'il le permet). Relancer les trois requêtes :
-   - [ ] toujours **une** transaction, **un** vote, **une** écriture `VOTE_CREDIT` ; le compteur public n'a pas bougé.
+   - [ ] toujours **une** transaction, **un** vote, une seule paire d'écritures de portefeuille ; le compteur public n'a pas bougé.
 5. **Échec** : lancer un paiement puis l'annuler ou le laisser expirer chez le PSP.
    - [ ] `status = FAILED`, aucun vote compté, aucune écriture de portefeuille.
 
@@ -48,11 +50,11 @@ WHERE e.slug = '<slug>' ORDER BY le."createdAt" DESC LIMIT 5;
 
 Basculer les clés en live, redéployer, revérifier `/health/ready`.
 
-1. Payer **1 voix à 100 FCFA** avec un vrai numéro Mobile Money (MTN, Moov ou Orange), valider la demande sur le téléphone.
+1. Payer **1 voix à 100 FCFA** avec un vrai numéro Mobile Money (MTN, Moov ou Celtiis selon le PSP), valider la demande sur le téléphone.
 2. Rejouer les trois requêtes de l'étape 1.
    - [ ] Mêmes résultats qu'en sandbox ; `providerRef` correspond à la référence affichée par le PSP.
    - [ ] Le débit de 100 FCFA apparaît sur le téléphone et dans le tableau de bord du PSP.
-3. Clôturer l'événement (ou attendre la clôture par le cron), puis vérifier que le solde passe en disponible :
+3. Clôturer le concours (ou attendre la clôture automatique), puis, après le délai de libération (48 h par défaut, `/admin/offers`), vérifier que la réserve est passée en disponible :
 
 ```sql
 SELECT w."withdrawableCfa", w."heldCfa"
@@ -60,7 +62,7 @@ FROM "OrganizerWallet" w JOIN "Event" e ON e."tenantId" = w."tenantId"
 WHERE e.slug = '<slug>';
 ```
 
-4. Côté organisateur, demander un retrait du disponible ; côté admin (`/admin/retraits`), l'approuver puis le marquer payé.
+4. Côté organisateur, demander un retrait du disponible ; côté admin (`/admin/offers/withdrawals`), l'approuver, afficher le numéro, payer, puis le marquer payé.
    - [ ] La demande passe `PENDING` → `APPROVED` → `PAID` ; une écriture `WITHDRAWAL_DEBIT` apparaît ; le solde baisse du même montant.
    - [ ] « Marquer payé » ne déclenche **aucun** virement : faire le virement réel hors plateforme, puis seulement marquer payé.
 5. Réconciliation : `/admin` → écart journal / soldes à **0**.

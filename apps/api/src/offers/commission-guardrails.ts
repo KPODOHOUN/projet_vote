@@ -4,9 +4,9 @@ import type { AuthUser } from "../auth/auth.types";
 
 /**
  * Fourchette publique de commission (business plan §5.5). En sortir exige
- * PLATFORM_SUPER_ADMIN. Source de vérité unique — tout endpoint qui écrit
- * Event.commissionBps / Tenant.commissionBps doit passer par cette fonction,
- * qu'il s'agisse de la console offers ou de la console platform-control.
+ * PLATFORM_SUPER_ADMIN. Source de vérité unique — tout endpoint qui écrit un
+ * taux (Event.commissionBps, CommissionRate d'un organisateur, taux par défaut)
+ * doit passer par cette fonction.
  */
 export const COMMISSION_FLOOR_BPS = 400; // 4%
 export const COMMISSION_CEILING_BPS = 1_200; // 12%

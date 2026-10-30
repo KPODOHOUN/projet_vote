@@ -98,13 +98,14 @@ Les migrations Prisma s'appliquent au démarrage du conteneur API (`docker-entry
 
 ---
 
-## 8. État actuel (2026-07-04)
+## 8. État actuel (2026-10-30)
 
-- **API** : 165 tests verts sur PostgreSQL réel.
-- **Front** : routes publiques `/e/{slug}`, profils `/e/{slug}/c/{ref}`, quick-start organisateur, programme partenaires.
-- **E2E** : 14/14 Playwright verts en local.
-- **CI** : workflows `ci.yml` + `e2e.yml` prêts ; workflows deploy + ops healthchecks ajoutés.
-- **Prod** : appliquer les migrations récentes (`publicRef`, partenaires, secrets plateforme) — automatique au redeploy API si entrypoint actif ; smoke test via `scripts/smoke-deploy.sh`.
+- **Modèle** : aucun abonnement ni forfait ; mise en ligne par la signature du contrat du concours ; commission 12 % par défaut (ADR-022).
+- **API** : suites `npm test` et `test:offers` vertes sur PostgreSQL réel.
+- **Front** : routes publiques `/e/{slug}`, profils `/e/{slug}/c/{ref}`, billetterie, quick-start organisateur, signature du contrat.
+- **E2E** : suite Playwright verte en local et en CI.
+- **CI** : un seul workflow, `ci.yml` (typecheck, lint, tests API, web et e2e). Pas de workflow de déploiement.
+- **Prod** : image `apps/api/Dockerfile` (migrations au démarrage) ; voir `docs/deployment/staging-production.md`.
 
 ---
 

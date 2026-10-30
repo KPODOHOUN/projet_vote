@@ -17,7 +17,12 @@ Le système d'abonnement, le forfait d'activation et l'offre EXTERNAL ont été 
 
 ## Déploiement
 
-- [ ] Appliquer les migrations `20261029100000_contract_finance_cleanup` puis
-      `20261029110000_backfill_counts_ledger_labels` (automatique au démarrage du conteneur API) :
-      la première archive les anciennes données dans `LegacyArchive` avant de supprimer les tables,
-      la seconde corrige les lignes existantes (quantité de votes, écritures de billets, libellés).
+- [ ] **Sauvegarder la base**, puis appliquer les migrations `20261029100000_contract_finance_cleanup`,
+      `20261029110000_backfill_counts_ledger_labels` et `20261030160000_payout_cooldown_archived_reserve`
+      (automatique au démarrage du conteneur `apps/api/Dockerfile`) : la première archive les anciennes
+      données dans `LegacyArchive` avant de supprimer les tables, la deuxième corrige les lignes
+      existantes, la troisième ajoute le délai de 24 h sur le numéro de retrait.
+- [ ] Choisir l'hébergeur et poser les variables de production (voir `docs/deployment/staging-production.md`) :
+      en production, l'API exige `API_REDIS_URL` **ou** `API_SINGLE_INSTANCE=true`.
+- [ ] Déployer le worker cron **en même temps** que l'API (nouvelle signature des appels cron).
+- [ ] Dérouler `docs/runbooks/premier-paiement-reel.md` (sandbox puis live 100 FCFA).

@@ -39,8 +39,6 @@
     "@types/qs": "^6.15.1",
     "@types/range-parser": "^1.2.7",
     "@types/send": "^1.2.1",
-    "@types/stats.js": "^0.17.4",
-    "@types/three": "^0.184.1",
     "eslint": "^9.39.4",
     "typescript-eslint": "^8.60.0"
   }

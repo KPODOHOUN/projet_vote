@@ -29,7 +29,7 @@ Pour une candidate du concours démo : ouvrez le concours → cliquez sur une ca
 
 - **Aucun argent réel** n'est débité. C'est une démonstration, pas la version commerciale.
 - Les **votes payants** (Mobile Money) peuvent **échouer** ou rester en attente — c'est **attendu** (prestataire en mode test, clés factices).
-- L'**activation d'un concours** est **gratuite (0 FCFA)** : vous pouvez publier un concours sans payer.
+- **Publier un concours est gratuit** : il passe en ligne dès que vous signez son contrat (lecture, case à cocher, nom et code reçu par e-mail). Aucun abonnement, aucun frais d'activation.
 - Le concours démo **Miss Campus 2026** a déjà des votes et un classement — utile pour tester l'affichage sans payer.
 
 ### Premier chargement parfois lent
@@ -78,7 +78,7 @@ Mot de passe : **`SecurePass123!`**
 - Navigation sur **mobile** (portrait) et **ordinateur**
 - **Inscription** et **connexion**
 - Création d'un concours, ajout de candidat(e)s (photo par URL)
-- **Activation** du concours (gratuite, immédiate)
+- **Mise en ligne** du concours par la signature de son contrat (gratuite, immédiate)
 - Page publique du concours, **classement**, **résultats**
 - Tableau de bord organisateur
 - Invitation d'un membre d'équipe (menu Équipe)

@@ -33,7 +33,7 @@ projet_vote/
 - Mise en ligne d'un concours par la signature électronique de son contrat (PDF signé téléchargeable à volonté) — voir ADR-022
 - Commission plateforme de 12 % par défaut prélevée à chaque paiement ; le reste au portefeuille de l'organisateur (réserve + part retirable)
 - Paiements démo pour la phase de test (`API_PAYMENT_DEMO_MODE`, interdit en prod)
-- Billetterie avec QR codes (paiement réel non branché : la confirmation d'achat n'existe qu'en `API_PAYMENT_DEMO_MODE`)
+- Billetterie avec QR codes, payée en Mobile Money par le même circuit que les votes (commission et réserve comprises)
 - Retraits organisateur **100 % manuels** (validation admin) — l'automatisation via PSP est prévue (F6) mais pas encore livrée, et n'est jamais un prérequis de lancement (voir ADR-020)
 - Tableau de bord organisateur et administration plateforme
 - Conformité RGPD
