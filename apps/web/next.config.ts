@@ -65,7 +65,8 @@ const contentSecurityPolicy = [
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  // Caméra : seulement pour le site lui-même (scanner des entrées), jamais pour un contenu tiers intégré.
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=()" },
   // L'éditeur d'apparence affiche la page publique dans une iframe du même site.
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy", value: contentSecurityPolicy },
@@ -74,6 +75,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Polices lues à l'exécution par le rendu des billets : à embarquer explicitement.
+  outputFileTracingIncludes: {
+    "/t/[ticketId]/image": ["./assets/fonts/*.ttf"]
+  },
   reactStrictMode: true,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

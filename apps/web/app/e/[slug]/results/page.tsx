@@ -17,7 +17,7 @@ import { formatCount } from "../../../../lib/format";
 import { getVotePhase } from "../../../../lib/vote-phase";
 import { openGraphLocale } from "../../../../lib/public-meta";
 
-import { getApiBaseUrl } from "@/lib/api-base-url";
+import { fetchPublicApi, previewParam } from "@/lib/server-api";
 
 type ResultRow = {
   candidateId: string;
@@ -43,25 +43,19 @@ type ResultsResponse = {
   totals: { votes: number };
 };
 
-async function fetchResults(slug: string): Promise<ResultsResponse | null> {
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/votes/public/event/${encodeURIComponent(slug)}/results`, {
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" }
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as ResultsResponse;
-  } catch {
-    return null;
-  }
+async function fetchResults(slug: string, preview: string | undefined): Promise<ResultsResponse | null> {
+  return fetchPublicApi<ResultsResponse>(`/votes/public/event/${encodeURIComponent(slug)}/results`, preview);
 }
 
-type PageProps = { params: Promise<{ slug: string }> };
+type PageProps = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string | string[] }>;
+};
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const locale = await getServerLocale();
-  const data = await fetchResults(slug);
+  const data = await fetchResults(slug, previewParam(await searchParams));
   if (!data) {
     return { title: `${translate(locale, "pub.voteNotFound")} · ${SITE_NAME}`, robots: { index: false, follow: false } };
   }
@@ -83,11 +77,11 @@ const kicker = "text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--
 const accentKicker = "text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--mini-accent)]";
 const gutter = "px-[clamp(20px,4vw,56px)]";
 
-export default async function PublicResultsPage({ params }: PageProps) {
+export default async function PublicResultsPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const locale = await getServerLocale();
   const t9n = (key: MessageKey) => translate(locale, key);
-  const data = await fetchResults(slug);
+  const data = await fetchResults(slug, previewParam(await searchParams));
   if (!data) {
     notFound();
   }

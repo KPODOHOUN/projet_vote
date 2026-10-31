@@ -48,3 +48,23 @@ test("RolesGuard: autorise le bon rôle, refuse les autres et l'absence d'utilis
   assert.throws(() => guard.canActivate(httpCtx({ user: { role: UserRole.ORGANIZER_OWNER } })), /non autorisée/);
   assert.throws(() => guard.canActivate(httpCtx({ user: undefined })), /non autorisée/);
 });
+
+test("jeton expiré, falsifié ou mal formé : 401, jamais 500", async () => {
+  const { SignJWT } = await import("jose");
+  const { AuthService } = await import("./auth.service");
+  const { PrismaService } = await import("../prisma/prisma.service");
+  const { NotificationsService } = await import("../notifications/notifications.service");
+  const { MailService } = await import("../mail/mail.service");
+  const { env } = await import("../config/env");
+  const { UnauthorizedException } = await import("@nestjs/common");
+  const prismaService = new PrismaService();
+  const auth = new AuthService(prismaService, new NotificationsService(prismaService), new MailService());
+  const key = new TextEncoder().encode(env.API_JWT_SECRET);
+  const claims = { tenantId: "t", role: "ORGANIZER_OWNER", email: "a@b.io" };
+  const expired = await new SignJWT(claims).setProtectedHeader({ alg: "HS256" }).setSubject("u").setIssuer("shadowa-votes").setAudience("shadowa-votes-api").setExpirationTime(Math.floor(Date.now() / 1000) - 60).sign(key);
+  const forged = await new SignJWT(claims).setProtectedHeader({ alg: "HS256" }).setSubject("u").setIssuer("shadowa-votes").setAudience("shadowa-votes-api").setExpirationTime("1h").sign(new TextEncoder().encode("x".repeat(40)));
+  for (const [token, message] of [[expired, /Session expirée/], [forged, /Session invalide/], ["pas-un-jeton", /Session invalide/]] as const) {
+    await assert.rejects(auth.verifyAccessToken(token), (error: unknown) => error instanceof UnauthorizedException && message.test((error as Error).message));
+  }
+  await prismaService.client.$disconnect();
+});

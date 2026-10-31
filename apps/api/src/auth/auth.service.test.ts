@@ -70,7 +70,12 @@ test("refresh: rotation single-use + détection de réutilisation révoque toute
   const { refreshToken: rt2 } = await authService.refresh({ refreshToken: rt1 });
   assert.notEqual(rt1, rt2);
 
-  // Rejouer l'ancien token (rt1) = réutilisation → rejet + révocation de chaîne.
+  // Rejouer l'ancien token (rt1) après la courte période de grâce des requêtes
+  // parallèles = réutilisation → rejet + révocation de chaîne.
+  await prisma.authSession.updateMany({
+    where: { revokedAt: { not: null } },
+    data: { revokedAt: new Date(Date.now() - 60_000) }
+  });
   await assert.rejects(authService.refresh({ refreshToken: rt1 }), /réutilisation détectée/);
 
   // La détection a révoqué toutes les sessions actives : rt2 (légitime) est mort aussi.

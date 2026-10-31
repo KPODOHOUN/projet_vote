@@ -1,4 +1,5 @@
-export type OAuthProvider = "google" | "facebook";
+// Seul Google est proposé : Facebook ne garantit pas que l'e-mail est vérifié.
+export type OAuthProvider = "google";
 
 export type ProviderConfig = {
   authorizeUrl: string;
@@ -18,11 +19,4 @@ export type GoogleUserInfo = {
   given_name: string;
   family_name: string;
   picture: string;
-};
-
-export type FacebookUserInfo = {
-  id: string;
-  name: string;
-  email: string;
-  picture: { data: { url: string } };
 };

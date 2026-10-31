@@ -7,8 +7,6 @@ import type {
   PspNormalizedStatus,
   PspPayinInitInput,
   PspPayinInitResult,
-  PspPayoutInput,
-  PspPayoutResult,
   PspStatusResult
 } from "./psp.types";
 
@@ -138,6 +136,7 @@ export class FedapayGateway implements PspGateway {
       throw new ServiceUnavailableException("Fedapay: création de transaction sans id.");
     }
     const reference = String(id);
+    await input.onReference?.(reference);
 
     // 2. generate one-time token for this transaction
     const tokenRes = await this.requestJson<Record<string, unknown>>(
@@ -179,65 +178,6 @@ export class FedapayGateway implements PspGateway {
   }
 
   /**
-   * Payout = create then start:
-   *   1. POST /payouts        → payout id (merchant_reference = our idempotency key)
-   *   2. PUT  /payouts/start  → { payouts:[{id}] }
-   * Only a definitive "sent" flips to SUCCEEDED. Anything else (pending/processing,
-   * network/5xx, missing id) → UNCERTAIN: no auto-retry, resolved by pull/admin.
-   */
-  async sendPayout(input: PspPayoutInput, creds: PspCredentials): Promise<PspPayoutResult> {
-    try {
-      const created = await this.requestJson<Record<string, unknown>>("POST", `${this.baseUrl}/payouts`, creds.apiKey, {
-        amount: input.amountCfa,
-        currency: { iso: "XOF" },
-        mode: input.network.toLowerCase(),
-        merchant_reference: input.idempotencyKey,
-        description: input.label,
-        // Un numéro au format de la doc ; une autre référence de compte reste telle quelle.
-        customer: {
-          phone_number: /^\+?\d{8,15}$/.test(input.beneficiaryAccount)
-            ? fedapayPhone(input.beneficiaryAccount)
-            : { number: input.beneficiaryAccount }
-        }
-      });
-      const payout = unwrap(created, "v1/payout");
-      const id = payout.id;
-      if (id === undefined || id === null) {
-        return { status: "UNCERTAIN", reason: "payout create sans id" };
-      }
-      const providerRef = String(id);
-
-      const started = await this.requestJson<Record<string, unknown>>("PUT", `${this.baseUrl}/payouts/start`, creds.apiKey, {
-        payouts: [{ id }]
-      });
-      const status = this.extractStartedStatus(started, id);
-      if (status === "SUCCEEDED") return { status: "SUCCEEDED", providerRef };
-      if (status === "FAILED") return { status: "FAILED", reason: "fedapay_failed" };
-      return { status: "UNCERTAIN", reason: `start status non-terminal` };
-    } catch (err) {
-      this.logger.warn({ msg: "fedapay.payout.uncertain", err: err instanceof Error ? err.message : String(err) });
-      return { status: "UNCERTAIN", reason: err instanceof Error ? err.message : "payout_error" };
-    }
-  }
-
-  async fetchPayoutStatus(reference: string, creds: PspCredentials): Promise<PspStatusResult> {
-    const raw = await this.requestJson<Record<string, unknown>>(
-      "GET",
-      `${this.baseUrl}/payouts/${encodeURIComponent(reference)}`,
-      creds.apiKey
-    );
-    const payout = unwrap(raw, "v1/payout");
-    const status = normalize(payout.status);
-    if (!status) throw new ServiceUnavailableException(`Fedapay: statut payout inconnu "${payout.status}".`);
-    return {
-      status,
-      amountCfa: toInt(payout.amount, 0),
-      currency: this.currencyIso(payout.currency),
-      reason: payout.last_error_code as string | undefined
-    };
-  }
-
-  /**
    * Balance is not part of the documented public API we verified. We never invent
    * a URL — return an empty map until FedaPay's balance endpoint is supplied.
    */
@@ -251,18 +191,8 @@ export class FedapayGateway implements PspGateway {
     return raw ? String(raw) : "XOF";
   }
 
-  private extractStartedStatus(started: Record<string, unknown>, id: unknown): PspNormalizedStatus | null {
-    const list = started["v1/payouts"];
-    if (Array.isArray(list)) {
-      const match = list.find((p) => p && typeof p === "object" && (p as { id?: unknown }).id === id) ?? list[0];
-      if (match && typeof match === "object") return normalize((match as { status?: unknown }).status);
-    }
-    const single = unwrap(started, "v1/payout");
-    return normalize(single.status);
-  }
-
   /**
-   * Shared HTTP helper: bounded timeout, single retry on network/5xx, 4xx terminal,
+   * Shared HTTP helper: bounded timeout, single retry of GETs on network/5xx, 4xx terminal,
    * API key masked in logs. Mirrors FeexpayGateway's helper for consistency.
    */
   private async requestJson<T>(
@@ -284,7 +214,10 @@ export class FedapayGateway implements PspGateway {
     }
 
     let lastErr: unknown;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    // Seul un GET se rejoue : rejouer un POST (création, envoi USSD) après un
+    // délai dépassé peut créer un second paiement chez le prestataire.
+    const maxAttempts = method === "GET" ? 2 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
@@ -318,7 +251,7 @@ export class FedapayGateway implements PspGateway {
       } finally {
         clearTimeout(timer);
       }
-      if (attempt === 1) await new Promise((r) => setTimeout(r, 50 + Math.floor(Math.random() * 200)));
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 50 + Math.floor(Math.random() * 200)));
     }
     throw lastErr instanceof Error ? lastErr : new ServiceUnavailableException("Fedapay: échec après retry.");
   }

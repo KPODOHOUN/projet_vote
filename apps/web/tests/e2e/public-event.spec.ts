@@ -1,13 +1,19 @@
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } } });
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 // Couvre les pages publiques event-as-platform (ADR-016) rendues côté serveur :
 //   /e/[slug]          → mini-plateforme de vote
 //   /e/[slug]/results  → classement public (votes payés uniquement)
 // Ces pages sont des Server Components : on ne peut pas mocker leur fetch depuis
 // le navigateur, on provisionne donc de vraies données via l'API (comme
-// organizer-flow.spec). Un événement neuf est DRAFT (en ligne après signature
-// du contrat), donc la page de vote affiche la branche « vote pas ouvert » et
-// les résultats l'état zéro — testables sans dépendre d'un PSP.
+// organizer-flow.spec). Un brouillon n'est pas public. On le met en ligne en base
+// (dates futures) pour le rendu et l'état zéro des résultats, sans PSP.
 test("pages publiques d'un événement : rendu SSR + état zéro des résultats", async ({
   page,
   request
@@ -51,20 +57,25 @@ test("pages publiques d'un événement : rendu SSR + état zéro des résultats"
     expect(candidateResponse.ok()).toBeTruthy();
   }
 
-  // 4) Page publique de vote (SSR). DRAFT → branche « vote pas ouvert ».
+  // 4) Un brouillon n'a pas de page publique.
+  const draftResponse = await page.goto(`/e/${eventSlug}`);
+  expect(draftResponse?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Ce concours n'est pas disponible" })).toBeVisible();
+
+  // 5) Mise en ligne (dates futures) : la page s'affiche, le vote n'est pas encore ouvert.
+  await prisma.event.update({ where: { id: createdEvent.id }, data: { status: "ACTIVE" } });
   await page.goto(`/e/${eventSlug}`);
   await expect(page.getByRole("heading", { name: eventTitle })).toBeVisible();
   await expect(page.getByText(organizerName)).toBeVisible();
-  await expect(page.getByText("Le vote n'est pas ouvert")).toBeVisible();
-  // Libellé « résultats en direct » remplacé (7.11-b : il n'y a pas de direct).
-  await expect(page.getByRole("link", { name: "Voir les résultats" })).toBeVisible();
+  await expect(page.getByText(/Le vote ouvre le/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Résultats" })).toBeVisible();
 
-  // 5) Page publique des résultats (SSR). Aucun vote payé → état zéro + invariant.
+  // 6) Page publique des résultats (SSR). Aucun vote payé → état zéro + invariant.
   await page.goto(`/e/${eventSlug}/results`);
   await expect(page.getByRole("heading", { name: eventTitle })).toBeVisible();
   await expect(page.getByText("Seuls les votes")).toBeVisible();
 
-  // 6) Slug inexistant → 404.
+  // 7) Slug inexistant → 404.
   const notFoundResponse = await page.goto(`/e/inexistant-${unique}`);
   expect(notFoundResponse?.status()).toBe(404);
 });

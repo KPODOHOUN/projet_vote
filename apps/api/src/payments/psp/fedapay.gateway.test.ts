@@ -105,72 +105,6 @@ test("fetchPayinStatus maps declined → FAILED", async () => {
   assert.equal(res.status, "FAILED");
 });
 
-test("sendPayout creates then starts; sent → SUCCEEDED with providerRef", async () => {
-  const calls: { url: string; method: string; body: Record<string, unknown> }[] = [];
-  mockSequence([
-    // POST /payouts → { id }
-    (url, init) => {
-      calls.push({ url, method: init.method!, body: JSON.parse(String(init.body)) });
-      return { status: 200, body: { "v1/payout": { id: 77, status: "pending" } } };
-    },
-    // PUT /payouts/start → started
-    (url, init) => {
-      calls.push({ url, method: init.method!, body: JSON.parse(String(init.body)) });
-      return { status: 200, body: { "v1/payouts": [{ id: 77, status: "sent" }] } };
-    }
-  ]);
-  const gw = new FedapayGateway();
-  const res = await gw.sendPayout(
-    { idempotencyKey: "per1:ORGANIZER:tenantA", amountCfa: 100, beneficiaryAccount: "+2290166000000", network: "mtn", label: "Versement" },
-    creds
-  );
-  assert.deepEqual(res, { status: "SUCCEEDED", providerRef: "77" });
-  assert.equal(calls.length, 2);
-  const [c0, c1] = calls as [(typeof calls)[number], (typeof calls)[number]];
-  // create
-  assert.equal(c0.url, "https://sandbox-api.fedapay.com/v1/payouts");
-  assert.equal(c0.method, "POST");
-  assert.equal(c0.body.amount, 100);
-  assert.equal(c0.body.merchant_reference, "per1:ORGANIZER:tenantA");
-  // start
-  assert.equal(c1.url, "https://sandbox-api.fedapay.com/v1/payouts/start");
-  assert.equal(c1.method, "PUT");
-  assert.deepEqual(c1.body, { payouts: [{ id: 77 }] });
-});
-
-test("sendPayout on 5xx → UNCERTAIN (never auto-succeed)", async () => {
-  mockSequence([() => ({ status: 503, body: { message: "down" } })]);
-  const gw = new FedapayGateway();
-  const res = await gw.sendPayout(
-    { idempotencyKey: "k", amountCfa: 100, beneficiaryAccount: "+229", network: "mtn", label: "x" },
-    creds
-  );
-  assert.equal(res.status, "UNCERTAIN");
-});
-
-test("sendPayout when start returns non-terminal pending → UNCERTAIN", async () => {
-  mockSequence([
-    () => ({ status: 200, body: { "v1/payout": { id: 9, status: "pending" } } }),
-    () => ({ status: 200, body: { "v1/payouts": [{ id: 9, status: "processing" }] } })
-  ]);
-  const gw = new FedapayGateway();
-  const res = await gw.sendPayout(
-    { idempotencyKey: "k", amountCfa: 100, beneficiaryAccount: "+229", network: "mtn", label: "x" },
-    creds
-  );
-  assert.equal(res.status, "UNCERTAIN");
-});
-
-test("fetchPayoutStatus maps sent → SUCCEEDED, failed → FAILED", async () => {
-  mockSequence([
-    () => ({ status: 200, body: { "v1/payout": { id: 77, status: "sent", amount: 50, currency: { iso: "XOF" } } } })
-  ]);
-  const gw = new FedapayGateway();
-  const ok = await gw.fetchPayoutStatus("77", creds);
-  assert.equal(ok.status, "SUCCEEDED");
-  assert.equal(ok.amountCfa, 50);
-});
-
 test("getBalance returns {} (balance endpoint not documented → never invent a URL)", async () => {
   const gw = new FedapayGateway();
   const bal = await gw.getBalance(creds);
@@ -192,4 +126,33 @@ test("initPayin refuse Celtiis (aucun code mode FedaPay publié) avant tout envo
     /Celtiis/
   );
   assert.equal(calls, 0);
+});
+
+test("initPayin livre la référence avant l'envoi USSD, et un envoi en échec n'est jamais rejoué", async () => {
+  let calls = 0;
+  mockSequence([
+    () => { calls += 1; return { status: 200, body: { "v1/transaction": { id: 777, status: "pending" } } }; },
+    () => { calls += 1; return { status: 200, body: { token: "tok_777" } }; },
+    () => { calls += 1; return { status: 503, body: { message: "timeout" } }; }
+  ]);
+  const bound: string[] = [];
+  await assert.rejects(
+    new FedapayGateway().initPayin(
+      { amountCfa: 100, phoneNumber: "+2290166000000", operator: "mtn", customId: "tx1", onReference: async (ref) => { bound.push(ref); } },
+      creds
+    )
+  );
+  assert.deepEqual(bound, ["777"]);
+  assert.equal(calls, 3, "l'envoi USSD en 503 n'est pas renvoyé");
+});
+
+test("un GET de statut en 5xx est rejoué une fois", async () => {
+  let calls = 0;
+  mockSequence([
+    () => { calls += 1; return { status: 502, body: {} }; },
+    () => { calls += 1; return { status: 200, body: { "v1/transaction": { id: 9, status: "approved", amount: 100, currency: { iso: "XOF" } } } }; }
+  ]);
+  const res = await new FedapayGateway().fetchPayinStatus("9", creds);
+  assert.equal(res.status, "SUCCEEDED");
+  assert.equal(calls, 2);
 });

@@ -5,6 +5,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { hashVoterPhone, voterPhoneLast4 } from "../common/voter-phone";
 import { payinNetworksFor } from "../common/mobile-operator";
 import { env } from "../config/env";
+import { assertVotingOpen } from "../events/event-lifecycle";
+import { isValidEventPreviewToken } from "../common/event-preview-token";
 
 const castVoteSchema = z
   .object({
@@ -19,6 +21,11 @@ const castVoteSchema = z
     message: "Indiquez candidatePublicRef ou candidateNumber."
   });
 
+/** Un brouillon n'est visible qu'avec le jeton d'aperçu remis à son organisateur. */
+function isPubliclyVisible(event: { id: string; status: EventStatus }, previewToken: string | undefined): boolean {
+  return event.status !== EventStatus.DRAFT || isValidEventPreviewToken(event.id, previewToken);
+}
+
 @Injectable()
 export class VotesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -32,7 +39,8 @@ export class VotesService {
     }
 
     return this.prisma.client.event.findMany({
-      where: { tenantId: tenant.id },
+      // Un brouillon (contrat non signé) n'est pas public.
+      where: { tenantId: tenant.id, status: { not: EventStatus.DRAFT } },
       select: {
         id: true,
         slug: true,
@@ -68,7 +76,7 @@ export class VotesService {
         voteUnitPriceCfa: true
       }
     });
-    if (!event) {
+    if (!event || event.status === EventStatus.DRAFT) {
       throw new NotFoundException("Événement introuvable.");
     }
 
@@ -93,7 +101,7 @@ export class VotesService {
    * "platform" unit, reached by its globally-unique slug. Branding is resolved
    * with event-overrides-organizer inheritance.
    */
-  async getPublicEventBySlug(eventSlug: string) {
+  async getPublicEventBySlug(eventSlug: string, previewToken?: string) {
     const event = await this.prisma.client.event.findUnique({
       where: { slug: eventSlug.toLowerCase() },
       include: {
@@ -102,7 +110,7 @@ export class VotesService {
         }
       }
     });
-    if (!event) {
+    if (!event || !isPubliclyVisible(event, previewToken)) {
       throw new NotFoundException("Événement introuvable.");
     }
 
@@ -162,12 +170,12 @@ export class VotesService {
    * Profil candidat public : /e/{slug}/c/{publicRef}
    * Compatibilité : si ref est numérique, résolution par numéro (anciens liens).
    */
-  async getPublicCandidate(eventSlug: string, ref: string) {
+  async getPublicCandidate(eventSlug: string, ref: string, previewToken?: string) {
     const event = await this.prisma.client.event.findUnique({
       where: { slug: eventSlug.toLowerCase() },
       include: { tenant: { select: { displayName: true, slug: true, logoUrl: true, brandColor: true, provider: true } } }
     });
-    if (!event) throw new NotFoundException("Événement introuvable.");
+    if (!event || !isPubliclyVisible(event, previewToken)) throw new NotFoundException("Événement introuvable.");
 
     const candidate = await this.resolveCandidateByPublicRef(event.id, ref);
     if (!candidate) throw new NotFoundException("Candidat introuvable.");
@@ -235,7 +243,7 @@ export class VotesService {
   }
 
   /** Public results by global event slug. Cancelled votes are excluded. */
-  async getPublicEventResults(eventSlug: string) {
+  async getPublicEventResults(eventSlug: string, previewToken?: string) {
     const event = await this.prisma.client.event.findUnique({
       where: { slug: eventSlug.toLowerCase() },
       select: {
@@ -255,7 +263,7 @@ export class VotesService {
         tenant: { select: { logoUrl: true, brandColor: true } }
       }
     });
-    if (!event) {
+    if (!event || !isPubliclyVisible(event, previewToken)) {
       throw new NotFoundException("Événement introuvable.");
     }
     const { id, slug, title, status, startsAt, endsAt } = event;
@@ -366,13 +374,7 @@ export class VotesService {
       throw new NotFoundException("Événement introuvable.");
     }
 
-    if (event.status !== EventStatus.ACTIVE) {
-      throw new BadRequestException("Cet événement n'est pas ouvert au vote.");
-    }
-    const now = new Date();
-    if (now < event.startsAt || now > event.endsAt) {
-      throw new BadRequestException("Le vote est fermé pour cet événement (hors période).");
-    }
+    assertVotingOpen(event);
 
     // Per-event voting rule: when a unit price is set, amount must be a multiple of it.
     if (event.voteUnitPriceCfa === null || event.voteUnitPriceCfa <= 0) {

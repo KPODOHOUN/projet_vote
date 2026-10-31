@@ -7,8 +7,6 @@ import type {
   PspNormalizedStatus,
   PspPayinInitInput,
   PspPayinInitResult,
-  PspPayoutInput,
-  PspPayoutResult,
   PspStatusResult
 } from "./psp.types";
 import { parseStrictProviderAmount } from "./parse-provider-amount";
@@ -92,45 +90,6 @@ export class FeexpayGateway implements PspGateway {
     };
   }
 
-  async sendPayout(input: PspPayoutInput, creds: PspCredentials): Promise<PspPayoutResult> {
-    const url = `${this.baseUrl}/api/payouts/public/transfer/global`;
-    try {
-      const raw = await this.requestJson<Record<string, unknown>>("POST", url, creds.apiKey, {
-        shop: creds.shop,
-        amount: input.amountCfa,
-        phoneNumber: input.beneficiaryAccount,
-        network: input.network,
-        motif: input.label
-      });
-      const status = normalize(raw.status);
-      if (status === "SUCCEEDED") {
-        const ref = String(raw.reference ?? "");
-        if (!ref) return { status: "UNCERTAIN", reason: "payout sans reference" };
-        return { status: "SUCCEEDED", providerRef: ref };
-      }
-      if (status === "FAILED") return { status: "FAILED", reason: String(raw.reason ?? "feexpay_failed") };
-      // PENDING or unknown sync response — not certain; resolve by pull/manual.
-      return { status: "UNCERTAIN", reason: `sync status "${raw.status}"` };
-    } catch (err) {
-      // Network/5xx/timeout — NEVER assume success. UNCERTAIN forces manual/pull.
-      this.logger.warn({ msg: "feexpay.payout.uncertain", err: err instanceof Error ? err.message : String(err) });
-      return { status: "UNCERTAIN", reason: err instanceof Error ? err.message : "payout_error" };
-    }
-  }
-
-  async fetchPayoutStatus(reference: string, creds: PspCredentials): Promise<PspStatusResult> {
-    const url = `${this.baseUrl}/api/payouts/status/public/${encodeURIComponent(reference)}`;
-    const raw = await this.requestJson<Record<string, unknown>>("GET", url, creds.apiKey);
-    const status = normalize(raw.status);
-    if (!status) throw new ServiceUnavailableException(`Feexpay: statut payout inconnu "${raw.status}".`);
-    return {
-      status,
-      amountCfa: toInt(raw.amount, 0),
-      currency: String(raw.currency ?? "XOF"),
-      reason: raw.reason as string | undefined
-    };
-  }
-
   async getBalance(creds: PspCredentials): Promise<Record<string, number>> {
     const url = `${this.baseUrl}/api/balance/public/getByShop/${encodeURIComponent(creds.shop)}`;
     const raw = await this.requestJson<Record<string, unknown>>("GET", url, creds.apiKey);
@@ -143,8 +102,8 @@ export class FeexpayGateway implements PspGateway {
   }
 
   /**
-   * Shared HTTP helper: bounded timeout, single retry on network/5xx, 4xx
-   * terminal, API key masked in logs. Mirrors the original FeexpayHttpClient.
+   * Shared HTTP helper: bounded timeout, single retry of GETs on network/5xx,
+   * 4xx terminal, API key masked in logs. Mirrors the original FeexpayHttpClient.
    */
   private async requestJson<T>(
     method: "GET" | "POST",
@@ -165,7 +124,10 @@ export class FeexpayGateway implements PspGateway {
     }
 
     let lastErr: unknown;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    // Seul un GET se rejoue : rejouer un POST (création, envoi USSD) après un
+    // délai dépassé peut créer un second paiement chez le prestataire.
+    const maxAttempts = method === "GET" ? 2 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
@@ -199,7 +161,7 @@ export class FeexpayGateway implements PspGateway {
       } finally {
         clearTimeout(timer);
       }
-      if (attempt === 1) await new Promise((r) => setTimeout(r, 50 + Math.floor(Math.random() * 200)));
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 50 + Math.floor(Math.random() * 200)));
     }
     throw lastErr instanceof Error ? lastErr : new ServiceUnavailableException("Feexpay: échec après retry.");
   }

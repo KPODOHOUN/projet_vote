@@ -38,21 +38,11 @@ export function listPlatformVotes(token: string, params: ListVotesParams = {}) {
 }
 
 export function cancelPlatformVote(token: string, voteId: string, reason: string) {
-  return apiFetch<{ voteId: string; cancelled: boolean; paymentVoided: boolean }>(
+  return apiFetch<{ voteId: string; cancelled: boolean; paymentVoided: boolean; reversedFromOrganizerCfa: number }>(
     `/admin/platform/votes/${voteId}/cancel`,
     {
       method: "POST",
       body: JSON.stringify({ reason }),
-      headers: { Authorization: `Bearer ${token}` }
-    }
-  );
-}
-
-export function deletePlatformVote(token: string, voteId: string) {
-  return apiFetch<{ voteId: string; deleted: boolean; paymentVoided: boolean }>(
-    `/admin/platform/votes/${voteId}`,
-    {
-      method: "DELETE",
       headers: { Authorization: `Bearer ${token}` }
     }
   );

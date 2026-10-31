@@ -5,6 +5,7 @@ import type { AuthUser } from "../auth/auth.types";
 import {
   COMMISSION_DEFAULT_BPS_KEY,
   DEFAULT_COMMISSION_BPS,
+  DEFAULT_TICKET_COMMISSION_BPS,
   DEFAULT_HELD_RELEASE_DELAY_HOURS,
   DEFAULT_OTP_RESEND_DELAY_SECONDS,
   DEFAULT_OTP_TTL_SECONDS,
@@ -13,6 +14,7 @@ import {
   OTP_RESEND_DELAY_SECONDS_KEY,
   OTP_TTL_SECONDS_KEY,
   SETTLEMENT_HELD_BPS_KEY,
+  TICKET_COMMISSION_BPS_KEY,
   parseIntSetting
 } from "../common/platform-settings";
 import { PrismaService } from "../prisma/prisma.service";
@@ -36,6 +38,8 @@ import { assertCommissionBpsAllowed, COMMISSION_CEILING_BPS, COMMISSION_FLOOR_BP
  */
 export type FinanceSettings = {
   commissionDefaultBps: number;
+  /** Commission sur chaque billet vendu (10 % par défaut). */
+  ticketCommissionBps: number;
   heldBps: number;
   heldReleaseDelayHours: number;
   otpTtlSeconds: number;
@@ -45,12 +49,14 @@ export type FinanceSettings = {
 /** Règles d'argent montrées aux organisateurs (page publique, contrat). */
 export type MoneyRules = {
   commissionDefaultBps: number;
+  ticketCommissionBps: number;
   heldBps: number;
   heldReleaseDelayHours: number;
 };
 
 const updateSettingsSchema = z.object({
   commissionDefaultBps: z.number().int().min(0).max(10_000).optional(),
+  ticketCommissionBps: z.number().int().min(0).max(10_000).optional(),
   heldBps: z.number().int().min(0).max(10_000).optional(),
   heldReleaseDelayHours: z.number().int().min(0).max(24 * 60).optional(),
   otpTtlSeconds: z.number().int().min(60).max(3600).optional(),
@@ -59,6 +65,7 @@ const updateSettingsSchema = z.object({
 
 const SETTING_KEYS = [
   COMMISSION_DEFAULT_BPS_KEY,
+  TICKET_COMMISSION_BPS_KEY,
   SETTLEMENT_HELD_BPS_KEY,
   HELD_RELEASE_DELAY_HOURS_KEY,
   OTP_TTL_SECONDS_KEY,
@@ -67,6 +74,7 @@ const SETTING_KEYS = [
 
 const KEY_BY_FIELD: Record<keyof z.infer<typeof updateSettingsSchema>, string> = {
   commissionDefaultBps: COMMISSION_DEFAULT_BPS_KEY,
+  ticketCommissionBps: TICKET_COMMISSION_BPS_KEY,
   heldBps: SETTLEMENT_HELD_BPS_KEY,
   heldReleaseDelayHours: HELD_RELEASE_DELAY_HOURS_KEY,
   otpTtlSeconds: OTP_TTL_SECONDS_KEY,
@@ -84,6 +92,7 @@ export class OfferSettingsService {
     const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
     return {
       commissionDefaultBps: parseIntSetting(map.get(COMMISSION_DEFAULT_BPS_KEY), DEFAULT_COMMISSION_BPS),
+      ticketCommissionBps: parseIntSetting(map.get(TICKET_COMMISSION_BPS_KEY), DEFAULT_TICKET_COMMISSION_BPS),
       heldBps: parseIntSetting(map.get(SETTLEMENT_HELD_BPS_KEY), DEFAULT_SETTLEMENT_HELD_BPS),
       heldReleaseDelayHours: parseIntSetting(map.get(HELD_RELEASE_DELAY_HOURS_KEY), DEFAULT_HELD_RELEASE_DELAY_HOURS),
       otpTtlSeconds: parseIntSetting(map.get(OTP_TTL_SECONDS_KEY), DEFAULT_OTP_TTL_SECONDS),
@@ -95,6 +104,7 @@ export class OfferSettingsService {
     const s = await this.getSettings();
     return {
       commissionDefaultBps: s.commissionDefaultBps,
+      ticketCommissionBps: s.ticketCommissionBps,
       heldBps: s.heldBps,
       heldReleaseDelayHours: s.heldReleaseDelayHours
     };
@@ -108,6 +118,9 @@ export class OfferSettingsService {
     }
     if (input.commissionDefaultBps !== undefined) {
       assertCommissionBpsAllowed(user, input.commissionDefaultBps);
+    }
+    if (input.ticketCommissionBps !== undefined) {
+      assertCommissionBpsAllowed(user, input.ticketCommissionBps);
     }
     const before = await this.getSettings();
     await this.prisma.client.$transaction([
@@ -156,6 +169,14 @@ export class OfferSettingsService {
     if (!event) throw new NotFoundException("Événement introuvable.");
     if (event.commissionBps != null) return event.commissionBps;
     return (await this.resolveTenantCommissionBps(event.tenantId)).bps;
+  }
+
+  /** Taux des billets d'un concours : figé par le contrat (Event.ticketCommissionBps), sinon réglage plateforme. */
+  async resolveTicketCommissionBps(eventId: string): Promise<number> {
+    const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { ticketCommissionBps: true } });
+    if (!event) throw new NotFoundException("Événement introuvable.");
+    if (event.ticketCommissionBps != null) return event.ticketCommissionBps;
+    return (await this.getSettings()).ticketCommissionBps;
   }
 
   /** Part du net mise en réserve pour un concours : figée par le contrat, sinon réglage plateforme. */

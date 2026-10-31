@@ -35,41 +35,52 @@ export default function OrganizerOfferPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <p className="block text-sm font-semibold text-slate-600">{t("offer.kicker")}</p>
         <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{t("offer.title")}</h1>
         <p className="mt-2 text-muted-foreground">{t("offer.intro")}</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardDescription>{t("offer.commissionLabel")}</CardDescription>
-          <CardTitle className="text-3xl font-black tracking-tight">{formatRate(offer.commissionBps)}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>{offer.commissionSource === "tenant" ? t("offer.commissionNegotiated") : t("offer.commissionDefault")}</p>
-          {offer.upcomingCommission ? (
-            <p className="font-medium text-foreground">
-              {t("offer.upcoming", {
-                rate: formatRate(offer.upcomingCommission.bps),
-                date: formatEventDate(offer.upcomingCommission.effectiveFrom, locale)
-              })}
-            </p>
-          ) : null}
-          <p>{t("offer.feesNote")}</p>
-        </CardContent>
-      </Card>
+      {/* Les trois taux côte à côte, même gabarit : on les compare d'un coup d'œil. */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="flex h-full flex-col">
+          <CardHeader>
+            <CardDescription>{t("offer.commissionLabel")}</CardDescription>
+            <CardTitle className="text-3xl font-black tracking-tight tabular-nums">{formatRate(offer.commissionBps)}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 space-y-2 text-sm text-muted-foreground">
+            <p>{t("offer.feesNote")}</p>
+            <p>{offer.commissionSource === "tenant" ? t("offer.commissionNegotiated") : t("offer.commissionDefault")}</p>
+            {offer.upcomingCommission ? (
+              <p className="font-medium text-foreground">
+                {t("offer.upcoming", {
+                  rate: formatRate(offer.upcomingCommission.bps),
+                  date: formatEventDate(offer.upcomingCommission.effectiveFrom, locale)
+                })}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardDescription>{t("offer.reserveLabel")}</CardDescription>
-          <CardTitle className="text-2xl font-black tracking-tight">{formatRate(offer.heldBps)}</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {t("offer.reserveDesc", { rate: formatRate(offer.heldBps), hours: offer.heldReleaseDelayHours })}
-        </CardContent>
-      </Card>
+        <Card className="flex h-full flex-col">
+          <CardHeader>
+            <CardDescription>{t("offer.ticketCommissionLabel")}</CardDescription>
+            <CardTitle className="text-3xl font-black tracking-tight tabular-nums">{formatRate(offer.ticketCommissionBps)}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 text-sm text-muted-foreground">{t("offer.ticketCommissionDesc")}</CardContent>
+        </Card>
+
+        <Card className="flex h-full flex-col">
+          <CardHeader>
+            <CardDescription>{t("offer.reserveLabel")}</CardDescription>
+            <CardTitle className="text-3xl font-black tracking-tight tabular-nums">{formatRate(offer.heldBps)}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 text-sm text-muted-foreground">
+            {t("offer.reserveDesc", { rate: formatRate(offer.heldBps), hours: offer.heldReleaseDelayHours })}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>

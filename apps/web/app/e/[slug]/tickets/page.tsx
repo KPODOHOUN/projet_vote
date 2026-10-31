@@ -11,15 +11,20 @@ import { getServerLocale } from "../../../../lib/locale-server";
 import { SITE_NAME } from "../../../../lib/site";
 import { translate } from "../../../../lib/i18n";
 import { fetchPublicEvent } from "../../../../lib/public-event-fetch";
+import { currentPreviewToken, fetchPublicApi, previewParam } from "../../../../lib/server-api";
+import type { PublicTicketType } from "../../../../lib/hooks/use-public-tickets";
 
 import { TicketsClient } from "./tickets-client";
 
-type PageProps = { params: Promise<{ slug: string }> };
+type PageProps = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string | string[] }>;
+};
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const locale = await getServerLocale();
-  const data = await fetchPublicEvent(slug);
+  const data = await fetchPublicEvent(slug, previewParam(await searchParams));
   if (!data) {
     return {
       title: `${translate(locale, "pub.voteNotFound")} · ${SITE_NAME}`,
@@ -38,9 +43,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PublicTicketsPage({ params }: PageProps) {
+export default async function PublicTicketsPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const data = await fetchPublicEvent(slug);
+  const previewToken = await currentPreviewToken(previewParam(await searchParams));
+  const [data, initialTicketTypes] = await Promise.all([
+    fetchPublicEvent(slug, previewToken),
+    fetchPublicApi<PublicTicketType[]>(`/public/events/${encodeURIComponent(slug)}/ticket-types`, previewToken)
+  ]);
   if (!data) {
     notFound();
   }
@@ -54,7 +63,13 @@ export default async function PublicTicketsPage({ params }: PageProps) {
       branding={event.branding}
     >
       <main className="px-4 py-10">
-        <TicketsClient slug={event.slug} paymentNetworks={data.paymentNetworks} />
+        <TicketsClient
+          slug={event.slug}
+          eventTitle={event.title}
+          paymentNetworks={data.paymentNetworks}
+          previewToken={event.status === "DRAFT" ? previewToken : undefined}
+          initialTicketTypes={initialTicketTypes}
+        />
       </main>
     </PublicEventShell>
   );

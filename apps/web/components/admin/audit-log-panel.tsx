@@ -31,6 +31,11 @@ export function AuditLogPanel({ isEn }: AuditLogPanelProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [filterAction, setFilterAction] = useState("");
   const [filterTarget, setFilterTarget] = useState("");
+  // Lien direct depuis une tuile (ex. ?action=payment.late_success_needs_refund).
+  useEffect(() => {
+    const action = new URLSearchParams(window.location.search).get("action");
+    if (action && AUDIT_ACTIONS.includes(action)) setFilterAction(action);
+  }, []);
   const [auditRetentionDays, setAuditRetentionDays] = useState(30);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);

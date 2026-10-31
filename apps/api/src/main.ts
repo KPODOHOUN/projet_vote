@@ -10,6 +10,7 @@ import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { ObservabilityService } from "./observability/observability.service";
 import { initSentry } from "./observability/sentry";
 import { env } from "./config/env";
+import { trustedEdgeClientIp } from "./common/edge-client-ip";
 
 async function bootstrap() {
   initSentry();
@@ -18,14 +19,21 @@ async function bootstrap() {
   // re-serialized JSON object (whose key order / whitespace would not match
   // what the provider signed).
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  // Trust exactly one hop in front of the app (Cloud Run's load balancer /
-  // the web app's reverse proxy) so Express derives `request.ip` from
-  // X-Forwarded-For itself instead of trusting the header verbatim — without
-  // this, a client could spoof their own IP by sending an X-Forwarded-For
-  // header directly, which would otherwise be taken at face value by any
-  // code reading that header (e.g. account session metadata / audit log).
-  app.getHttpAdapter().getInstance().set("trust proxy", 1);
+  // Trust exactly API_TRUST_PROXY_HOPS proxies in front of the app (load
+  // balancer, the web app's /api/v1 rewrite) so Express derives `request.ip`
+  // from X-Forwarded-For itself instead of trusting the header verbatim —
+  // without this, a client could spoof their own IP, and with too few hops
+  // every visitor would share the proxy's IP (rate limits, signature proof).
+  app.getHttpAdapter().getInstance().set("trust proxy", env.API_TRUST_PROXY_HOPS);
   const observabilityService = app.get(ObservabilityService);
+  // IP du visiteur relayée par le front, crue seulement avec le secret partagé.
+  // Posée avant tout le reste : limites de débit, sessions et preuves de
+  // signature lisent toutes `request.ip`.
+  app.use((request: Request, _response: Response, next: NextFunction) => {
+    const clientIp = trustedEdgeClientIp(request.headers, env.API_EDGE_PROXY_SECRET);
+    if (clientIp) Object.defineProperty(request, "ip", { value: clientIp, configurable: true });
+    next();
+  });
   app.use(cookieParser());
   app.use((request: Request, response: Response, next: NextFunction) => {
     const requestStartedAt = Date.now();

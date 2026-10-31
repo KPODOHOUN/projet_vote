@@ -32,6 +32,16 @@ docker run -p 3001:3001 --env-file <fichier de secrets> shadoma-api
   un secret garde sa valeur `dev-only-*`, `API_PAYMENT_DEMO_MODE=true`,
   `API_DISABLE_THROTTLE=true`, `MAIL_RESEND_API_KEY` manque, ou ni `API_REDIS_URL` ni
   `API_SINGLE_INSTANCE=true` ne sont définis.
+- **IP des visiteurs** : générer un secret (`openssl rand -hex 32`) et le poser des deux côtés :
+  `API_EDGE_PROXY_SECRET` sur l'API (obligatoire en production) et `EDGE_PROXY_SECRET` sur le
+  front. Le front relaie alors l'IP du visiteur (réécriture `/api/v1` et rendu serveur des pages
+  publiques) et l'API ne la croit qu'avec ce secret. Sans lui, tous les visiteurs partageraient
+  l'IP du front : limites de débit communes (votes refusés en pleine affluence) et IP fausse dans
+  les preuves de signature. `API_TRUST_PROXY_HOPS` reste à `1` (appels directs à l'API).
+  Le front ne relaie l'IP que chez un hébergeur qui réécrit `x-real-ip`/`x-forwarded-for` :
+  automatique sur Vercel ; ailleurs, seulement si l'hébergeur le garantit, avec `EDGE_TRUST_FORWARDED_IP=true`
+  (sinon un visiteur pourrait se choisir une IP, et le relais est désactivé).
+  Vérification en staging : l'IP d'une session (`/account/sessions`) est celle du poste.
 - **Plusieurs instances** : définir `API_REDIS_URL` (limites de débit et plafonds de
   l'assistant partagés). **Une seule instance** : `API_SINGLE_INSTANCE=true`.
 - Service **toujours actif** recommandé : le planificateur interne (rapprochement des

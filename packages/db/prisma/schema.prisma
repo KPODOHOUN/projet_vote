@@ -353,6 +353,9 @@ model Event {
   // avant la signature, puis figée par le contrat signé. Null = taux de
   // l'organisateur (historique CommissionRate) ou taux par défaut.
   commissionBps    Int?
+  // Commission sur chaque billet vendu (points de base, 10 % = 1000). Figée par
+  // le contrat signé ; null = réglage plateforme.
+  ticketCommissionBps Int?
   // Part du net mise en réserve (points de base). Figée par le contrat signé.
   heldBps          Int?
   // Per-event PSP routing override. Null = inherit the organizer's choice.
@@ -386,6 +389,8 @@ model TicketType {
   saleEndsAt   DateTime?
   status       TicketTypeStatus @default(ACTIVE)
   design       Json?
+  // Billets numérotés jusqu'ici (numéro lisible attribué au paiement : 1, 2, 3…).
+  issuedCount  Int              @default(0)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -409,6 +414,8 @@ model Ticket {
   paidAt               DateTime?
   confirmedAt          DateTime?
   usedAt               DateTime?
+  // Numéro lisible du billet dans son type (N° 0042), attribué au paiement.
+  number               Int?
   amountCfa            Int
   paymentTransactionId String?
   createdAt            DateTime     @default(now())
@@ -419,6 +426,9 @@ model Ticket {
 
   @@index([eventId, status])
   @@index([ticketTypeId, status])
+  // Chaque confirmation, échec ou abandon de paiement retrouve ses billets par là.
+  @@index([paymentTransactionId])
+  @@unique([ticketTypeId, number])
 }
 
 model Candidate {

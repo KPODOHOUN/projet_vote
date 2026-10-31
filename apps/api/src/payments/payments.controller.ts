@@ -11,13 +11,16 @@ import {
 } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { Throttle } from "@nestjs/throttler";
-import { Observable, interval, map, switchMap, takeWhile } from "rxjs";
+import { Observable, interval, map, switchMap, takeUntil, takeWhile, timer } from "rxjs";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import type { AuthUser } from "../auth/auth.types";
 import { PaymentsService } from "./payments.service";
+
+const TERMINAL_PAYMENT_STATUSES: ReadonlySet<string> = new Set(["SUCCEEDED", "FAILED", "VOIDED"]);
+const PUBLIC_STATUS_STREAM_MAX_MS = 10 * 60_000;
 
 @Controller("payments")
 export class PaymentsController {
@@ -77,7 +80,10 @@ export class PaymentsController {
           statusToken
         })
       ),
-      takeWhile((statusSnapshot) => statusSnapshot.status !== "SUCCEEDED" && statusSnapshot.status !== "FAILED", true),
+      takeWhile((statusSnapshot) => !TERMINAL_PAYMENT_STATUSES.has(statusSnapshot.status), true),
+      // Durée bornée : un paiement resté en attente ne tient pas la connexion
+      // (ni les appels au prestataire) indéfiniment ; le navigateur bascule alors en relecture.
+      takeUntil(timer(PUBLIC_STATUS_STREAM_MAX_MS)),
       map((statusSnapshot) => ({ data: statusSnapshot }))
     );
   }

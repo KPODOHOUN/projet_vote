@@ -7,6 +7,7 @@ import { EventsService } from "./events.service";
 import { VotesService } from "../votes/votes.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
+import { eventPreviewToken } from "../common/event-preview-token";
 
 const prismaService = new PrismaService();
 const votes = new VotesService(prismaService);
@@ -62,7 +63,8 @@ test("createEvent: layout par défaut GRID, et layout choisi persisté + exposé
   assert.equal(spot.layout, "SPOTLIGHT");
 
   // Le contrat public (GET /votes/public/event/:slug) expose le layout.
-  const pub = await votes.getPublicEventBySlug("layout-spotlight");
+  // Brouillon : lu avec le jeton d'aperçu de l'organisateur.
+  const pub = await votes.getPublicEventBySlug("layout-spotlight", eventPreviewToken(spot.id));
   assert.equal(pub.event.layout, "SPOTLIGHT");
 });
 
@@ -89,9 +91,10 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
   assert.equal(updated.fontStyle, "GALA");
 
   await prisma.candidate.create({ data: { eventId: ev.id, fullName: "Ada", number: 1, publicRef: "ada-ref" } });
-  const hub = await votes.getPublicEventBySlug("style-default");
-  const profile = await votes.getPublicCandidate("style-default", "ada-ref");
-  const results = await votes.getPublicEventResults("style-default");
+  const preview = eventPreviewToken(ev.id);
+  const hub = await votes.getPublicEventBySlug("style-default", preview);
+  const profile = await votes.getPublicCandidate("style-default", "ada-ref", preview);
+  const results = await votes.getPublicEventResults("style-default", preview);
   for (const branding of [hub.event.branding, profile.event.branding, results.event.branding]) {
     assert.equal(branding.coverUrl, cover);
     assert.equal(branding.pageStyle, "SOIREE");
@@ -102,7 +105,7 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
   assert.equal(ev.heroBackground, "IMAGE");
   const colorBg = await events.updateEvent(owner(t.id), ev.id, { heroBackground: "COLOR" });
   assert.equal(colorBg.heroBackground, "COLOR");
-  assert.equal((await votes.getPublicEventBySlug("style-default")).event.branding.heroBackground, "COLOR");
+  assert.equal((await votes.getPublicEventBySlug("style-default", preview)).event.branding.heroBackground, "COLOR");
   await assert.rejects(events.updateEvent(owner(t.id), ev.id, { heroBackground: "VIDEO" }));
 
   for (const style of ["COURONNE", "MAGAZINE", "POP", "TERROIR", "STADE", "LINEUP", "DIPLOME", "MARCHE", "MENU", "WAX", "CAMPUS", "BADGE", "STORY", "SANCTUAIRE", "BILLET", "AFFICHE"]) {
@@ -209,7 +212,7 @@ test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre o
   const partial = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
   assert.deepEqual([partial.tagline, partial.logoUrl, partial.brandColor], ["Retour", null, null]);
 
-  const pub = await votes.getPublicEventBySlug("brand-clear-evt");
+  const pub = await votes.getPublicEventBySlug("brand-clear-evt", eventPreviewToken(created.id));
   assert.equal(pub.event.branding.tagline, "Retour");
   assert.equal(pub.event.branding.logoUrl, null);
   assert.equal(pub.event.branding.brandColor, null);

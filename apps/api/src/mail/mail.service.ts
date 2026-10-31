@@ -10,6 +10,8 @@ export type MailPayload = {
   attachments?: Array<{ filename: string; content: Buffer }>;
 };
 
+const MAIL_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -29,6 +31,8 @@ export class MailService {
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
+        // Un prestataire qui ne répond pas ne doit pas bloquer l'envoi d'un code.
+        signal: AbortSignal.timeout(MAIL_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${env.MAIL_RESEND_API_KEY}`,
           "Content-Type": "application/json"

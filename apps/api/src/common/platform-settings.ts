@@ -14,6 +14,9 @@ export const DEFAULT_OTP_RESEND_DELAY_SECONDS = 60;
 // clôture du concours, au délai ci-dessous.
 export const COMMISSION_DEFAULT_BPS_KEY = "commission_default_bps";
 export const DEFAULT_COMMISSION_BPS = 1_200; // 12 %
+// Commission de la plateforme sur chaque billet vendu (distincte de celle des votes).
+export const TICKET_COMMISSION_BPS_KEY = "ticket_commission_bps";
+export const DEFAULT_TICKET_COMMISSION_BPS = 1_000; // 10 %
 export const SETTLEMENT_HELD_BPS_KEY = "settlement_held_bps";
 export const DEFAULT_SETTLEMENT_HELD_BPS = 5_000; // 50 % du net en réserve
 export const HELD_RELEASE_DELAY_HOURS_KEY = "held_release_delay_hours";

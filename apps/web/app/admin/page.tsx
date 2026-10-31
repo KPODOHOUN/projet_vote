@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { getStoredToken } from "../../lib/auth";
@@ -8,7 +9,7 @@ import { FormError, LoadingState } from "@/components/ui";
 import { AdminPageHeader, AdminPageShell, AdminStatGrid, AdminStatTile } from "@/components/admin/admin-shell";
 import { fetchMaintenanceMode } from "../../lib/platform-maintenance";
 
-type JobsOverview = { pendingPayments: number; failedPayments24h: number; expiredIdempotencyKeys: number };
+type JobsOverview = { pendingPayments: number; failedPayments24h: number; expiredIdempotencyKeys: number; lateSuccessToRefund: number };
 type LedgerSummary = { walletsChecked: number; driftCount: number; unverifiableCount: number; unknownEntries: number };
 
 type Overview = {
@@ -58,6 +59,7 @@ export default function AdminHomePage() {
   const dash = (value: number | null | undefined) => (value == null ? "—" : String(value));
   const pending = data.pendingWithdrawals;
   const failed = data.jobs?.failedPayments24h;
+  const toRefund = data.jobs?.lateSuccessToRefund;
   const ledger = data.ledger;
 
   return (
@@ -65,6 +67,20 @@ export default function AdminHomePage() {
       <AdminPageHeader eyebrow={t("adminHome.eyebrow")} title={t("adminHome.title")} />
 
       {partialError ? <FormError>{t("adminHome.loadFailed")}</FormError> : null}
+
+      {/* Argent à rendre : bandeau seulement quand il y en a, la grille garde ses 6 tuiles. */}
+      {toRefund ? (
+        <Link
+          href="/admin/audit?action=payment.late_success_needs_refund"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="space-y-0.5">
+            <span className="block font-bold text-destructive">{t("adminHome.lateRefunds")} : {toRefund}</span>
+            <span className="block text-muted-foreground">{t("adminHome.lateRefundsHint")}</span>
+          </span>
+          <span className="font-semibold text-destructive">{t("adminHome.lateRefundsOpen")}</span>
+        </Link>
+      ) : null}
 
       <AdminStatGrid>
         <AdminStatTile

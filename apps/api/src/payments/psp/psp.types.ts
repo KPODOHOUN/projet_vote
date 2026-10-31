@@ -22,6 +22,12 @@ export interface PspPayinInitInput {
   description?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
+  /**
+   * Appelé dès que le prestataire a attribué sa référence, AVANT l'envoi USSD :
+   * si l'envoi échoue ou expire ensuite, la transaction reste rattachée à cette
+   * référence et la réconciliation tranche (aucun paiement encaissé sans trace).
+   */
+  onReference?: ((reference: string) => Promise<void>) | undefined;
 }
 
 export interface PspPayinInitResult {
@@ -39,19 +45,6 @@ export interface PspStatusResult {
   reason?: string | undefined;
 }
 
-export interface PspPayoutInput {
-  idempotencyKey: string;
-  amountCfa: number;
-  beneficiaryAccount: string; // msisdn (organizer) or platform account ref
-  network: string; // "MTN" | "MOOV" | ...
-  label: string;
-}
-
-export type PspPayoutResult =
-  | { status: "SUCCEEDED"; providerRef: string }
-  | { status: "FAILED"; reason: string }
-  | { status: "UNCERTAIN"; reason: string }; // timeout/5xx — no auto-retry, manual resolve
-
 /**
  * Adapter port. A single stateless instance serves all tenants; credentials are
  * passed per call (resolved by the registry), so one gateway is reused across
@@ -61,8 +54,6 @@ export interface PspGateway {
   readonly provider: PaymentProvider;
   initPayin(input: PspPayinInitInput, creds: PspCredentials): Promise<PspPayinInitResult>;
   fetchPayinStatus(reference: string, creds: PspCredentials): Promise<PspStatusResult>;
-  sendPayout(input: PspPayoutInput, creds: PspCredentials): Promise<PspPayoutResult>;
-  fetchPayoutStatus(reference: string, creds: PspCredentials): Promise<PspStatusResult>;
   getBalance(creds: PspCredentials): Promise<Record<string, number>>;
 }
 

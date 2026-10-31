@@ -146,8 +146,8 @@ export class TicketsController {
   }
 
   @Get("public/events/:eventSlug/ticket-types")
-  listPublicTicketTypes(@Param("eventSlug") eventSlug: string) {
-    return this.tickets.listPublicTicketTypes(eventSlug);
+  listPublicTicketTypes(@Param("eventSlug") eventSlug: string, @Query("preview") preview?: string) {
+    return this.tickets.listPublicTicketTypes(eventSlug, preview);
   }
 
   @Post("public/events/:eventSlug/tickets/purchase")

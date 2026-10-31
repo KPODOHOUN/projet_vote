@@ -7,13 +7,14 @@ import { VaultService } from "./vault.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
 import { candidateTestData } from "../test-utils/candidate-fixture";
+import { WalletService } from "../offers/wallet.service";
 
 // Real-database tests. No mock Prisma. After Phase 1, cancelVote/deleteVote
 // purge the live Vote + PaymentTransaction rows and deposit an encrypted
 // snapshot in VaultEntry (the "Option B+" forensic vault).
 const prismaService = new PrismaService();
 const vault = new VaultService(prismaService);
-const service = new PlatformControlService(prismaService, vault);
+const service = new PlatformControlService(prismaService, vault, new WalletService(prismaService));
 
 const admin = {
   userId: "platform-admin-1",
@@ -77,62 +78,62 @@ async function seed() {
   return { tenant, event, candidate, vote, payment };
 }
 
-test("cancelVote: PURGE le vote et le paiement du ledger, dépose dans le vault", async () => {
+const superAdmin = () => ({ ...admin, role: UserRole.PLATFORM_SUPER_ADMIN });
+
+test("annulation d'un vote payé : réservée au super-admin, tracée, paiement VOIDED conservé, portefeuille repris", async () => {
   const { tenant, event, vote, payment } = await seed();
+  // Ce que le paiement avait crédité à l'organisateur (net 900 : 450 réserve, 450 disponible).
+  await new WalletService(prismaService).creditSplit({ tenantId: tenant.id, netCfa: 900, heldBps: 5000, kind: "VOTE_CREDIT", eventId: event.id, paymentId: payment.id });
 
-  const result = await service.cancelVote(admin, vote.id, { reason: "Fraude détectée" });
+  await assert.rejects(service.cancelVote(admin, vote.id, { reason: "Fraude détectée" }), /super-administrateur/);
+  const result = await service.cancelVote(superAdmin(), vote.id, { reason: "Fraude détectée" });
   assert.equal(result.cancelled, true);
-  assert.equal(result.paymentVoided, true);
+  assert.equal(result.reversedFromOrganizerCfa, 900);
 
-  // Vote physiquement parti du ledger principal
-  const remainingVote = await prisma.vote.findUnique({ where: { id: vote.id } });
-  assert.equal(remainingVote, null);
-  // Paiement physiquement parti
-  const remainingPayment = await prisma.paymentTransaction.findUnique({ where: { id: payment.id } });
-  assert.equal(remainingPayment, null);
-
-  // Trace dans le coffre, chiffrée
+  const kept = await prisma.vote.findUniqueOrThrow({ where: { id: vote.id } });
+  assert.ok(kept.cancelledAt);
+  assert.equal(kept.cancelledReason, "Fraude détectée");
+  assert.equal((await prisma.paymentTransaction.findUniqueOrThrow({ where: { id: payment.id } })).status, PaymentStatus.VOIDED);
+  const wallet = await prisma.organizerWallet.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+  assert.equal(wallet.withdrawableCfa + wallet.heldCfa, 0);
+  const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "vote.cancelled", targetId: vote.id } });
+  assert.equal((audit.metadata as { refundDueToVoterCfa: number }).refundDueToVoterCfa, 1000);
+  // Copie chiffrée gardée dans le coffre.
   const ventry = await prisma.vaultEntry.findFirstOrThrow({ where: { originalVoteId: vote.id } });
-  assert.equal(ventry.kind, "vote_cancelled");
-  assert.equal(ventry.tenantId, tenant.id);
-  assert.equal(ventry.eventId, event.id);
-  assert.equal(ventry.amountCfa, 1000);
-  // Le providerRef et la raison ne fuitent pas en clair
-  assert.ok(!ventry.cipherText.includes("fp_pc_seed_1"));
   assert.ok(!ventry.cipherText.includes("Fraude"));
 
-  // Annuler 2x : NotFoundException (le vote n'existe plus)
-  await assert.rejects(service.cancelVote(admin, vote.id, { reason: "encore" }), /introuvable/);
+  await assert.rejects(service.cancelVote(superAdmin(), vote.id, { reason: "encore" }), /déjà annulé/);
 });
 
-test("deleteVote: PURGE + coffre avec kind=vote_deleted", async () => {
-  const { vote } = await seed();
-  const result = await service.deleteVote(admin, vote.id);
-  assert.equal(result.deleted, true);
-  const remainingVote = await prisma.vote.findUnique({ where: { id: vote.id } });
-  assert.equal(remainingVote, null);
-  const ventry = await prisma.vaultEntry.findFirstOrThrow({ where: { originalVoteId: vote.id } });
-  assert.equal(ventry.kind, "vote_deleted");
+test("annulation refusée si l'organisateur a déjà retiré l'argent du vote", async () => {
+  const { tenant, event, vote, payment } = await seed();
+  const wallet = new WalletService(prismaService);
+  await wallet.creditSplit({ tenantId: tenant.id, netCfa: 900, heldBps: 0, kind: "VOTE_CREDIT", eventId: event.id, paymentId: payment.id });
+  await wallet.debit({ tenantId: tenant.id, amountCfa: 900, kind: "WITHDRAWAL_DEBIT", from: "withdrawable" });
+  await assert.rejects(service.cancelVote(superAdmin(), vote.id, { reason: "Fraude" }), /déjà retiré/);
+  assert.equal((await prisma.vote.findUniqueOrThrow({ where: { id: vote.id } })).cancelledAt, null, "rien n'a changé");
 });
 
-test("overview: après annulation, votes/revenu disparaissent ; confiscation visible", async () => {
+test("l'ancienne route de suppression fait la même annulation tracée (plus rien de silencieux)", async () => {
   const { vote } = await seed();
+  const result = await service.deleteVote(superAdmin(), vote.id);
+  assert.equal(result.cancelled, true);
+  assert.ok((await prisma.vote.findUniqueOrThrow({ where: { id: vote.id } })).cancelledAt);
+  assert.equal(await prisma.auditLog.count({ where: { action: "vote.cancelled", targetId: vote.id } }), 1);
+});
 
+test("overview: après annulation, le vote compte comme annulé et son montant est à rembourser", async () => {
+  const { vote } = await seed();
   const before = await service.getOverview();
   assert.equal(before.votes.active, 1);
   assert.equal(before.grossRevenueCfa, 1000);
-  assert.equal(before.commissionCfa, 100);
-
-  await service.cancelVote(admin, vote.id, { reason: "test" });
-
+  await service.cancelVote(superAdmin(), vote.id, { reason: "test" });
   const after = await service.getOverview();
-  // Vote purgé du ledger principal : 0 partout
   assert.equal(after.votes.active, 0);
-  assert.equal(after.votes.cancelled, 0, "cancelledVotes=0 puisque la ligne n'existe plus dans Vote");
+  assert.equal(after.votes.cancelled, 1);
   assert.equal(after.grossRevenueCfa, 0);
   assert.equal(after.commissionCfa, 0);
-  // Mais la confiscation est tracée (revenu plateforme caché)
-  assert.equal(after.confiscatedRevenueCfa, 1000);
+  assert.equal(after.refundDueToVotersCfa, 1000);
 });
 
 test("listVotes: renvoie le titre de l'événement et le nom du candidat (lisibles côté admin)", async () => {

@@ -13,6 +13,7 @@ const PRODUCTION_BASE = {
   FEEXPAY_API_KEY: "fp_live_key_0123456789abcdef",
   FEEXPAY_SHOP_ID: "shop-123",
   MAIL_RESEND_API_KEY: "re_test_key",
+  API_EDGE_PROXY_SECRET: "prod-edge-secret-0123456789abcdef0123456",
   API_REDIS_URL: "redis://localhost:6379"
 };
 
@@ -70,4 +71,8 @@ test("env: API_DISABLE_THROTTLE est refusé en production", () => {
 test("env: en production sans Redis, il faut déclarer une instance unique", () => {
   assert.ok(productionIssuePaths({ API_REDIS_URL: undefined }).includes("API_REDIS_URL"));
   assert.deepEqual(productionIssuePaths({ API_REDIS_URL: undefined, API_SINGLE_INSTANCE: "true" }), []);
+});
+
+test("env: en production, sans secret de relais du front, le démarrage est refusé", () => {
+  assert.ok(productionIssuePaths({ API_EDGE_PROXY_SECRET: undefined }).includes("API_EDGE_PROXY_SECRET"));
 });

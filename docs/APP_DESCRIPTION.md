@@ -100,7 +100,7 @@ Les migrations Prisma s'appliquent au démarrage du conteneur API (`docker-entry
 
 ## 8. État actuel (2026-10-30)
 
-- **Modèle** : aucun abonnement ni forfait ; mise en ligne par la signature du contrat du concours ; commission 12 % par défaut (ADR-022).
+- **Modèle** : aucun abonnement ni forfait ; mise en ligne par la signature du contrat du concours ; commission 12 % par défaut sur les votes, 10 % sur chaque billet vendu (ADR-022).
 - **API** : suites `npm test` et `test:offers` vertes sur PostgreSQL réel.
 - **Front** : routes publiques `/e/{slug}`, profils `/e/{slug}/c/{ref}`, billetterie, quick-start organisateur, signature du contrat.
 - **E2E** : suite Playwright verte en local et en CI.

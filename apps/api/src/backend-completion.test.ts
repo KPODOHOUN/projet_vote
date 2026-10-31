@@ -97,7 +97,7 @@ const events = new EventsService(prismaService, votes, notifications);
 const platformSecrets = new PlatformSecretsService(prismaService);
 const invitations = new InvitationsService(prismaService, new MailService());
 const auth = new AuthService(prismaService, notifications, new MailService());
-const platform = new PlatformControlService(prismaService, new VaultService(prismaService));
+const platform = new PlatformControlService(prismaService, new VaultService(prismaService), new WalletService(prismaService));
 const feexpay = new FakeFeexpay();
 const feexpayGateway = new FakeFeexpayGateway(feexpay);
 const pspRegistry = new PspRegistry(
@@ -399,36 +399,17 @@ test("réseaux proposés à l'organisateur : ceux du prestataire, événement d'
   await assert.rejects(payments.getPayinNetworks(owner(feexpay.tenant.id), fedapay.event.id), /Événement introuvable/);
 });
 
-test("suppression de vote: définitive et SILENCIEUSE (aucun log d'audit)", async () => {
+test("suppression de vote par un admin : refusée pour un vote payé, jamais silencieuse", async () => {
   const { tenant, event, c7 } = await seedEventWithCandidates();
   const vote = await prisma.vote.create({
-    data: { tenantId: tenant.id, eventId: event.id, candidateId: c7.id, amountCfa: 500, voterPhoneLast4: "0001" }
+    data: { tenantId: tenant.id, eventId: event.id, candidateId: c7.id, amountCfa: 500, voterPhoneLast4: "0001", paidAt: new Date() }
   });
   await prisma.paymentTransaction.create({
-    data: {
-      tenantId: tenant.id,
-      eventId: event.id,
-      voteId: vote.id,
-      provider: PaymentProvider.FEEXPAY,
-      amountCfa: 500,
-      status: "SUCCEEDED",
-      idempotencyKey: "del-idem-0001"
-    }
+    data: { tenantId: tenant.id, eventId: event.id, voteId: vote.id, provider: PaymentProvider.FEEXPAY, amountCfa: 500, status: "SUCCEEDED", idempotencyKey: "del-idem-0001" }
   });
-
-  const res = await platform.deleteVote(admin(tenant.id), vote.id);
-  assert.equal(res.deleted, true);
-  assert.equal(res.paymentVoided, true);
-  // Option B+ : vote ET paiement PURGÉS du ledger principal.
-  assert.equal(await prisma.vote.findUnique({ where: { id: vote.id } }), null);
-  assert.equal(
-    await prisma.paymentTransaction.findUnique({ where: { idempotencyKey: "del-idem-0001" } }),
-    null
-  );
-  // Trace chiffrée dans le coffre, kind=vote_deleted.
-  const ventry = await prisma.vaultEntry.findFirstOrThrow({ where: { originalVoteId: vote.id } });
-  assert.equal(ventry.kind, "vote_deleted");
-  assert.equal(await prisma.auditLog.count(), 0); // AUCUNE trace côté audit normal
+  await assert.rejects(platform.deleteVote(admin(tenant.id), vote.id), /super-administrateur/);
+  assert.ok(await prisma.vote.findUnique({ where: { id: vote.id } }), "le vote reste");
+  assert.ok(await prisma.paymentTransaction.findUnique({ where: { idempotencyKey: "del-idem-0001" } }), "le paiement reste");
 });
 
 test("ajout de votes par l'organisateur en mode démo : confirmé sans appeler le prestataire, commission de 12 % prélevée", async () => {

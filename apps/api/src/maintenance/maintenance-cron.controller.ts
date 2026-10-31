@@ -17,7 +17,7 @@ const cronPurgeSchema = z
   .object({
     tenantId: z.string().min(1).optional(),
     tenantSlug: z.string().min(1).optional(),
-    auditLogsRetentionDays: z.coerce.number().int().min(7).max(3650).default(365),
+    auditLogsRetentionDays: z.coerce.number().int().min(30).max(3650).default(365),
     idempotencyRetentionDays: z.coerce.number().int().min(1).max(365).default(30),
     revokedSessionsRetentionDays: z.coerce.number().int().min(1).max(365).default(30),
     runAtIso: z.string().min(1)

@@ -1,14 +1,20 @@
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } } });
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 // Couvre la feature « profils candidats & partage par candidat » (event-as-platform).
 //   /e/[slug]              → hub annuaire (cartes candidats → profils)
 //   /e/[slug]/c/[ref]     → profil du candidat (cible du lien partagé, ref sécurisée)
 // Pages Server Components : on provisionne de vraies données via l'API (comme
-// public-event.spec). Un événement neuf est DRAFT (en ligne après signature du contrat) ;
-// le profil affiche alors la branche « vote pas ouvert ». On valide donc, sans
-// dépendre d'un PSP : l'annuaire, la navigation vers le profil, le rendu du
-// profil (nom + n°) et le deep-link direct (le lien partagé tombe sur le bon
-// candidat), plus le 404.
+// public-event.spec). Un brouillon n'est pas public. On le met en ligne en base
+// (la signature du contrat est couverte ailleurs) pour valider, sans PSP :
+// l'annuaire, la navigation vers le profil, le rendu du profil (nom + n°) et
+// le deep-link direct (le lien partagé tombe sur le bon candidat), plus le 404.
 test("annuaire → profil candidat : navigation, deep-link partagé, 404", async ({ page, request }) => {
   const unique = `${Date.now()}`;
   const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3001/api/v1";
@@ -64,7 +70,11 @@ test("annuaire → profil candidat : navigation, deep-link partagé, 404", async
   expect(alice?.publicRef).toBeTruthy();
   expect(bob?.publicRef).toBeTruthy();
 
-  // 4) Hub annuaire : les candidats sont des cartes-liens, avec leur compteur.
+  // 4) Le brouillon n'est pas public. Mis en ligne, l'annuaire liste les candidats.
+  const draftResponse = await page.goto(`/e/${eventSlug}`);
+  expect(draftResponse?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Ce concours n'est pas disponible" })).toBeVisible();
+  await prisma.event.update({ where: { id: createdEvent.id }, data: { status: "ACTIVE" } });
   await page.goto(`/e/${eventSlug}`);
   await expect(page.getByRole("heading", { level: 1, name: eventTitle })).toBeVisible();
   await expect(page.getByRole("link", { name: /Alice Candidate/ })).toBeVisible();

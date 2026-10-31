@@ -10,8 +10,9 @@ export function publicEventUrl(eventSlug: string): string {
   return `${base}/e/${eventSlug}`;
 }
 
-export function publicEventPath(eventSlug: string): string {
-  return `/e/${eventSlug}`;
+/** Chemin public du concours ; avec le jeton d'aperçu, un brouillon reste visible par son organisateur. */
+export function publicEventPath(eventSlug: string, previewToken?: string | null): string {
+  return previewToken ? `/e/${eventSlug}?preview=${encodeURIComponent(previewToken)}` : `/e/${eventSlug}`;
 }
 
 export function publicCandidateUrl(eventSlug: string, publicRef: string): string {

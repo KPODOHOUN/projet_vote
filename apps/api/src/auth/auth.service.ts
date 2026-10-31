@@ -2,7 +2,7 @@ import { ConflictException, BadRequestException, ForbiddenException, Injectable,
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import { AuthOtpPurpose, InvitationStatus, UserRole, type Prisma } from "@prisma/client";
 import { compare, hash } from "bcryptjs";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, errors as joseErrors, jwtVerify } from "jose";
 import { z } from "zod";
 import { env } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
@@ -111,6 +111,21 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
+/** Contenu attendu d'un jeton d'accès. */
+const accessTokenClaimsSchema = z.object({
+  sub: z.string().min(1),
+  tenantId: z.string().min(1),
+  role: z.nativeEnum(UserRole),
+  email: z.string().email(),
+  firstName: z.string().optional().nullable(),
+  lastName: z.string().optional().nullable(),
+  photoUrl: z.string().optional().nullable()
+});
+
+// Un cookie tout juste tourné, renvoyé par une requête parallèle ou un autre
+// onglet, n'est pas une réutilisation frauduleuse.
+const REFRESH_ROTATION_GRACE_MS = 10_000;
+
 // Bound the access token to this issuer/audience so a token minted for another
 // context (or with a tampered header) is rejected by jwtVerify.
 const JWT_ISSUER = "shadowa-votes";
@@ -151,15 +166,39 @@ export class AuthService {
       .catch(() => undefined);
   }
 
+  /**
+   * Réserve une tentative AVANT de vérifier le mot de passe : le compteur est
+   * incrémenté atomiquement (INSERT … ON CONFLICT), donc des requêtes parallèles
+   * ne testent jamais plus de MAX_LOGIN_ATTEMPTS mots de passe.
+   */
+  private async reserveLoginAttempt(tenantSlug: string, email: string) {
+    const identifier = this.getAttemptKey(tenantSlug, email);
+    const row = await this.prisma.client.loginAttempt.upsert({
+      where: { identifier },
+      create: { identifier, count: 1 },
+      update: { count: { increment: 1 } }
+    });
+    if (row.count > MAX_LOGIN_ATTEMPTS) {
+      await this.lockLogin(identifier);
+      throw new UnauthorizedException(
+        `Compte temporairement verrouillé. Réessayez dans ${Math.ceil(LOCKOUT_DURATION_MS / 1000)} secondes.`
+      );
+    }
+  }
+
+  /** Échec confirmé : la tentative est déjà comptée, on verrouille au seuil. */
   private async recordFailedLogin(tenantSlug: string, email: string) {
     const identifier = this.getAttemptKey(tenantSlug, email);
-    const existing = await this.prisma.client.loginAttempt.findUnique({ where: { identifier } });
-    const count = (existing?.count ?? 0) + 1;
-    const lockedUntil = count >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null;
-    await this.prisma.client.loginAttempt.upsert({
-      where: { identifier },
-      create: { identifier, count, lockedUntil },
-      update: { count, lockedUntil }
+    const row = await this.prisma.client.loginAttempt.findUnique({ where: { identifier } });
+    if (row && row.count >= MAX_LOGIN_ATTEMPTS) {
+      await this.lockLogin(identifier);
+    }
+  }
+
+  private async lockLogin(identifier: string) {
+    await this.prisma.client.loginAttempt.updateMany({
+      where: { identifier, lockedUntil: null },
+      data: { lockedUntil: new Date(Date.now() + LOCKOUT_DURATION_MS) }
     });
   }
 
@@ -192,7 +231,7 @@ export class AuthService {
           metadata: { ip: meta?.ipAddress ?? null, userAgent: meta?.userAgent ?? null }
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => this.logAuditFailure(error));
   }
 
   private async auditOtp(
@@ -219,7 +258,12 @@ export class AuthService {
           }
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => this.logAuditFailure(error));
+  }
+
+  /** Trace d'authentification non écrite : jamais bloquant, mais jamais silencieux. */
+  private logAuditFailure(error: unknown): void {
+    this.logger.error(`Trace d'audit d'authentification non écrite : ${error instanceof Error ? error.message : String(error)}`);
   }
 
   async register(payload: unknown, meta?: SessionMeta) {
@@ -328,6 +372,7 @@ export class AuthService {
 
     // Check if account is locked due to too many failed attempts
     await this.checkLoginLock(normalizedSlug, normalizedEmail);
+    await this.reserveLoginAttempt(normalizedSlug, normalizedEmail);
 
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { slug: normalizedSlug }
@@ -362,6 +407,8 @@ export class AuthService {
       await this.auditLogin("auth.login_failed", tenant.id, user.id, meta);
       throw new UnauthorizedException("Identifiants invalides.");
     }
+    // Mot de passe juste : la tentative réservée ne compte pas comme un échec.
+    await this.clearLoginAttempts(normalizedSlug, normalizedEmail);
 
     if (!user.emailVerifiedAt) {
       throw new ForbiddenException({
@@ -376,9 +423,6 @@ export class AuthService {
         code: "ACCOUNT_SUSPENDED"
       });
     }
-
-    // Successful login — clear any previous failed attempts
-    await this.clearLoginAttempts(normalizedSlug, normalizedEmail);
 
     const authUser = {
       userId: user.id,
@@ -397,7 +441,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refresh(payload: unknown, meta?: SessionMeta) {
+  async refresh(payload: unknown, meta?: SessionMeta): Promise<{ accessToken: string; refreshToken?: string }> {
     const input = refreshSchema.parse(payload);
     const refreshTokenHash = this.hashToken(input.refreshToken);
 
@@ -414,6 +458,11 @@ export class AuthService {
       throw new UnauthorizedException("Session invalide ou expirée.");
     }
     if (session.revokedAt) {
+      // Même cookie envoyé par une requête parallèle ou un autre onglet juste
+      // après sa rotation : accès accordé, sans nouvelle session ni révocation.
+      if (await this.isConcurrentRotation(session.id, session.revokedAt)) {
+        return { accessToken: await this.signAccessToken(await this.refreshableUser(session.userId)) };
+      }
       await this.prisma.client.authSession.updateMany({
         where: { userId: session.userId, revokedAt: null },
         data: { revokedAt: new Date() }
@@ -430,15 +479,39 @@ export class AuthService {
             metadata: { revokedChain: true }
           }
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => this.logAuditFailure(error));
       throw new UnauthorizedException("Session révoquée (réutilisation détectée).");
     }
     if (session.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedException("Session invalide ou expirée.");
     }
 
+    const authUser = await this.refreshableUser(session.userId);
+    const accessToken = await this.signAccessToken(authUser);
+
+    // Rotation atomique : une seule requête révoque ce cookie et en reçoit un nouveau.
+    const claimed = await this.prisma.client.authSession.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+    if (claimed.count === 0) {
+      return { accessToken };
+    }
+    const { refreshToken } = await this.createSession(authUser, session.id, meta);
+
+    return { accessToken, refreshToken };
+  }
+
+  /** Rotation faite il y a moins de REFRESH_ROTATION_GRACE_MS (une déconnexion n'en ouvre pas). */
+  private async isConcurrentRotation(sessionId: string, revokedAt: Date): Promise<boolean> {
+    if (Date.now() - revokedAt.getTime() > REFRESH_ROTATION_GRACE_MS) return false;
+    const successor = await this.prisma.client.authSession.count({ where: { rotatedFromSessionId: sessionId } });
+    return successor > 0;
+  }
+
+  private async refreshableUser(userId: string): Promise<AuthUser> {
     const user = await this.prisma.client.user.findUnique({
-      where: { id: session.userId }
+      where: { id: userId }
     });
     if (!user) {
       throw new UnauthorizedException("Utilisateur introuvable.");
@@ -449,13 +522,7 @@ export class AuthService {
     if (!user.emailVerifiedAt) {
       throw new UnauthorizedException("Adresse e-mail non vérifiée.");
     }
-
-    await this.prisma.client.authSession.update({
-      where: { id: session.id },
-      data: { revokedAt: new Date() }
-    });
-
-    const authUser: AuthUser = {
+    return {
       userId: user.id,
       tenantId: user.tenantId,
       role: user.role,
@@ -464,10 +531,6 @@ export class AuthService {
       lastName: user.lastName,
       photoUrl: user.photoUrl
     };
-    const accessToken = await this.signAccessToken(authUser);
-    const { refreshToken } = await this.createSession(authUser, session.id, meta);
-
-    return { accessToken, refreshToken };
   }
 
   async logout(payload: unknown) {
@@ -512,33 +575,44 @@ export class AuthService {
     }
 
     const passwordHash = await hash(input.password, 12);
-    const user = await this.prisma.client.user.create({
-      data: {
-        tenantId: invitation.tenantId,
-        email: invitation.email,
-        passwordHash,
-        role: invitation.role,
-        emailVerifiedAt: new Date()
+    // Une seule acceptation, même en cas de double clic : l'invitation est
+    // réclamée atomiquement, dans la même transaction que la création du compte.
+    const user = await this.prisma.client.$transaction(async (trx) => {
+      const claimed = await trx.invitation.updateMany({
+        where: { id: invitation.id, status: InvitationStatus.PENDING },
+        data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() }
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException("Cette invitation a déjà été utilisée.");
       }
+      const created = await trx.user.create({
+        data: {
+          tenantId: invitation.tenantId,
+          email: invitation.email,
+          passwordHash,
+          role: invitation.role,
+          emailVerifiedAt: new Date()
+        }
+      });
+      await trx.auditLog.create({
+        data: {
+          tenantId: invitation.tenantId,
+          actorUserId: created.id,
+          actorRole: created.role,
+          action: "invitation.accepted",
+          targetType: "User",
+          targetId: created.id,
+          metadata: { invitationId: invitation.id }
+        }
+      });
+      return created;
     });
-    await this.prisma.client.invitation.update({
-      where: { id: invitation.id },
-      data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() }
-    });
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: invitation.tenantId,
-        actorUserId: user.id,
-        actorRole: user.role,
-        action: "invitation.accepted",
-        targetType: "User",
-        targetId: user.id,
-        metadata: { invitationId: invitation.id }
-      }
-    });
-    void this.notifications.create(invitation.tenantId, "INVITATION_ACCEPTED", {
-      email: invitation.email
-    });
+    // Notification annexe : un échec ne doit ni bloquer l'acceptation ni rester une promesse rejetée non gérée.
+    void this.notifications
+      .create(invitation.tenantId, "INVITATION_ACCEPTED", { email: invitation.email })
+      .catch((error: unknown) => {
+        this.logger.warn(`Notification d'invitation acceptée non créée : ${error instanceof Error ? error.message : String(error)}`);
+      });
 
     const authUser: AuthUser = {
       userId: user.id,
@@ -763,23 +837,21 @@ export class AuthService {
     // reject anything else explicitly (defence-in-depth against algorithm
     // confusion, on top of jose already rejecting asymmetric algs for a
     // symmetric key).
-    const { payload } = await jwtVerify(token, secret, {
-      algorithms: ["HS256"],
-      issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE
-    });
-
-    const result = z
-      .object({
-        sub: z.string().min(1),
-        tenantId: z.string().min(1),
-        role: z.nativeEnum(UserRole),
-        email: z.string().email(),
-        firstName: z.string().optional().nullable(),
-        lastName: z.string().optional().nullable(),
-        photoUrl: z.string().optional().nullable()
-      })
-      .parse(payload);
+    // Jeton expiré, falsifié ou mal formé : toujours 401 (jamais 500). Le front
+    // rafraîchit alors la session et rejoue la requête.
+    let result: z.infer<typeof accessTokenClaimsSchema>;
+    try {
+      const { payload } = await jwtVerify(token, secret, {
+        algorithms: ["HS256"],
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE
+      });
+      result = accessTokenClaimsSchema.parse(payload);
+    } catch (error) {
+      throw new UnauthorizedException(
+        error instanceof joseErrors.JWTExpired ? "Session expirée : reconnexion en cours." : "Session invalide."
+      );
+    }
 
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: result.sub },

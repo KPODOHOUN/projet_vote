@@ -19,6 +19,8 @@ import { showToast } from "../../../../../lib/toast";
 type EventDetail = {
   id: string;
   slug: string;
+  /** Aperçu de la page publique d'un brouillon. */
+  previewToken?: string;
   title: string;
   status: string;
   startsAt: string;
@@ -37,6 +39,7 @@ export default function EditEventPage() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [slug, setSlug] = useState("");
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [status, setStatus] = useState("DRAFT");
   const [votePrice, setVotePrice] = useState("");
 
@@ -69,6 +72,7 @@ export default function EditEventPage() {
           return;
         }
         setSlug(found.slug);
+        setPreviewToken(found.previewToken ?? null);
         setStatus(found.status);
         setTitle(found.title);
         setStartsAt(toLocalInput(found.startsAt));
@@ -147,7 +151,7 @@ export default function EditEventPage() {
           {slug ? <CopyPublicLinkButton eventSlug={slug} isEn={isEn} /> : null}
           {slug ? (
             <Link
-              href={publicEventPath(slug)}
+              href={publicEventPath(slug, status === "DRAFT" ? previewToken : null)}
               className="text-sm font-semibold text-primary hover:underline"
               target="_blank"
               rel="noopener noreferrer"

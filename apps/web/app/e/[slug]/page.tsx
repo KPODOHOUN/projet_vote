@@ -25,12 +25,22 @@ import { fetchPublicEvent } from "../../../lib/public-event-fetch";
 // (ex. animated-candidates-section) les importent depuis cette page.
 export type { PublicCandidate, PublicEvent, PublicOrganizer, PublicEventResponse } from "../../../lib/public-event-fetch";
 
-type PageProps = { params: Promise<{ slug: string }> };
+type PageProps = {
+  params: Promise<{ slug: string }>;
+  /** `preview` : jeton d'aperçu d'un brouillon (éditeur d'apparence). */
+  searchParams: Promise<{ preview?: string | string[] }>;
+};
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+async function previewTokenOf(searchParams: PageProps["searchParams"]): Promise<string | undefined> {
+  const { preview } = await searchParams;
+  return typeof preview === "string" ? preview : undefined;
+}
+
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const previewToken = await previewTokenOf(searchParams);
   const locale = await getServerLocale();
-  const data = await fetchPublicEvent(slug);
+  const data = await fetchPublicEvent(slug, previewToken);
   if (!data) {
     return {
       title: `${translate(locale, "pub.voteNotFound")} · ${SITE_NAME}`,
@@ -47,6 +57,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
     alternates: { canonical: url },
+    // Aperçu d'un brouillon : jamais indexé.
+    ...(event.status === "DRAFT" ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
       title,
       description,
@@ -60,11 +72,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PublicEventPage({ params }: PageProps) {
+export default async function PublicEventPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const previewToken = await previewTokenOf(searchParams);
   const locale = await getServerLocale();
   const t9n = (key: MessageKey) => translate(locale, key);
-  const data = await fetchPublicEvent(slug);
+  const data = await fetchPublicEvent(slug, previewToken);
   if (!data) {
     notFound();
   }

@@ -4,12 +4,13 @@ import {
   ConflictException,
   NotFoundException
 } from "@nestjs/common";
-import { EventFontStyle, EventHeroBackground, EventLayout, EventPageStyle, EventStatus, UserRole } from "@prisma/client";
+import { EventFontStyle, EventHeroBackground, EventLayout, EventPageStyle, EventStatus, PaymentStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma/prisma.service";
 import { VotesService } from "../votes/votes.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { isUniqueConstraintViolation } from "../common/prisma-errors";
+import { eventPreviewToken } from "../common/event-preview-token";
 import type { AuthUser } from "../auth/auth.types";
 import { generateSecureEventSlug } from "../common/secure-event-slug";
 import { generateUniqueCandidatePublicRef } from "../common/candidate-public-ref";
@@ -100,7 +101,9 @@ export class EventsService {
 
     return events.map(({ _count, ...event }) => ({
       ...event,
-      candidateCount: _count.candidates
+      candidateCount: _count.candidates,
+      // Aperçu de la page publique tant que le concours est en brouillon.
+      previewToken: eventPreviewToken(event.id)
     }));
   }
 
@@ -398,7 +401,7 @@ export class EventsService {
       throw new NotFoundException("Événement introuvable.");
     }
     const { _count, ...rest } = event;
-    return { ...rest, candidateCount: _count.candidates };
+    return { ...rest, candidateCount: _count.candidates, previewToken: eventPreviewToken(event.id) };
   }
 
   async getEventDashboard(user: AuthUser, eventId: string) {
@@ -445,6 +448,23 @@ export class EventsService {
     if (paidVotes > 0) {
       throw new ConflictException(
         "Impossible de supprimer un candidat qui a déjà reçu des votes payés."
+      );
+    }
+    // Un vote en cours de paiement disparaîtrait avec le candidat : l'argent du
+    // votant serait encaissé sans vote à compter.
+    const candidateVotes = await this.prisma.client.vote.findMany({
+      where: { candidateId: candidate.id },
+      select: { id: true }
+    });
+    const pendingPayments = await this.prisma.client.paymentTransaction.count({
+      where: {
+        status: { in: [PaymentStatus.INITIATED, PaymentStatus.PENDING] },
+        voteId: { in: candidateVotes.map((v) => v.id) }
+      }
+    });
+    if (pendingPayments > 0) {
+      throw new ConflictException(
+        "Un paiement est en cours pour ce candidat : réessayez dans quelques minutes, une fois le paiement confirmé ou échoué."
       );
     }
     await this.prisma.client.candidate.delete({ where: { id: candidate.id } });

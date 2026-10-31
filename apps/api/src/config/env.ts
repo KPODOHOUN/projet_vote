@@ -105,6 +105,14 @@ export const envSchema = z.object({
   // Sans Redis, la production doit déclarer explicitement tourner sur une seule
   // instance : sinon les limites de débit seraient comptées par instance.
   API_SINGLE_INSTANCE: envFlag(false),
+  // Nombre de proxys de confiance devant l'API (X-Forwarded-For) pour les
+  // appels directs : 1 = l'équilibreur de l'hébergeur. Le trafic du site passe
+  // par le front, qui transmet l'IP du visiteur signée par API_EDGE_PROXY_SECRET.
+  API_TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+  // Secret partagé avec le front (EDGE_PROXY_SECRET côté web) : authentifie
+  // l'IP du visiteur qu'il relaie. Sans lui, tous les visiteurs du site
+  // partageraient l'IP du front (limites de débit communes, preuves de signature fausses).
+  API_EDGE_PROXY_SECRET: z.string().min(32).optional(),
   // Réservé aux tests e2e ; refusé en production.
   API_DISABLE_THROTTLE: envFlag(false),
   // Balayages de secours toutes les 5 min dans l'API (rapprochement, clôtures,
@@ -114,9 +122,6 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   GOOGLE_CALLBACK_URL: z.string().url().default("http://localhost:3000/oauth/callback/google"),
-  FACEBOOK_CLIENT_ID: z.string().default(""),
-  FACEBOOK_CLIENT_SECRET: z.string().default(""),
-  FACEBOOK_CALLBACK_URL: z.string().url().default("http://localhost:3000/oauth/callback/facebook"),
   // -- Cloudinary (Phase 2 upload photo candidat) --------------------------
   // Optionnelles : si l'une manque, l'upload est « non configuré » (l'app reste
   // fonctionnelle via le coller-URL). Le secret ne quitte jamais le serveur.
@@ -222,6 +227,14 @@ export const envSchema = z.object({
       code: "custom",
       path: ["MAIL_RESEND_API_KEY"],
       message: "MAIL_RESEND_API_KEY doit etre defini en production."
+    });
+  }
+
+  if (!value.API_EDGE_PROXY_SECRET) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["API_EDGE_PROXY_SECRET"],
+      message: "API_EDGE_PROXY_SECRET doit etre defini en production (meme valeur que EDGE_PROXY_SECRET du front)."
     });
   }
 

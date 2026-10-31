@@ -12,12 +12,16 @@ import {
   PaymentPurpose,
   PaymentStatus,
   TicketStatus,
-  TicketTypeStatus
+  TicketTypeStatus,
+  UserRole
 } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { isValidEventPreviewToken } from "../common/event-preview-token";
+import { normalizePayinPhone } from "../common/mobile-operator";
+import { formatTicketNumber } from "./ticket-numbers";
 import { MailService } from "../mail/mail.service";
 import { PaymentsService } from "../payments/payments.service";
 import { PspRegistry } from "../payments/psp/psp.registry";
@@ -58,7 +62,8 @@ const designNumberSchema = z.number().finite().min(-10_000).max(10_000);
 const designLayerSchema = z
   .object({
     id: z.string().min(1).max(64),
-    type: z.enum(["text", "image"]),
+    // « qr » : emplacement du QR code d'entrée ; « shape » : rectangle, ellipse ou ligne.
+    type: z.enum(["text", "image", "qr", "shape"]),
     content: z.string().max(2048),
     x: designNumberSchema,
     y: designNumberSchema,
@@ -66,6 +71,7 @@ const designLayerSchema = z
     height: designNumberSchema,
     zIndex: z.number().int().min(0).max(1000),
     visible: z.boolean(),
+    locked: z.boolean().optional(),
     rotation: designNumberSchema.optional(),
     style: z
       .object({
@@ -77,13 +83,24 @@ const designLayerSchema = z
         textDecoration: z.string().max(40).regex(/^[\w -]*$/).optional(),
         objectFit: z.enum(["contain", "cover", "fill"]).optional(),
         opacity: z.number().min(0).max(1).optional(),
-        borderRadius: z.number().min(0).max(1000).optional()
+        borderRadius: z.number().min(0).max(1000).optional(),
+        // Polices disponibles à la fois dans l'éditeur et au rendu du billet.
+        fontFamily: z.enum(["inter", "jakarta", "playfair", "unbounded", "mono"]).optional(),
+        letterSpacing: z.number().min(-20).max(100).optional(),
+        lineHeight: z.number().min(0.5).max(4).optional(),
+        shape: z.enum(["rect", "ellipse", "line"]).optional(),
+        fill: designCssValueSchema.optional(),
+        stroke: designCssValueSchema.optional(),
+        strokeWidth: z.number().min(0).max(200).optional()
       })
       .default({})
   })
   .superRefine((layer, ctx) => {
     if (layer.type === "image" && !designImageUrlSchema.safeParse(layer.content).success) {
       ctx.addIssue({ code: "custom", path: ["content"], message: "URL d'image invalide." });
+    }
+    if ((layer.type === "qr" || layer.type === "shape") && layer.content !== "") {
+      ctx.addIssue({ code: "custom", path: ["content"], message: "Ce calque n'a pas de contenu." });
     }
     if (layer.type === "text" && layer.content.length > 500) {
       ctx.addIssue({ code: "custom", path: ["content"], message: "Texte trop long (500 caractères au plus)." });
@@ -104,7 +121,9 @@ const purchaseTicketSchema = z.object({
   // Numéro Mobile Money qui paie : obligatoire, le paiement part sur ce numéro.
   holderPhone: z.string().min(8).max(20),
   holderEmail: z.string().email().optional(),
-  operator: z.string().max(20).optional()
+  operator: z.string().max(20).optional(),
+  // Nom de chaque invité (billet i → guests[i]) ; vide = nom de l'acheteur.
+  guests: z.array(z.string().trim().max(120)).max(100).optional()
 });
 
 const purchaseStatusSchema = z.object({
@@ -114,25 +133,27 @@ const purchaseStatusSchema = z.object({
 
 const validateTicketSchema = z.object({
   ticketId: z.string().min(1),
-  secret: z.string().min(1)
+  secret: z.string().min(1),
+  // Scanner d'un événement : un billet d'un autre événement est refusé.
+  eventId: z.string().min(1).optional()
 });
 
 /**
- * Durée pendant laquelle un billet réservé (paiement lancé, pas encore
- * confirmé) bloque le stock. Au-delà, la demande Mobile Money a expiré côté
- * opérateur : la réservation cesse de compter, sans être annulée, pour qu'un
- * paiement confirmé en retard valide encore ses billets.
+ * Billets qui occupent le stock : vendus, ou réservés tant que leur paiement est
+ * en attente. Tout échec, refus ou abandon de paiement annule la réservation
+ * (vérification, réconciliation) : une réservation ne bloque donc le stock que
+ * le temps que le prestataire tranche, et un paiement confirmé en retard ne peut
+ * jamais dépasser la jauge.
  */
-export const TICKET_RESERVATION_MINUTES = 15;
+const STOCK_HOLDING_TICKETS: Prisma.TicketWhereInput = {
+  status: { in: [TicketStatus.RESERVED, TicketStatus.PAID, TicketStatus.CONFIRMED, TicketStatus.USED] }
+};
 
-/** Billets qui occupent le stock : vendus, ou réservés depuis moins de 15 minutes. */
-function stockHoldingTickets(now: Date): Prisma.TicketWhereInput {
-  return {
-    OR: [
-      { status: { in: [TicketStatus.PAID, TicketStatus.CONFIRMED, TicketStatus.USED] } },
-      { status: TicketStatus.RESERVED, createdAt: { gt: new Date(now.getTime() - TICKET_RESERVATION_MINUTES * 60_000) } }
-    ]
-  };
+/** « le 12/12 à 20:14 » : heure du premier passage, pour l'agent à l'entrée. */
+function usedAtLabel(usedAt: Date | null): string {
+  if (!usedAt) return "";
+  const label = usedAt.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Porto-Novo" });
+  return ` (le ${label.replace(" ", " à ")})`;
 }
 
 function generateQrSecret(): string {
@@ -194,7 +215,11 @@ export class TicketsService {
   async getTicketType(ticketTypeId: string) {
     const tt = await this.prisma.client.ticketType.findUnique({
       where: { id: ticketTypeId },
-      include: { _count: { select: { tickets: { where: { status: { in: ["PAID", "CONFIRMED", "USED"] } } } } } }
+      include: {
+        _count: { select: { tickets: { where: { status: { in: ["PAID", "CONFIRMED", "USED"] } } } } },
+        // Aperçu du billet dans l'éditeur : nom et date du concours.
+        event: { select: { title: true, startsAt: true } }
+      }
     });
     if (!tt) throw new NotFoundException("Type de ticket introuvable.");
     return tt;
@@ -297,12 +322,15 @@ export class TicketsService {
     return { deleted: true };
   }
 
-  async listPublicTicketTypes(eventSlug: string) {
+  async listPublicTicketTypes(eventSlug: string, previewToken?: string) {
     const event = await this.prisma.client.event.findUnique({
       where: { slug: eventSlug.toLowerCase() },
       select: { id: true, status: true }
     });
-    if (!event) throw new NotFoundException("Événement introuvable.");
+    // Un brouillon n'est visible qu'avec le jeton d'aperçu de son organisateur.
+    if (!event || (event.status === EventStatus.DRAFT && !isValidEventPreviewToken(event.id, previewToken))) {
+      throw new NotFoundException("Événement introuvable.");
+    }
 
     const now = new Date();
     const types = await this.prisma.client.ticketType.findMany({
@@ -313,7 +341,7 @@ export class TicketsService {
       orderBy: { priceCfa: "asc" },
       include: {
         _count: {
-          select: { tickets: { where: stockHoldingTickets(now) } }
+          select: { tickets: { where: STOCK_HOLDING_TICKETS } }
         }
       }
     });
@@ -323,6 +351,47 @@ export class TicketsService {
       if (tt.saleEndsAt && tt.saleEndsAt < now) return false;
       return true;
     });
+  }
+
+  /**
+   * Libère les achats non payés de ce numéro sur ce type de billet quand ils
+   * bloqueraient sa nouvelle tentative. Seuls ceux dont l'invite est partie
+   * (référence prestataire connue) : un paiement tardif reste récupérable.
+   */
+  private async releaseOwnUnpaidIfBlocking(
+    trx: Prisma.TransactionClient,
+    args: { tenantId: string; ticketTypeId: string; buyerPhone: string; quantity: number; maxPerPerson: number; stock: number }
+  ): Promise<void> {
+    const [held, sold] = await Promise.all([
+      trx.ticket.count({ where: { ticketTypeId: args.ticketTypeId, holderPhone: args.buyerPhone, ...STOCK_HOLDING_TICKETS } }),
+      trx.ticket.count({ where: { ticketTypeId: args.ticketTypeId, ...STOCK_HOLDING_TICKETS } })
+    ]);
+    if (held + args.quantity <= args.maxPerPerson && sold + args.quantity <= args.stock) return;
+    const own = await trx.ticket.findMany({
+      where: { ticketTypeId: args.ticketTypeId, holderPhone: args.buyerPhone, status: TicketStatus.RESERVED, paymentTransactionId: { not: null } },
+      select: { paymentTransactionId: true },
+      distinct: ["paymentTransactionId"]
+    });
+    for (const { paymentTransactionId: txId } of own) {
+      if (!txId) continue;
+      const released = await trx.paymentTransaction.updateMany({
+        where: { id: txId, status: PaymentStatus.PENDING, purpose: PaymentPurpose.TICKET, providerRef: { not: null } },
+        data: { status: PaymentStatus.FAILED }
+      });
+      if (released.count === 0) continue;
+      await trx.ticket.updateMany({ where: { paymentTransactionId: txId, status: TicketStatus.RESERVED }, data: { status: TicketStatus.CANCELLED } });
+      await trx.auditLog.create({
+        data: {
+          tenantId: args.tenantId,
+          actorUserId: "system:tickets:purchase",
+          actorRole: UserRole.PLATFORM_ADMIN,
+          action: "payment.abandoned_pending",
+          targetType: "PaymentTransaction",
+          targetId: txId,
+          metadata: { reason: "replaced_by_new_purchase" }
+        }
+      });
+    }
   }
 
   async purchaseTickets(eventSlug: string, payload: unknown) {
@@ -338,6 +407,9 @@ export class TicketsService {
     }
 
     const provider = await this.psp.resolveProvider({ eventId: event.id, tenantId: event.tenantId });
+    // Numéro normalisé : la limite par personne compte tous les achats d'un même numéro,
+    // quelle que soit la façon dont il a été saisi.
+    const buyerPhone = normalizePayinPhone(input.holderPhone);
 
     // Une seule transaction, verrou sur le type de billet : deux achats
     // simultanés passent l'un après l'autre, le stock ne peut pas être dépassé.
@@ -358,9 +430,34 @@ export class TicketsService {
       if (input.quantity > ticketType.maxPerPerson) {
         throw new BadRequestException(`Maximum ${ticketType.maxPerPerson} ticket(s) par achat.`);
       }
+      // L'acheteur qui réessaie (invite USSD fermée, mauvais réseau) ne doit pas
+      // être bloqué par son propre achat non payé : s'il dépasserait la limite
+      // ou le stock, sa tentative précédente est remplacée. Si elle était quand
+      // même payée, la confirmation tardive la récupère (PaymentVerifyService).
+      await this.releaseOwnUnpaidIfBlocking(trx, {
+        tenantId: event.tenantId,
+        ticketTypeId: input.ticketTypeId,
+        buyerPhone,
+        quantity: input.quantity,
+        maxPerPerson: ticketType.maxPerPerson,
+        stock: ticketType.quantity
+      });
+      // Limite par personne, tous achats confondus (anti-revente) : billets payés
+      // ou en cours de paiement sur ce numéro. Sous le verrou : pas de contournement en parallèle.
+      const alreadyHeld = await trx.ticket.count({
+        where: { ticketTypeId: input.ticketTypeId, holderPhone: buyerPhone, ...STOCK_HOLDING_TICKETS }
+      });
+      if (alreadyHeld + input.quantity > ticketType.maxPerPerson) {
+        const left = Math.max(0, ticketType.maxPerPerson - alreadyHeld);
+        throw new BadRequestException(
+          left === 0
+            ? `Maximum ${ticketType.maxPerPerson} ticket(s) par personne : ce numéro a déjà atteint la limite.`
+            : `Maximum ${ticketType.maxPerPerson} ticket(s) par personne : ce numéro peut encore en prendre ${left}.`
+        );
+      }
 
       const sold = await trx.ticket.count({
-        where: { ticketTypeId: input.ticketTypeId, ...stockHoldingTickets(now) }
+        where: { ticketTypeId: input.ticketTypeId, ...STOCK_HOLDING_TICKETS }
       });
       const remaining = ticketType.quantity - sold;
       if (remaining < input.quantity) {
@@ -388,8 +485,8 @@ export class TicketsService {
             data: {
               ticketTypeId: input.ticketTypeId,
               eventId: event.id,
-              holderName: input.holderName ?? null,
-              holderPhone: input.holderPhone,
+              holderName: input.guests?.[i]?.trim() || input.holderName?.trim() || null,
+              holderPhone: buyerPhone,
               holderEmail: input.holderEmail ?? null,
               qrSecret: generateQrSecret(),
               status: TicketStatus.RESERVED,
@@ -414,17 +511,20 @@ export class TicketsService {
         description: `Billets — ${event.title}`
       });
     } catch (error) {
-      // Le prestataire a refusé l'envoi : on libère tout de suite le stock.
-      await this.prisma.client.$transaction([
-        this.prisma.client.paymentTransaction.updateMany({
+      // Le prestataire a refusé l'envoi : on libère tout de suite le stock. Si une
+      // référence est déjà liée, le paiement peut encore aboutir : billets gardés,
+      // la réconciliation tranche.
+      await this.prisma.client.$transaction(async (trx) => {
+        const failed = await trx.paymentTransaction.updateMany({
           where: { id: transaction.id, status: PaymentStatus.PENDING, providerRef: null },
           data: { status: PaymentStatus.FAILED }
-        }),
-        this.prisma.client.ticket.updateMany({
+        });
+        if (failed.count === 0) return;
+        await trx.ticket.updateMany({
           where: { paymentTransactionId: transaction.id, status: TicketStatus.RESERVED },
           data: { status: TicketStatus.CANCELLED }
-        })
-      ]);
+        });
+      });
       throw error;
     }
 
@@ -461,15 +561,19 @@ export class TicketsService {
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
       throw new NotFoundException("Ticket introuvable.");
     }
-    return ticket;
+    // Le lien d'un billet se partage (invité, WhatsApp) : jamais le téléphone ni
+    // l'e-mail de l'acheteur dans la réponse publique.
+    const { holderPhone: _phone, holderEmail: _email, ...shareable } = ticket;
+    return shareable;
   }
 
   async getTicket(ticketId: string) {
     const ticket = await this.prisma.client.ticket.findUnique({
       where: { id: ticketId },
       include: {
-        ticketType: { select: { name: true, priceCfa: true } },
-        event: { select: { title: true, slug: true } }
+        // Design de l'organisateur et date : le billet livré est rendu avec eux.
+        ticketType: { select: { name: true, priceCfa: true, design: true } },
+        event: { select: { title: true, slug: true, startsAt: true } }
       }
     });
     if (!ticket) throw new NotFoundException("Ticket introuvable.");
@@ -502,42 +606,49 @@ export class TicketsService {
       where: { id: input.ticketId, event: { tenantId: user.tenantId } },
       include: {
         ticketType: { select: { name: true } },
-        event: { select: { title: true, slug: true } }
+        event: { select: { id: true, title: true, slug: true } }
       }
     });
-    if (!ticket) throw new NotFoundException("Ticket introuvable.");
+    if (!ticket) throw new NotFoundException("Billet inconnu de votre organisation.");
     const expectedSecret = Buffer.from(ticket.qrSecret, "utf8");
     const givenSecret = Buffer.from(input.secret, "utf8");
     if (expectedSecret.length !== givenSecret.length || !timingSafeEqual(expectedSecret, givenSecret)) {
-      throw new ForbiddenException("Code QR invalide pour ce ticket.");
+      throw new ForbiddenException("Code QR invalide pour ce billet (copie ou falsification).");
+    }
+    if (input.eventId && ticket.eventId !== input.eventId) {
+      throw new BadRequestException(`Ce billet est pour un autre événement : ${ticket.event.title}.`);
     }
     if (ticket.status === "USED") {
-      throw new BadRequestException("Ce ticket a déjà été utilisé.");
+      throw new BadRequestException(`Ce billet a déjà été utilisé${usedAtLabel(ticket.usedAt)}.`);
     }
     if (ticket.status === "CANCELLED" || ticket.status === "REFUNDED") {
-      throw new BadRequestException("Ce ticket n'est plus valide.");
+      throw new BadRequestException("Ce billet n'est plus valide (annulé).");
     }
     if (ticket.status !== "PAID" && ticket.status !== "CONFIRMED") {
-      throw new BadRequestException("Ce ticket n'a pas encore été payé.");
+      throw new BadRequestException("Ce billet n'a pas encore été payé.");
     }
 
     // Passage à USED conditionnel : deux scans simultanés, une seule entrée.
+    const usedAt = new Date();
     const used = await this.prisma.client.ticket.updateMany({
       where: { id: ticket.id, status: { in: [TicketStatus.PAID, TicketStatus.CONFIRMED] } },
-      data: { status: TicketStatus.USED, usedAt: new Date() }
+      data: { status: TicketStatus.USED, usedAt }
     });
     if (used.count === 0) {
-      throw new BadRequestException("Ce ticket a déjà été utilisé.");
+      const now = await this.prisma.client.ticket.findUnique({ where: { id: ticket.id }, select: { usedAt: true } });
+      throw new BadRequestException(`Ce billet a déjà été utilisé${usedAtLabel(now?.usedAt ?? null)}.`);
     }
 
     return {
       valid: true,
       ticket: {
         id: ticket.id,
+        number: formatTicketNumber(ticket.number),
         holderName: ticket.holderName,
         status: "USED",
         ticketType: ticket.ticketType.name,
-        event: ticket.event.title
+        event: ticket.event.title,
+        usedAt: usedAt.toISOString()
       }
     };
   }
@@ -545,11 +656,13 @@ export class TicketsService {
   async listTickets(eventId: string, query: { status?: string | undefined; ticketTypeId?: string | undefined }) {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId }, select: { id: true } });
     if (!event) throw new NotFoundException("Événement introuvable.");
+    const status = query.status ? z.nativeEnum(TicketStatus).safeParse(query.status) : null;
+    if (status && !status.success) throw new BadRequestException("Statut de billet inconnu.");
 
     return this.prisma.client.ticket.findMany({
       where: {
         eventId,
-        ...(query.status ? { status: query.status as TicketStatus } : {}),
+        ...(status?.success ? { status: status.data } : {}),
         ...(query.ticketTypeId ? { ticketTypeId: query.ticketTypeId } : {})
       },
       include: { ticketType: { select: { name: true } } },

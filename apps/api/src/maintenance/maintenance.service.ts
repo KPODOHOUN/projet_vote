@@ -8,9 +8,12 @@ import {
   MAINTENANCE_MODE_KEY
 } from "../common/platform-settings";
 import { PrismaService } from "../prisma/prisma.service";
+import { DELETABLE_AUDIT_LOGS } from "../common/audit-retention";
+import { PRODUCT_EVENT_RETENTION_DAYS } from "../analytics/analytics.service";
 
 const purgeSchema = z.object({
-  auditLogsRetentionDays: z.coerce.number().int().min(0).max(3650).default(365),
+  // Au moins 30 jours ; les traces d'argent, de contrats et d'administration ne sont jamais purgées.
+  auditLogsRetentionDays: z.coerce.number().int().min(30).max(3650).default(365),
   idempotencyRetentionDays: z.coerce.number().int().min(1).max(365).default(30),
   revokedSessionsRetentionDays: z.coerce.number().int().min(1).max(365).default(30)
 });
@@ -80,11 +83,14 @@ export class MaintenanceService {
 
     const platformScope = isPlatformOperator(user.role);
 
-    const [auditResult, idemResult, sessionResult, loginAttemptResult] = await Promise.all([
+    const [auditResult, idemResult, sessionResult, loginAttemptResult, productEventResult] = await Promise.all([
       this.prisma.client.auditLog.deleteMany({
-        where: platformScope
-          ? { createdAt: { lt: auditBefore } }
-          : { tenantId: user.tenantId, createdAt: { lt: auditBefore } }
+        where: {
+          AND: [
+            platformScope ? { createdAt: { lt: auditBefore } } : { tenantId: user.tenantId, createdAt: { lt: auditBefore } },
+            DELETABLE_AUDIT_LOGS
+          ]
+        }
       }),
       this.prisma.client.idempotencyKey.deleteMany({
         where: { createdAt: { lt: idempotencyBefore } }
@@ -98,7 +104,15 @@ export class MaintenanceService {
             }
       }),
       this.prisma.client.loginAttempt.deleteMany({
-        where: { lockedUntil: null, updatedAt: { lt: idempotencyBefore } }
+        // Compteurs anciens, verrouillés ou non : un verrou expiré ne doit pas rester en base pour toujours.
+        where: {
+          updatedAt: { lt: idempotencyBefore },
+          OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date(now) } }]
+        }
+      }),
+      // Mesures d'audience : conservées PRODUCT_EVENT_RETENTION_DAYS jours au plus.
+      this.prisma.client.productEvent.deleteMany({
+        where: { createdAt: { lt: new Date(now - PRODUCT_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000) } }
       })
     ]);
 
@@ -113,7 +127,8 @@ export class MaintenanceService {
           deletedAuditLogs: auditResult.count,
           deletedIdempotencyKeys: idemResult.count,
           deletedRevokedSessions: sessionResult.count,
-          deletedLoginAttempts: loginAttemptResult.count
+          deletedLoginAttempts: loginAttemptResult.count,
+          deletedProductEvents: productEventResult.count
         }
       }
     });
@@ -122,7 +137,8 @@ export class MaintenanceService {
       deletedAuditLogs: auditResult.count,
       deletedIdempotencyKeys: idemResult.count,
       deletedRevokedSessions: sessionResult.count,
-      deletedLoginAttempts: loginAttemptResult.count
+      deletedLoginAttempts: loginAttemptResult.count,
+      deletedProductEvents: productEventResult.count
     };
   }
 }

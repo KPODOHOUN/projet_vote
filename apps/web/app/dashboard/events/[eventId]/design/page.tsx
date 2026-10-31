@@ -40,6 +40,8 @@ import { Button, Input, Card, FormError, LoadingState } from "@/components/ui";
 type EventDetail = {
   id: string;
   slug: string;
+  /** Aperçu de la page publique d'un brouillon. */
+  previewToken?: string;
   title: string;
   status: string;
   tagline: string | null;
@@ -303,6 +305,7 @@ export default function EventDesignPage() {
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [tagline, setTagline] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
@@ -370,6 +373,7 @@ export default function EventDesignPage() {
       }
       setTitle(found.title);
       setSlug(found.slug);
+      setPreviewToken(found.previewToken ?? null);
       setStatus(found.status);
       setTagline(found.tagline ?? "");
       setLogoUrl(found.logoUrl ?? "");
@@ -496,7 +500,7 @@ export default function EventDesignPage() {
         <div className="flex flex-wrap gap-2">
           <CopyPublicLinkButton eventSlug={slug} isEn={isEn} />
           <Button asChild variant="secondary">
-            <Link href={publicEventPath(slug)} target="_blank" rel="noopener noreferrer">
+            <Link href={publicEventPath(slug, status === "DRAFT" ? previewToken : null)} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="size-4" aria-hidden="true" />
               {t("design.openPage")}
             </Link>
@@ -840,7 +844,7 @@ export default function EventDesignPage() {
             <iframe
               key={previewKey}
               title={t("design.previewTitle")}
-              src={publicEventPath(slug)}
+              src={publicEventPath(slug, status === "DRAFT" ? previewToken : null)}
               className="mx-auto block h-[min(720px,70vh)] bg-background"
               style={{ width: previewWidth === "phone" ? 390 : "100%" }}
             />

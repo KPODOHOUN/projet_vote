@@ -56,7 +56,9 @@ export default function DashboardAdminSettingsPage() {
     try {
       const data = await apiFetch<typeof admins>("/admin/admins", { headers: { Authorization: `Bearer ${token}` } });
       setAdmins(data);
-    } catch { /* silent */ }
+    } catch (error) {
+      showToast.error(error instanceof Error && error.message ? error.message : "Liste des administrateurs indisponible.");
+    }
     finally { setAdminsLoading(false); }
   }, []);
 
@@ -66,7 +68,9 @@ export default function DashboardAdminSettingsPage() {
     try {
       const data = await apiFetch<typeof apiKeys>("/admin/api-keys", { headers: { Authorization: `Bearer ${token}` } });
       setApiKeys(data);
-    } catch { /* silent */ }
+    } catch (error) {
+      showToast.error(error instanceof Error && error.message ? error.message : "Liste des clés d'API indisponible.");
+    }
     finally { setApiKeysLoading(false); }
   }, []);
 

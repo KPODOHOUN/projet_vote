@@ -1,4 +1,4 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { EventStatus } from "@prisma/client";
 
 /**
@@ -41,6 +41,19 @@ export function assertEventTransition(from: EventStatus, to: EventStatus, via: E
     throw new ConflictException("Un concours publié ne peut pas revenir en brouillon.");
   }
   throw new ConflictException("Ce changement de statut n'est pas autorisé.");
+}
+
+/**
+ * Le vote est ouvert : concours en ligne et dans sa période. Vérifié au vote ET
+ * au lancement du paiement — un vote préparé avant la fin ne se paie plus après.
+ */
+export function assertVotingOpen(event: { status: EventStatus; startsAt: Date; endsAt: Date }, now = new Date()): void {
+  if (event.status !== EventStatus.ACTIVE) {
+    throw new BadRequestException("Cet événement n'est pas ouvert au vote.");
+  }
+  if (now < event.startsAt || now > event.endsAt) {
+    throw new BadRequestException("Le vote est fermé pour cet événement (hors période).");
+  }
 }
 
 /** Conditions pour publier (générer puis signer le contrat). Liste vide = prêt. */

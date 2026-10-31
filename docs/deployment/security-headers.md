@@ -37,5 +37,6 @@ production, reconstruire avec `CSP_REPORT_ONLY=true`, corriger la directive, pui
 4. Étape suivante : remplacer `'unsafe-inline'` de `script-src` par des nonces (middleware Next).
 
 `frame-ancestors 'self'` et `X-Frame-Options: SAMEORIGIN` laissent l'éditeur d'apparence afficher
-la page publique dans une iframe du même site. `camera=()` : aucune fonction caméra aujourd'hui ;
-à ouvrir (`camera=(self)`) le jour où le scan de billets par la caméra existe.
+la page publique dans une iframe du même site. `camera=(self)` : la caméra
+n'est permise qu'au site lui-même, pour le scanner des entrées (`/dashboard/events/{id}/tickets/scan`) ;
+jamais à un contenu tiers intégré.

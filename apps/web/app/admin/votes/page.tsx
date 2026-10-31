@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Ban } from "lucide-react";
+import { Ban } from "lucide-react";
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
 import {
   cancelPlatformVote,
-  deletePlatformVote,
   listPlatformVotes,
   type PlatformVote
 } from "@/lib/platform-votes";
@@ -106,21 +105,6 @@ export default function AdminVotesPage() {
     }
   };
 
-  const onDelete = async (voteId: string) => {
-    const token = getStoredToken();
-    if (!token) return;
-    setBusyId(voteId);
-    try {
-      await deletePlatformVote(token, voteId);
-      showToast.success(isEn ? "Vote deleted." : "Vote supprimé.");
-      await load();
-    } catch (caught) {
-      showToast.error(caught instanceof Error ? caught.message : isEn ? "Delete failed." : "Suppression impossible.");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const eventOptions = Object.entries(knownEvents)
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -177,8 +161,8 @@ export default function AdminVotesPage() {
               title={isEn ? "Cancel this vote?" : "Annuler ce vote ?"}
               description={
                 isEn
-                  ? `${vote.candidate.fullName} · ${formatCfa(vote.amountCfa, true)}. The vote stops counting.`
-                  : `${vote.candidate.fullName} · ${formatCfa(vote.amountCfa, false)}. Le vote ne compte plus.`
+                  ? `${vote.candidate.fullName} · ${formatCfa(vote.amountCfa, true)}. The vote stops counting, its payment is voided and taken back from the organizer; refund the voter. Recorded in the audit log.`
+                  : `${vote.candidate.fullName} · ${formatCfa(vote.amountCfa, false)}. Le vote ne compte plus, son paiement est annulé et repris à l'organisateur ; remboursez le votant. Tracé dans le journal d'audit.`
               }
               confirmLabel={isEn ? "Cancel the vote" : "Annuler le vote"}
               cancelLabel={isEn ? "Back" : "Retour"}
@@ -203,26 +187,6 @@ export default function AdminVotesPage() {
                 helpText={isEn ? "3 characters minimum." : "3 caractères minimum."}
               />
             </ConfirmDialog>
-            <ConfirmDialog
-              disabled={busyId === vote.id}
-              title={isEn ? "Delete this vote?" : "Supprimer ce vote ?"}
-              description={isEn ? "The vote and its payment are removed. Cannot be undone." : "Le vote et son paiement sont retirés. Irréversible."}
-              confirmLabel={isEn ? "Delete" : "Supprimer"}
-              cancelLabel={isEn ? "Back" : "Retour"}
-              onConfirm={() => void onDelete(vote.id)}
-              trigger={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  aria-label={isEn ? "Delete vote" : "Supprimer le vote"}
-                >
-                  <Trash2 className="size-4" aria-hidden="true" />
-                  <span className="hidden lg:inline">{isEn ? "Delete" : "Supprimer"}</span>
-                </Button>
-              }
-            />
           </div>
         )
     }
@@ -233,7 +197,7 @@ export default function AdminVotesPage() {
       <AdminPageHeader
         eyebrow={isEn ? "Platform" : "Plateforme"}
         title={isEn ? "Vote moderation" : "Modération des votes"}
-        description={isEn ? "Cancel or delete a vote. A copy is kept in the archive." : "Annulez ou supprimez un vote. Une copie reste dans l'archive."}
+        description={isEn ? "Cancel a vote with a reason: it is kept, marked cancelled, and recorded in the audit log." : "Annulez un vote avec un motif : il est conservé, marqué annulé, et tracé dans le journal d'audit."}
       />
 
       <AdminFilterCard columns="sm:grid-cols-[1fr_10rem] lg:grid-cols-[minmax(0,24rem)_10rem_auto]">

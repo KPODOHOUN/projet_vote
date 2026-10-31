@@ -19,6 +19,10 @@ services:
       # Une seule instance sans Redis ; sinon définir API_REDIS_URL.
       - key: API_SINGLE_INSTANCE
         value: "true"
+      # IP des visiteurs relayée par le front : même valeur que EDGE_PROXY_SECRET sur Vercel
+      # (openssl rand -hex 32). Obligatoire en production.
+      - key: API_EDGE_PROXY_SECRET
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: API_JWT_SECRET

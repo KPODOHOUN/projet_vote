@@ -20,8 +20,18 @@ import { OfferSettingsService } from "../offers/offer-settings.service";
 import { PspRegistry } from "./psp/psp.registry";
 import { MailService } from "../mail/mail.service";
 import { ticketEmailHtml } from "../tickets/ticket-email.util";
+import { assignTicketNumbers } from "../tickets/ticket-numbers";
 import { parseStrictProviderAmount } from "./psp/parse-provider-amount";
+import { assertVotingOpen } from "../events/event-lifecycle";
 import type { FeexpayStatusPayload } from "./feexpay/feexpay.types";
+
+/** Abandons « faute de réponse à temps » : seuls ceux-là peuvent encore recevoir une confirmation tardive. */
+const TIMEOUT_ABANDON_ACTIONS = ["payment.abandoned_pending", "payment.expired_orphan"];
+
+/** Billets qui occupent une place (même règle que la vente). */
+const SEAT_HOLDING_STATUSES = [TicketStatus.RESERVED, TicketStatus.PAID, TicketStatus.CONFIRMED, TicketStatus.USED];
+
+class LateRecoveryRefused extends Error {}
 
 /**
  * Verify-by-pull pipeline (ADR-017).
@@ -92,12 +102,18 @@ export class PaymentVerifyService {
     // terminal state, we never re-process it. A platform admin who VOIDED a
     // payment must not see it silently flipped back to SUCCEEDED by a delayed
     // webhook.
-    if (
-      tx.status === PaymentStatus.SUCCEEDED ||
-      tx.status === PaymentStatus.FAILED ||
-      tx.status === PaymentStatus.VOIDED
-    ) {
+    if (tx.status === PaymentStatus.SUCCEEDED || tx.status === PaymentStatus.VOIDED) {
       return { outcome: "ignored_terminal", transactionId: tx.id, reason: tx.status };
+    }
+    // FAILED est définitif, sauf pour un paiement abandonné faute de réponse à
+    // temps (réservation de billets expirée, prestataire muet) : l'acheteur a pu
+    // valider après coup. On le revérifie pour ne jamais garder son argent sans contrepartie.
+    let late = false;
+    if (tx.status === PaymentStatus.FAILED) {
+      if (!(await this.wasAbandonedByTimeout(tx.id))) {
+        return { outcome: "ignored_terminal", transactionId: tx.id, reason: tx.status };
+      }
+      late = true;
     }
 
     // Source of truth: server-to-server pull (credentials organisateur ou plateforme).
@@ -112,7 +128,13 @@ export class PaymentVerifyService {
         txId: tx.id,
         err: err instanceof Error ? err.message : String(err)
       });
+      if (late) return { outcome: "ignored_terminal", transactionId: tx.id, reason: "pull_failed" };
       return { outcome: "still_pending", transactionId: tx.id, reason: "pull_failed" };
+    }
+
+    // Abandonné et toujours pas payé : rien à faire, il reste FAILED.
+    if (late && pull.status !== "SUCCESSFUL") {
+      return { outcome: "ignored_terminal", transactionId: tx.id, reason: tx.status };
     }
 
     if (pull.status === "PENDING") {
@@ -163,9 +185,121 @@ export class PaymentVerifyService {
       });
       return { outcome: "rejected", reason: "currency_mismatch", transactionId: tx.id };
     }
+    if (late) return this.recoverLateSuccess(tx, reference);
     // All invariants OK — commit atomically.
     await this.applySuccess(tx, "system:payment:verify", { providerRef: reference });
     return { outcome: "applied", transactionId: tx.id };
+  }
+
+  private async wasAbandonedByTimeout(txId: string): Promise<boolean> {
+    const abandon = await this.prisma.client.auditLog.findFirst({
+      where: { targetType: "PaymentTransaction", targetId: txId, action: { in: TIMEOUT_ABANDON_ACTIONS } },
+      select: { id: true }
+    });
+    return abandon !== null;
+  }
+
+  /**
+   * Paiement confirmé par le prestataire APRÈS son abandon. On l'honore si c'est
+   * encore possible — billets : les places sont toujours libres ; votes : le
+   * concours est encore ouvert — en le rouvrant (FAILED → PENDING, billets
+   * re-réservés) puis en l'appliquant par le chemin normal. Sinon il est signalé
+   * pour remboursement (audit protégé « payment.late_success_needs_refund »).
+   */
+  private async recoverLateSuccess(
+    tx: { id: string; tenantId: string; eventId: string; amountCfa: number; currency: string; purpose: PaymentPurpose; voteId: string | null },
+    reference: string
+  ): Promise<{ outcome: "applied" | "ignored_terminal"; reason?: string; transactionId: string }> {
+    let refusal: string | null = null;
+    try {
+      await this.prisma.client.$transaction(async (trx) => {
+        // CAS d'abord : un second passage concurrent attend ce verrou puis ne trouve plus FAILED.
+        const reopened = await trx.paymentTransaction.updateMany({
+          where: { id: tx.id, status: PaymentStatus.FAILED },
+          data: { status: PaymentStatus.PENDING }
+        });
+        if (reopened.count === 0) throw new LateRecoveryRefused("raced");
+
+        if (tx.purpose === PaymentPurpose.TICKET) {
+          const tickets = await trx.ticket.findMany({
+            where: { paymentTransactionId: tx.id, status: TicketStatus.CANCELLED },
+            select: { ticketTypeId: true }
+          });
+          if (tickets.length === 0) throw new LateRecoveryRefused("tickets_missing");
+          const wanted = new Map<string, number>();
+          for (const t of tickets) wanted.set(t.ticketTypeId, (wanted.get(t.ticketTypeId) ?? 0) + 1);
+          // Même verrou que la vente (ordre fixe : pas d'interblocage).
+          for (const ticketTypeId of [...wanted.keys()].sort()) {
+            await trx.$queryRaw`SELECT id FROM "TicketType" WHERE id = ${ticketTypeId} FOR UPDATE`;
+            const type = await trx.ticketType.findUnique({ where: { id: ticketTypeId }, select: { quantity: true } });
+            const held = await trx.ticket.count({ where: { ticketTypeId, status: { in: SEAT_HOLDING_STATUSES } } });
+            if (!type || held + (wanted.get(ticketTypeId) ?? 0) > type.quantity) throw new LateRecoveryRefused("sold_out");
+          }
+          await trx.ticket.updateMany({
+            where: { paymentTransactionId: tx.id, status: TicketStatus.CANCELLED },
+            data: { status: TicketStatus.RESERVED }
+          });
+        } else if (tx.purpose === PaymentPurpose.VOTE || tx.purpose === PaymentPurpose.ORGANIZER_VOTE_TOPUP) {
+          const event = await trx.event.findUnique({ where: { id: tx.eventId }, select: { status: true, startsAt: true, endsAt: true } });
+          try {
+            if (!event) throw new Error("missing");
+            assertVotingOpen(event);
+          } catch {
+            throw new LateRecoveryRefused("voting_closed");
+          }
+        } else {
+          throw new LateRecoveryRefused("unsupported_purpose");
+        }
+
+        await trx.auditLog.create({
+          data: {
+            tenantId: tx.tenantId,
+            actorUserId: "system:payment:verify",
+            actorRole: UserRole.PLATFORM_ADMIN,
+            action: "payment.late_success_recovered",
+            targetType: "PaymentTransaction",
+            targetId: tx.id,
+            metadata: { providerRef: reference, purpose: tx.purpose, amountCfa: tx.amountCfa }
+          }
+        });
+      });
+    } catch (error) {
+      if (!(error instanceof LateRecoveryRefused)) throw error;
+      refusal = error.message;
+    }
+
+    if (refusal === "raced") return { outcome: "ignored_terminal", reason: PaymentStatus.FAILED, transactionId: tx.id };
+    if (refusal) {
+      await this.flagLateSuccessForRefund(tx, reference, refusal);
+      return { outcome: "ignored_terminal", reason: "late_success_needs_refund", transactionId: tx.id };
+    }
+    await this.applySuccess(tx, "system:payment:verify", { providerRef: reference, lateSuccess: true });
+    return { outcome: "applied", transactionId: tx.id };
+  }
+
+  /** Une seule trace par paiement : l'équipe rembourse à partir de la liste des audits. */
+  private async flagLateSuccessForRefund(
+    tx: { id: string; tenantId: string; amountCfa: number; purpose: PaymentPurpose },
+    reference: string,
+    reason: string
+  ): Promise<void> {
+    const already = await this.prisma.client.auditLog.findFirst({
+      where: { targetType: "PaymentTransaction", targetId: tx.id, action: "payment.late_success_needs_refund" },
+      select: { id: true }
+    });
+    if (already) return;
+    this.logger.error({ msg: "payment.late_success_needs_refund", txId: tx.id, reference, reason, amountCfa: tx.amountCfa });
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: tx.tenantId,
+        actorUserId: "system:payment:verify",
+        actorRole: UserRole.PLATFORM_ADMIN,
+        action: "payment.late_success_needs_refund",
+        targetType: "PaymentTransaction",
+        targetId: tx.id,
+        metadata: { providerRef: reference, reason, purpose: tx.purpose, amountCfa: tx.amountCfa }
+      }
+    });
   }
 
   /**
@@ -240,10 +374,17 @@ export class PaymentVerifyService {
       } else if (tx.purpose === PaymentPurpose.TICKET) {
         // Seulement les billets de CET achat : un paiement ne valide jamais les
         // réservations d'un autre acheteur du même événement.
-        await trx.ticket.updateMany({
+        const paid = await trx.ticket.findMany({
           where: { paymentTransactionId: tx.id, status: TicketStatus.RESERVED },
+          select: { id: true, ticketTypeId: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+        });
+        await trx.ticket.updateMany({
+          where: { id: { in: paid.map((ticket) => ticket.id) } },
           data: { status: TicketStatus.PAID, paidAt: new Date(), confirmedAt: new Date() }
         });
+        // Numéros lisibles (N° 0042) attribués au paiement, dans l'ordre d'achat.
+        await assignTicketNumbers(trx, paid);
       }
 
       await this.applyOfferWalletEffects(trx, { ...tx, commissionCfa });
@@ -311,9 +452,12 @@ export class PaymentVerifyService {
         if (!ticket.holderEmail) continue;
         this.mail.send({
           to: [ticket.holderEmail],
-          subject: `Votre billet pour ${ticket.event.title}`,
+          subject: ticket.holderName
+            ? `Billet de ${ticket.holderName} pour ${ticket.event.title}`
+            : `Votre billet pour ${ticket.event.title}`,
           html: ticketEmailHtml({
             id: ticket.id,
+            number: ticket.number,
             qrSecret: ticket.qrSecret,
             amountCfa: ticket.amountCfa,
             holderName: ticket.holderName,
@@ -383,13 +527,17 @@ export class PaymentVerifyService {
 
   /**
    * Commission figée sur le paiement à sa confirmation (règles centralisées
-   * dans OfferSettingsService). Votes, billets et votes ajoutés par
-   * l'organisateur suivent la même règle ; les anciens objets de paiement
+   * dans OfferSettingsService). Votes et votes ajoutés par l'organisateur :
+   * taux des votes ; billets : taux des billets ; les anciens objets de paiement
    * (activation, abonnement) n'en ont pas.
    */
   private async resolveCommissionForTx(tx: { purpose: PaymentPurpose; eventId: string; amountCfa: number }): Promise<number | null> {
     if (!MONEY_PURPOSES.has(tx.purpose)) return null;
-    const bps = await this.offerSettings.resolveCommissionBps(tx.eventId);
+    // Billets : taux des billets (10 % par défaut). Votes, y compris ceux ajoutés
+    // par l'organisateur : taux des votes (contrat, article 3).
+    const bps = tx.purpose === PaymentPurpose.TICKET
+      ? await this.offerSettings.resolveTicketCommissionBps(tx.eventId)
+      : await this.offerSettings.resolveCommissionBps(tx.eventId);
     return this.offerSettings.computeCommissionCfa(tx.amountCfa, bps);
   }
 

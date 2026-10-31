@@ -60,43 +60,6 @@ test("fetchPayinStatus → maps SUCCESSFUL to SUCCEEDED, coerces string amount",
   assert.equal(res.currency, "XOF");
 });
 
-test("sendPayout SUCCESSFUL → SUCCEEDED + providerRef", async () => {
-  mockFetch((url, init) => {
-    assert.equal(url, "https://api-v2.feexpay.me/api/payouts/public/transfer/global");
-    const body = JSON.parse(String(init.body));
-    assert.equal(body.network, "MTN");
-    assert.equal(body.shop, "shop-1");
-    return { status: 200, body: { reference: "po-ref-1", status: "SUCCESSFUL" } };
-  });
-  const gw = new FeexpayGateway();
-  const res = await gw.sendPayout(
-    { idempotencyKey: "k1", amountCfa: 100, beneficiaryAccount: "2290166000000", network: "MTN", label: "x" },
-    creds
-  );
-  assert.deepEqual(res, { status: "SUCCEEDED", providerRef: "po-ref-1" });
-});
-
-test("sendPayout on 5xx → UNCERTAIN (never auto-succeed)", async () => {
-  mockFetch(() => ({ status: 503, body: { message: "down" } }));
-  const gw = new FeexpayGateway();
-  const res = await gw.sendPayout(
-    { idempotencyKey: "k1", amountCfa: 100, beneficiaryAccount: "2290166000000", network: "MTN", label: "x" },
-    creds
-  );
-  assert.equal(res.status, "UNCERTAIN");
-});
-
-test("fetchPayoutStatus → normalized SUCCEEDED", async () => {
-  mockFetch(() => ({
-    status: 200,
-    body: { reference: "po-ref-1", reseau: "MTN", amount: 50, status: "SUCCESSFUL", description: "x" }
-  }));
-  const gw = new FeexpayGateway();
-  const res = await gw.fetchPayoutStatus("po-ref-1", creds);
-  assert.equal(res.status, "SUCCEEDED");
-  assert.equal(res.amountCfa, 50);
-});
-
 test("initPayin Celtiis → chemin requesttopay/celtiis_bj (code FeexPay Bénin)", async () => {
   let seenUrl = "";
   mockFetch((url) => {
@@ -106,4 +69,13 @@ test("initPayin Celtiis → chemin requesttopay/celtiis_bj (code FeexPay Bénin)
   const gw = new FeexpayGateway();
   await gw.initPayin({ amountCfa: 100, phoneNumber: "2290141000000", operator: "celtiis", customId: "tx-c" }, creds);
   assert.equal(seenUrl, "https://api-v2.feexpay.me/api/transactions/public/requesttopay/celtiis_bj");
+});
+
+test("requesttopay en 5xx n'est pas renvoyé (pas de second débit USSD)", async () => {
+  let calls = 0;
+  mockFetch(() => { calls += 1; return { status: 503, body: { message: "down" } }; });
+  await assert.rejects(
+    new FeexpayGateway().initPayin({ amountCfa: 100, phoneNumber: "2290166000000", operator: "mtn", customId: "tx1" }, creds)
+  );
+  assert.equal(calls, 1);
 });

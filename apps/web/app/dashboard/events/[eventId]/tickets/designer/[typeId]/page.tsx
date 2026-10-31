@@ -1,710 +1,411 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import {
+  ArrowLeft, Braces, Circle, Eye, EyeOff, ImageIcon, Layers, Loader2, Minus, Palette, QrCode, Redo2, Save, Square, Type, Undo2
+} from "lucide-react";
+import { apiFetch, ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
-import { Button, LoadingState, Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui";
+import { Button, LoadingState } from "@/components/ui";
 import { DashboardBreadcrumb } from "@/components/dashboard-breadcrumb";
 import { showToast } from "@/lib/toast";
+import { uploadCandidatePhoto } from "@/lib/upload";
 import {
-  ArrowLeft, Bold, ChevronDown, ChevronUp,
-  Copy, Eye, EyeOff, ImageIcon, Italic, Layers, Palette,
-  Save, Trash2, Type, Underline,
-  AlignLeft, AlignCenter, AlignRight,
-  Upload, Crop, X
-} from "lucide-react";
-
-type DesignLayer = {
-  id: string;
-  type: "text" | "image";
-  content: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  zIndex: number;
-  visible: boolean;
-  rotation?: number;
-    style: { fontSize?: number; fontWeight?: string; color?: string; textAlign?: "left" | "center" | "right"; fontStyle?: string; textDecoration?: string; objectFit?: "contain" | "cover" | "fill"; opacity?: number; borderRadius?: number; };
-};
-
-type TicketDesign = {
-  width: number;
-  height: number;
-  background: { type: "color" | "gradient"; value: string };
-  backgroundImage: string | null;
-  layers: DesignLayer[];
-};
-
-let idCounter = 0;
-function genId() { return `layer-${++idCounter}-${Date.now()}`; }
+  defaultTicketDesign, isBlankDesign, isUnrenderableImage, newLayerId, TICKET_FIELDS,
+  type DesignLayer, type ShapeKind, type TicketDesign, type TicketValues
+} from "@/lib/ticket-design";
+import { editorReducer, fitImageBox, initialEditorState } from "@/lib/ticket-editor";
+import { DesignerCanvas } from "@/components/ticket-designer/designer-canvas";
+import { LayersPanel } from "@/components/ticket-designer/layers-panel";
+import { PropertiesPanel } from "@/components/ticket-designer/properties-panel";
 
 type TicketTypeInfo = {
-  id: string; name: string; event: { title: string };
+  id: string;
+  name: string;
+  priceCfa: number;
+  event?: { title: string; startsAt: string } | null;
 };
+
+/** Limite de l'API (design de billet). */
+const MAX_LAYERS = 50;
+
+type UploadTarget = { kind: "add" } | { kind: "background" } | { kind: "replace"; id: string };
+
+function isTyping(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  return Boolean(element && (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.tagName === "SELECT" || element.isContentEditable));
+}
+
+/**
+ * Le rendu du billet ne lit pas le WebP : converti en PNG (transparence gardée)
+ * avant l'import. Les autres formats passent tels quels.
+ */
+async function toRenderableImage(file: File): Promise<File> {
+  if (file.type !== "image/webp") return file;
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  return blob ? new File([blob], file.name.replace(/\.webp$/i, "") + ".png", { type: "image/png" }) : file;
+}
+
+async function naturalSize(file: File): Promise<{ width: number; height: number }> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  } catch {
+    return { width: 400, height: 400 };
+  }
+}
 
 export default function TicketDesignerPage() {
   const router = useRouter();
-  const params = useParams<{ eventId: string; typeId: string }>();
-  const { eventId, typeId } = params;
+  const { eventId, typeId } = useParams<{ eventId: string; typeId: string }>();
   const { locale } = useI18n();
   const isEn = locale === "en";
 
   const [ticketType, setTicketType] = useState<TicketTypeInfo | null>(null);
-  const [design, setDesign] = useState<TicketDesign | null>(null);
+  const [state, dispatch] = useReducer(editorReducer, initialEditorState(defaultTicketDesign()));
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
-  const [uploadingBg, setUploadingBg] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [showCropModal, setShowCropModal] = useState<"background" | "logo" | null>(null);
-  const [cropFile, setCropFile] = useState<File | null>(null);
-  const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
-  const [cropDrag, setCropDrag] = useState<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
-  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+  const [uploading, setUploading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploadTarget = useRef<UploadTarget>({ kind: "add" });
 
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const fileBgRef = useRef<HTMLInputElement>(null);
-  const fileLogoRef = useRef<HTMLInputElement>(null);
-
-  const selectedLayer = design?.layers.find((l) => l.id === selectedLayerId) ?? null;
+  const { design, selectedId } = state;
+  const selected = design.layers.find((layer) => layer.id === selectedId) ?? null;
 
   useEffect(() => {
+    // Réponse arrivée après un nouveau chargement (ou un démontage) : ignorée, elle
+    // écraserait les modifications déjà faites.
+    let stale = false;
     async function load() {
       try {
         const token = getStoredToken();
         if (!token) { router.push("/login"); return; }
-        const [typeData, designData] = await Promise.all([
-          apiFetch<TicketTypeInfo>(`/events/${eventId}/ticket-types/${typeId}`, { headers: { Authorization: `Bearer ${token}` } }),
-          apiFetch<TicketDesign>(`/events/${eventId}/ticket-types/${typeId}/design`, { headers: { Authorization: `Bearer ${token}` } })
+        const headers = { Authorization: `Bearer ${token}` };
+        const [typeData, saved] = await Promise.all([
+          apiFetch<TicketTypeInfo>(`/events/${eventId}/ticket-types/${typeId}`, { headers }),
+          apiFetch<TicketDesign>(`/events/${eventId}/ticket-types/${typeId}/design`, { headers })
         ]);
+        if (stale) return;
         setTicketType(typeData);
-        setDesign(designData);
+        // Jamais dessiné : on part du billet que l'acheteur recevrait aujourd'hui.
+        dispatch({ type: "load", design: isBlankDesign(saved) ? defaultTicketDesign() : saved });
       } catch {
-        showToast.error(isEn ? "Failed to load ticket design" : "Échec du chargement");
+        if (stale) return;
+        showToast.error(isEn ? "Failed to load ticket design" : "Échec du chargement du design");
         router.push(`/dashboard/events/${eventId}/tickets`);
       } finally {
-        setIsLoading(false);
+        if (!stale) setIsLoading(false);
       }
     }
-    load();
+    void load();
+    return () => { stale = true; };
     // Chargé une fois par billet : relancer au changement de langue écraserait le design non enregistré.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, typeId]);
 
-  const addLayer = useCallback((layer: DesignLayer) => {
-    setDesign((d) => d ? { ...d, layers: [...d.layers, layer] } : d);
-    setSelectedLayerId(layer.id);
-  }, []);
+  // Modifications non enregistrées : le navigateur demande confirmation avant de quitter.
+  useEffect(() => {
+    if (!state.dirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [state.dirty]);
 
-  const updateLayer = useCallback((id: string, patch: Partial<DesignLayer>) => {
-    setDesign((d) => d ? {
-      ...d,
-      layers: d.layers.map((l) => l.id === id ? { ...l, ...patch } : l)
-    } : d);
-  }, []);
+  const previewValues: TicketValues | null = useMemo(
+    () =>
+      preview && ticketType
+        ? {
+            ticketId: "cm1exemple0000A1B2C3",
+            number: 42,
+            holderName: "Awa Kouassi",
+            ticketTypeName: ticketType.name,
+            eventTitle: ticketType.event?.title ?? (isEn ? "Your event" : "Votre événement"),
+            eventStartsAt: ticketType.event?.startsAt ?? null,
+            amountCfa: ticketType.priceCfa
+          }
+        : null,
+    [preview, ticketType, isEn]
+  );
 
-  const removeLayer = useCallback((id: string) => {
-    setDesign((d) => d ? { ...d, layers: d.layers.filter((l) => l.id !== id) } : d);
-    setSelectedLayerId((prev) => prev === id ? null : prev);
-  }, []);
+  const canAdd = design.layers.length < MAX_LAYERS;
+  const addLayer = useCallback(
+    (layer: Omit<DesignLayer, "zIndex">) => {
+      if (design.layers.length >= MAX_LAYERS) {
+        showToast.error(isEn ? `${MAX_LAYERS} layers maximum per ticket.` : `${MAX_LAYERS} calques au plus par billet.`);
+        return;
+      }
+      dispatch({ type: "addLayer", layer: { ...layer, zIndex: 0 } });
+    },
+    [design.layers.length, isEn]
+  );
 
-  function addTextLayer() {
-    const idx = design!.layers.length + 1;
-    const layer: DesignLayer = {
-      id: genId(), type: "text", content: "Texte",
-      x: 40, y: 170, width: 300, height: 36, zIndex: idx, visible: true,
-      style: { fontSize: 18, fontWeight: "700", color: "#ffffff", textAlign: "left" }
-    };
-    addLayer(layer);
-  }
-
-  function moveLayer(id: string, dir: "up" | "down") {
-    setDesign((d) => {
-      if (!d) return d;
-      const layers = [...d.layers];
-      const idx = layers.findIndex((l) => l.id === id);
-      if (idx === -1) return d;
-      const newIdx = dir === "up" ? Math.min(idx + 1, layers.length - 1) : Math.max(idx - 1, 0);
-      if (newIdx === idx) return d;
-      const tmp = layers[idx]!; layers[idx] = layers[newIdx]!; layers[newIdx] = tmp;
-      const reindexed = layers.map((l, i) => ({ ...l, zIndex: i + 1 }));
-      return { ...d, layers: reindexed };
+  function addText(content = isEn ? "Your text" : "Votre texte") {
+    const width = Math.round(design.width * 0.4);
+    addLayer({
+      id: newLayerId("text"), type: "text", content, visible: true,
+      x: Math.round((design.width - width) / 2), y: Math.round(design.height / 2 - 30), width, height: 60,
+      style: { fontSize: Math.round(design.height / 12), fontWeight: "700", color: "#ffffff", textAlign: "center", fontFamily: "inter", lineHeight: 1.2 }
     });
   }
 
-  function duplicateLayer(id: string) {
-    const layer = design?.layers.find((l) => l.id === id);
-    if (!layer) return;
-    addLayer({ ...layer, id: genId(), x: layer.x + 10, y: layer.y + 10, zIndex: design!.layers.length + 1 } as DesignLayer);
+  function addShape(shape: ShapeKind) {
+    const size = Math.round(Math.min(design.width, design.height) * 0.3);
+    addLayer({
+      id: newLayerId("shape"), type: "shape", content: "", visible: true,
+      x: Math.round((design.width - (shape === "line" ? size * 2 : size)) / 2), y: Math.round((design.height - (shape === "line" ? 4 : size)) / 2),
+      width: shape === "line" ? size * 2 : size, height: shape === "line" ? 4 : size,
+      style: shape === "line"
+        ? { shape, stroke: "#ffffff", strokeWidth: 4 }
+        : { shape, fill: "#ffffff", stroke: "#ffffff", strokeWidth: 0, borderRadius: shape === "rect" ? 16 : 0, opacity: 0.9 }
+    });
   }
 
-  function onCanvasMouseDown(e: React.MouseEvent, layerId: string) {
-    e.stopPropagation();
-    const layer = design?.layers.find((l) => l.id === layerId);
-    if (!layer) return;
-    setDragging({ id: layerId, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y });
-    setSelectedLayerId(layerId);
+  function addQr() {
+    const existing = design.layers.find((layer) => layer.type === "qr");
+    if (existing) { dispatch({ type: "select", id: existing.id }); return; }
+    const side = Math.round(Math.min(design.height * 0.6, design.width * 0.3));
+    addLayer({ id: newLayerId("qr"), type: "qr", content: "", visible: true, x: design.width - side - 40, y: Math.round((design.height - side) / 2), width: side, height: side, style: {} });
   }
 
-  function onCanvasMouseMove(e: React.MouseEvent) {
-    if (!dragging || !design) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = design.width / rect.width;
-    const scaleY = design.height / rect.height;
-    const dx = (e.clientX - dragging.startX) * scaleX;
-    const dy = (e.clientY - dragging.startY) * scaleY;
-    const newX = Math.max(0, Math.min(design.width - 50, dragging.origX + dx));
-    const newY = Math.max(0, Math.min(design.height - 20, dragging.origY + dy));
-    updateLayer(dragging.id, { x: Math.round(newX), y: Math.round(newY) });
-  }
-
-  function onCanvasMouseUp() {
-    setDragging(null);
-  }
-
-  function onCanvasClick() {
-    setSelectedLayerId(null);
-  }
-
-  async function handleBgFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCropFile(file);
-    const url = URL.createObjectURL(file);
-    setCropImageUrl(url);
-    setCropOffset({ x: 0, y: 0 });
-    setShowCropModal("background");
-    e.target.value = "";
-  }
-
-  async function handleLogoFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCropFile(file);
-    const url = URL.createObjectURL(file);
-    setCropImageUrl(url);
-    setCropOffset({ x: 0, y: 0 });
-    setShowCropModal("logo");
-    e.target.value = "";
-  }
-
-  async function applyCrop() {
-    if (!cropFile || !showCropModal || !design) return;
-    const canvas = document.createElement("canvas");
-    const img = document.createElement("img");
-    const url = URL.createObjectURL(cropFile);
-    img.src = url;
-    await new Promise((r) => { img.onload = r; });
-
-    const ticketRatio = design.width / design.height;
-    const imgRatio = img.width / img.height;
-    let cropW: number, cropH: number;
-    if (imgRatio > ticketRatio) {
-      cropH = img.height;
-      cropW = cropH * ticketRatio;
-    } else {
-      cropW = img.width;
-      cropH = cropW / ticketRatio;
+  function pickImage(target: UploadTarget) {
+    if (target.kind === "add" && !canAdd) {
+      showToast.error(isEn ? `${MAX_LAYERS} layers maximum per ticket.` : `${MAX_LAYERS} calques au plus par billet.`);
+      return;
     }
-    const maxOffsetX = img.width - cropW;
-    const maxOffsetY = img.height - cropH;
-    const ox = Math.max(0, Math.min(maxOffsetX, -cropOffset.x));
-    const oy = Math.max(0, Math.min(maxOffsetY, -cropOffset.y));
+    uploadTarget.current = target;
+    fileRef.current?.click();
+  }
 
-    const targetW = showCropModal === "background" ? 1200 : 300;
-    const targetH = showCropModal === "background" ? Math.round(targetW / ticketRatio) : 300;
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(img, ox, oy, cropW, cropH, 0, 0, targetW, targetH);
-
-      canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const formData = new FormData();
-      formData.append("file", blob, cropFile.name);
+  const uploadImages = useCallback(
+    async (files: File[], target: UploadTarget) => {
+      const token = getStoredToken();
+      if (!token || files.length === 0) return;
+      setUploading(true);
       try {
-        const token = getStoredToken();
-        if (!token) return;
-        if (showCropModal === "background") {
-          setUploadingBg(true);
-        } else {
-          setUploadingLogo(true);
+        for (const original of target.kind === "add" ? files : files.slice(0, 1)) {
+          const file = await toRenderableImage(original);
+          const [url, size] = await Promise.all([uploadCandidatePhoto(file, token), naturalSize(file)]);
+          if (target.kind === "background") {
+            dispatch({ type: "setDesign", patch: { backgroundImage: url } });
+          } else if (target.kind === "replace") {
+            dispatch({ type: "updateLayer", id: target.id, patch: { content: url } });
+          } else {
+            addLayer({ id: newLayerId("image"), type: "image", content: url, visible: true, ...fitImageBox(design, size.width, size.height), style: { objectFit: "contain" } });
+          }
         }
-        const res = await fetch(`${window.location.origin}/api/v1/uploads/image`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-          credentials: "include"
-        });
-        if (!res.ok) throw new Error("Upload failed");
-        const result = await res.json() as { url: string };
-        if (showCropModal === "background") {
-          setDesign((d) => d ? { ...d, backgroundImage: result.url } : d);
-        } else {
-          const layer: DesignLayer = {
-            id: genId(), type: "image", content: result.url,
-            x: 460, y: 15, width: 100, height: 100, zIndex: design!.layers.length + 1, visible: true,
-            style: { objectFit: "contain", opacity: 1, borderRadius: 8 }
-          };
-          addLayer(layer);
-        }
-        showToast.success(isEn ? "Image uploaded" : "Image téléchargée");
-      } catch {
-        showToast.error(isEn ? "Upload failed" : "Échec du téléchargement");
+        showToast.success(isEn ? "Image added" : "Image ajoutée");
+      } catch (error) {
+        showToast.error(error instanceof Error && error.message ? error.message : isEn ? "Upload failed" : "Échec de l'import");
       } finally {
-        setUploadingBg(false);
-        setUploadingLogo(false);
-        setShowCropModal(null);
-        setCropFile(null);
-        setCropImageUrl(null);
-        URL.revokeObjectURL(url);
+        setUploading(false);
       }
-    }, "image/webp", 0.9);
-  }
+    },
+    [addLayer, design, isEn]
+  );
 
-  function onCropImageMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    setCropDrag({ startX: e.clientX, startY: e.clientY, origX: cropOffset.x, origY: cropOffset.y });
-  }
-
-  function onCropImageMouseMove(e: React.MouseEvent) {
-    if (!cropDrag) return;
-    const dx = e.clientX - cropDrag.startX;
-    const dy = e.clientY - cropDrag.startY;
-    setCropOffset({ x: cropDrag.origX + dx, y: cropDrag.origY + dy });
-  }
-
-  function onCropImageMouseUp() {
-    setCropDrag(null);
-  }
-
-  async function saveDesign() {
-    if (!design) return;
+  const save = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token || isSaving) return;
     setIsSaving(true);
     try {
-      const token = getStoredToken();
-      if (!token) return;
       await apiFetch(`/events/${eventId}/ticket-types/${typeId}/design`, {
         method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify(design)
       });
-      showToast.success(isEn ? "Design saved" : "Design enregistré");
-    } catch {
-      showToast.error(isEn ? "Failed to save" : "Échec de l'enregistrement");
+      dispatch({ type: "markSaved" });
+      showToast.success(isEn ? "Design saved: buyers will receive this ticket." : "Design enregistré : les acheteurs recevront ce billet.");
+    } catch (error) {
+      showToast.error(error instanceof ApiError ? error.message : isEn ? "Failed to save" : "Échec de l'enregistrement");
     } finally {
       setIsSaving(false);
     }
+  }, [design, eventId, isEn, isSaving, typeId]);
+
+  // Raccourcis : Suppr, Ctrl+Z / Ctrl+Maj+Z / Ctrl+Y, Ctrl+D, Ctrl+S, flèches (Maj : ×10), Entrée, Échap.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); return; }
+      if (isTyping(event.target)) return;
+      if (mod && event.key.toLowerCase() === "z") { event.preventDefault(); dispatch({ type: event.shiftKey ? "redo" : "undo" }); return; }
+      if (mod && event.key.toLowerCase() === "y") { event.preventDefault(); dispatch({ type: "redo" }); return; }
+      if (event.key === "Escape") { dispatch({ type: "select", id: null }); return; }
+      if (!selected) return;
+      if (mod && event.key.toLowerCase() === "d") { event.preventDefault(); dispatch({ type: "duplicateLayer", id: selected.id }); return; }
+      if (selected.locked) return;
+      if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); dispatch({ type: "removeLayer", id: selected.id }); return; }
+      if (event.key === "Enter" && selected.type === "text") { event.preventDefault(); setEditingId(selected.id); return; }
+      const step = event.shiftKey ? 10 : 1;
+      const move: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      const delta = move[event.key];
+      if (delta) {
+        event.preventDefault();
+        dispatch({ type: "updateLayer", id: selected.id, patch: { x: selected.x + delta[0], y: selected.y + delta[1] }, coalesce: `${selected.id}:nudge` });
+      }
+    };
+    // Coller une image (copiée depuis un autre logiciel) l'ajoute au billet.
+    const onPaste = (event: ClipboardEvent) => {
+      if (isTyping(event.target)) return;
+      const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"));
+      if (files.length) { event.preventDefault(); void uploadImages(files, { kind: "add" }); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("paste", onPaste);
+    };
+  }, [save, selected, uploadImages]);
+
+  function leave() {
+    if (state.dirty && !window.confirm(isEn ? "Leave without saving your changes?" : "Quitter sans enregistrer vos modifications ?")) return;
+    router.push(`/dashboard/events/${eventId}/tickets`);
   }
 
-  if (isLoading) return <LoadingState variant="rows" count={3} label={isEn ? "Loading designer..." : "Chargement du designer..."} />;
-  if (!design || !ticketType) return null;
+  if (isLoading) return <LoadingState variant="rows" count={3} label={isEn ? "Loading designer..." : "Chargement de l'éditeur..."} />;
+  if (!ticketType) return null;
 
-  const sortedLayers = [...design.layers].sort((a, b) => a.zIndex - b.zIndex);
+  const tool = "flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors hover:bg-muted disabled:opacity-40";
 
+  // Hauteur de l'écran moins l'en-tête du tableau de bord : tout l'éditeur tient sans défiler.
   return (
-    <div className="h-[calc(100vh-2rem)] flex flex-col gap-4">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/events/${eventId}/tickets`)}>
-            <ArrowLeft className="w-4 h-4" />
+    <div className="flex flex-col gap-3 lg:h-[calc(100vh-12.5rem)] lg:min-h-[560px]">
+      {/* Même en-tête que les autres pages billets : fil d'Ariane et titre à gauche, action à droite. */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <DashboardBreadcrumb
+            isEn={isEn}
+            items={[
+              { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
+              { label: isEn ? "Tickets" : "Billets", href: `/dashboard/events/${eventId}/tickets` },
+              { label: ticketType.name }
+            ]}
+          />
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" className="-ml-3 h-10 w-10 p-0" onClick={leave} aria-label={isEn ? "Back to tickets" : "Retour aux billets"}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h1 className="truncate text-2xl font-extrabold tracking-tight">
+              {isEn ? "Ticket design" : "Design du billet"} · {ticketType.name}
+            </h1>
+          </div>
+        </div>
+        <div className="flex w-full items-center justify-end gap-3 sm:w-auto">
+          {state.dirty ? <span className="text-xs font-semibold text-amber-700">{isEn ? "Unsaved changes" : "Modifications non enregistrées"}</span> : null}
+          <Button onClick={() => void save()} disabled={isSaving || !state.dirty}>
+            {isSaving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+            {isSaving ? (isEn ? "Saving..." : "Enregistrement...") : isEn ? "Save" : "Enregistrer"}
           </Button>
-          <DashboardBreadcrumb items={[
-            { label: isEn ? "Events" : "Événements", href: "/dashboard/events" },
-            { label: isEn ? "Tickets" : "Billets", href: `/dashboard/events/${eventId}/tickets` },
-            { label: isEn ? "Design" : "Design", href: "#" }
-          ]} />
-          <span className="text-sm font-bold text-muted-foreground">· {ticketType.name}</span>
         </div>
-        <Button onClick={saveDesign} disabled={isSaving}>
-          <Save className="w-4 h-4 mr-1" />
-          {isSaving ? (isEn ? "Saving..." : "Enregistrement...") : (isEn ? "Save" : "Enregistrer")}
-        </Button>
+      </header>
+
+      {/* Barre d'outils */}
+      <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card p-1.5" role="toolbar" aria-label={isEn ? "Design tools" : "Outils de design"}>
+        <button type="button" className={tool} onClick={() => addText()} disabled={!canAdd}><Type className="h-4 w-4" />{isEn ? "Text" : "Texte"}</button>
+        <button type="button" className={tool} onClick={() => pickImage({ kind: "add" })} disabled={uploading}>
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}Image
+        </button>
+        <button type="button" className={tool} onClick={() => addShape("rect")} disabled={!canAdd}><Square className="h-4 w-4" />Rectangle</button>
+        <button type="button" className={tool} onClick={() => addShape("ellipse")} disabled={!canAdd}><Circle className="h-4 w-4" />Ellipse</button>
+        <button type="button" className={tool} onClick={() => addShape("line")} disabled={!canAdd}><Minus className="h-4 w-4" />{isEn ? "Line" : "Ligne"}</button>
+        <button type="button" className={tool} onClick={addQr}><QrCode className="h-4 w-4" />QR code</button>
+        <label className={`${tool} cursor-pointer`}>
+          <Braces className="h-4 w-4" />
+          <select
+            value=""
+            onChange={(event) => { if (event.target.value) addText(event.target.value); }}
+            className="bg-transparent text-xs font-semibold outline-none"
+            aria-label={isEn ? "Add a buyer field" : "Ajouter un champ de l'acheteur"}
+          >
+            <option value="">{isEn ? "Buyer field" : "Champ de l'acheteur"}</option>
+            {TICKET_FIELDS.map((field) => <option key={field.token} value={field.token}>{isEn ? field.en : field.fr}</option>)}
+          </select>
+        </label>
+        <span className="mx-1 h-6 w-px bg-border" aria-hidden="true" />
+        <button type="button" className={tool} onClick={() => dispatch({ type: "undo" })} disabled={state.past.length === 0} title={isEn ? "Undo (Ctrl+Z)" : "Annuler (Ctrl+Z)"} aria-label={isEn ? "Undo" : "Annuler"}><Undo2 className="h-4 w-4" /></button>
+        <button type="button" className={tool} onClick={() => dispatch({ type: "redo" })} disabled={state.future.length === 0} title={isEn ? "Redo (Ctrl+Shift+Z)" : "Rétablir (Ctrl+Maj+Z)"} aria-label={isEn ? "Redo" : "Rétablir"}><Redo2 className="h-4 w-4" /></button>
+        <span className="mx-1 h-6 w-px bg-border" aria-hidden="true" />
+        <button type="button" className={`${tool} ${preview ? "bg-primary/10 text-primary" : ""}`} onClick={() => setPreview((v) => !v)} aria-pressed={preview}>
+          {preview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {isEn ? "Preview with a buyer" : "Aperçu avec un acheteur"}
+        </button>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          event.target.value = "";
+          void uploadImages(files, uploadTarget.current);
+        }}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <aside className="order-2 flex max-h-72 flex-shrink-0 flex-col gap-2 overflow-y-auto rounded-2xl border border-border/60 bg-card p-3 lg:order-1 lg:max-h-none lg:w-60">
+          <h2 className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground"><Layers className="h-3.5 w-3.5" />{isEn ? "Layers" : "Calques"}</h2>
+          <LayersPanel layers={design.layers} selectedId={selectedId} dispatch={dispatch} isEn={isEn} />
+          {[design.backgroundImage, ...design.layers.filter((l) => l.type === "image").map((l) => l.content)].some(isUnrenderableImage) ? (
+            <p className="rounded-lg bg-red-50 px-2 py-1.5 text-[11px] leading-snug text-red-900">
+              {isEn
+                ? "An image is in WebP format and will not appear on the ticket: replace it (PNG or JPEG)."
+                : "Une image est au format WebP et n'apparaîtra pas sur le billet : remplacez-la (PNG ou JPEG)."}
+            </p>
+          ) : null}
+          {!design.layers.some((layer) => layer.type === "qr") ? (
+            <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-900">
+              {isEn ? "No QR code placed: it will be added at the bottom right." : "Aucun QR code placé : il sera ajouté en bas à droite."}
+            </p>
+          ) : null}
+        </aside>
+
+        <main className="order-1 min-h-[360px] min-w-0 flex-1 lg:order-2">
+          <DesignerCanvas
+            design={design}
+            selectedId={selectedId}
+            dispatch={dispatch}
+            preview={previewValues}
+            editingId={editingId}
+            onEditText={setEditingId}
+            onDropFiles={(files) => void uploadImages(files, { kind: "add" })}
+            isEn={isEn}
+          />
+        </main>
+
+        <aside className="order-3 flex-shrink-0 overflow-y-auto rounded-2xl border border-border/60 bg-card p-3 lg:w-72">
+          <h2 className="mb-3 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Palette className="h-3.5 w-3.5" />{selected ? (isEn ? "Selected layer" : "Calque sélectionné") : (isEn ? "Ticket" : "Billet")}
+          </h2>
+          <PropertiesPanel
+            design={design}
+            selected={selected}
+            dispatch={dispatch}
+            onPickBackground={() => pickImage({ kind: "background" })}
+            onReplaceImage={(id) => pickImage({ kind: "replace", id })}
+            isEn={isEn}
+          />
+        </aside>
       </div>
 
-      <div className="flex-1 flex gap-4 min-h-0">
-        {/* Left panel - Layers */}
-        <div className="w-64 flex-shrink-0 bg-card border border-border/60 rounded-2xl p-4 flex flex-col gap-3 overflow-y-auto">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            <Layers className="w-3 h-3" /> {isEn ? "Layers" : "Calques"}
-          </p>
-
-          <div className="flex gap-1 flex-wrap">
-            <button onClick={addTextLayer} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted text-xs font-semibold transition-colors">
-              <Type className="w-3.5 h-3.5" /> {isEn ? "Text" : "Texte"}
-            </button>
-            <button onClick={() => fileBgRef.current?.click()} disabled={uploadingBg} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted text-xs font-semibold transition-colors">
-              <ImageIcon className="w-3.5 h-3.5" /> {isEn ? "Background" : "Fond"}
-            </button>
-            <button onClick={() => fileLogoRef.current?.click()} disabled={uploadingLogo} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted text-xs font-semibold transition-colors">
-              <Upload className="w-3.5 h-3.5" /> {isEn ? "Logo" : "Logo"}
-            </button>
-          </div>
-          <input ref={fileBgRef} type="file" accept="image/*" className="hidden" onChange={handleBgFileSelected} />
-          <input ref={fileLogoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoFileSelected} />
-
-          {uploadingBg && <p className="text-xs text-muted-foreground">{isEn ? "Uploading background..." : "Téléchargement du fond..."}</p>}
-          {uploadingLogo && <p className="text-xs text-muted-foreground">{isEn ? "Uploading logo..." : "Téléchargement du logo..."}</p>}
-
-          <div className="flex flex-col gap-1">
-            {sortedLayers.map((layer, idx) => (
-              <div
-                key={layer.id}
-                onClick={() => setSelectedLayerId(layer.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
-                  selectedLayerId === layer.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/50 border border-transparent"
-                }`}
-              >
-                <span className="w-5 h-5 flex items-center justify-center rounded bg-muted flex-shrink-0">
-                  {layer.type === "text" ? <Type className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                </span>
-                <span className="truncate flex-1">{layer.type === "text" ? (layer.content || "text") : layer.content.split("/").pop()?.slice(0, 20) ?? "image"}</span>
-                <button onClick={(e) => { e.stopPropagation(); updateLayer(layer.id, { visible: !layer.visible }); }} className="opacity-50 hover:opacity-100">
-                  {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "down"); }} disabled={idx === 0} className="opacity-30 hover:opacity-70 disabled:opacity-10">
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "up"); }} disabled={idx === sortedLayers.length - 1} className="opacity-30 hover:opacity-70 disabled:opacity-10">
-                  <ChevronUp className="w-3 h-3" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); duplicateLayer(layer.id); }} className="opacity-30 hover:opacity-70">
-                  <Copy className="w-3 h-3" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); removeLayer(layer.id); }} className="opacity-30 hover:opacity-70 text-destructive">
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-          {design.layers.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-8">{isEn ? "No layers. Add text or a logo." : "Aucun calque. Ajoutez du texte ou un logo."}</p>
-          )}
-        </div>
-
-        {/* Center - Canvas */}
-        <div className="flex-1 flex items-center justify-center min-w-0" onMouseMove={onCanvasMouseMove} onMouseUp={onCanvasMouseUp}>
-          <div className="bg-muted/30 rounded-2xl p-6 w-full h-full flex items-center justify-center overflow-hidden">
-            <div
-              ref={canvasRef}
-              className="relative shadow-2xl rounded-xl overflow-hidden"
-              style={{
-                width: "100%",
-                maxWidth: "600px",
-                aspectRatio: `${design.width} / ${design.height}`,
-                background: design.backgroundImage
-                  ? `url(${design.backgroundImage}) center/cover no-repeat`
-                  : design.background.type === "gradient"
-                    ? design.background.value
-                    : design.background.value,
-                cursor: dragging ? "grabbing" : "default"
-              }}
-              onClick={onCanvasClick}
-            >
-              {sortedLayers
-                .filter((l) => l.visible)
-                .map((layer) => (
-                  <div
-                    key={layer.id}
-                    onMouseDown={(e) => onCanvasMouseDown(e, layer.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute cursor-grab active:cursor-grabbing"
-                    style={{
-                      left: `${(layer.x / design.width) * 100}%`,
-                      top: `${(layer.y / design.height) * 100}%`,
-                      width: `${(layer.width / design.width) * 100}%`,
-                      height: `${(layer.height / design.height) * 100}%`,
-                      zIndex: layer.zIndex,
-                      outline: selectedLayerId === layer.id ? "2px solid #6366f1" : "none",
-                      outlineOffset: "1px",
-                      borderRadius: "4px",
-                      transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
-                      opacity: layer.style.opacity ?? 1
-                    }}
-                  >
-                    {layer.type === "text" ? (
-                      <span
-                        className="block w-full h-full truncate select-none"
-                        style={{
-                          fontSize: layer.style.fontSize ? `${layer.style.fontSize}px` : undefined,
-                          fontWeight: layer.style.fontWeight,
-                          color: layer.style.color,
-                          textAlign: layer.style.textAlign ?? "left",
-                          fontStyle: layer.style.fontStyle,
-                          textDecoration: layer.style.textDecoration,
-                          lineHeight: 1.2
-                        }}
-                      >
-                        {layer.content}
-                      </span>
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element -- image importée par l'organisateur (URL ou data:), dimensions libres sur le billet
-                      <img
-                        src={layer.content}
-                        alt=""
-                        className="w-full h-full pointer-events-none"
-                        style={{
-                          objectFit: layer.style.objectFit ?? "contain",
-                          borderRadius: layer.style.borderRadius ? `${layer.style.borderRadius}px` : undefined
-                        }}
-                      />
-                    )}
-                    {selectedLayerId === layer.id && (
-                      <>
-                        <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white" />
-                        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white" />
-                        <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white" />
-                        <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white" />
-                      </>
-                    )}
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Right panel - Properties */}
-        <div className="w-72 flex-shrink-0 bg-card border border-border/60 rounded-2xl p-4 flex flex-col gap-4 overflow-y-auto">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            <Palette className="w-3 h-3" /> {isEn ? "Properties" : "Propriétés"}
-          </p>
-
-          {!selectedLayer ? (
-            <div className="space-y-4">
-              <p className="text-xs text-muted-foreground">{isEn ? "Select a layer to edit its properties" : "Sélectionnez un calque pour éditer ses propriétés"}</p>
-
-              <div className="pt-4 border-t border-border/40 space-y-3">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{isEn ? "Background" : "Arrière-plan"}</label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={design.background.type === "color" ? design.background.value : "#0a0c10"}
-                    onChange={(e) => setDesign({ ...design, background: { type: "color", value: e.target.value } })}
-                    className="w-10 h-10 rounded-lg cursor-pointer border border-border/50"
-                  />
-                  <select
-                    value={design.background.value}
-                    onChange={(e) => setDesign({ ...design, background: { type: "color", value: e.target.value } })}
-                    className="flex-1 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold"
-                  >
-                    <option value="#0a0c10">{isEn ? "Dark" : "Sombre"}</option>
-                    <option value="#ffffff">{isEn ? "White" : "Blanc"}</option>
-                    <option value="#1e3a5f">{isEn ? "Navy" : "Bleu marine"}</option>
-                    <option value="#065f46">{isEn ? "Green" : "Vert"}</option>
-                    <option value="#7c3aed">{isEn ? "Purple" : "Violet"}</option>
-                    <option value="#991b1b">{isEn ? "Red" : "Rouge"}</option>
-                    <option value="#1f2937">{isEn ? "Gray" : "Gris"}</option>
-                  </select>
-                  {design.backgroundImage && (
-                    <button onClick={() => setDesign({ ...design, backgroundImage: null })} className="text-xs text-destructive font-bold whitespace-nowrap" aria-label={isEn ? "Remove background image" : "Retirer l'image de fond"}>
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  {selectedLayer.type === "text" ? "Texte" : "Image"}
-                </span>
-                <div className="flex gap-1">
-                  <button onClick={() => moveLayer(selectedLayer.id, "down")} className="p-1 hover:bg-muted rounded"><ChevronDown className="w-3 h-3" /></button>
-                  <button onClick={() => moveLayer(selectedLayer.id, "up")} className="p-1 hover:bg-muted rounded"><ChevronUp className="w-3 h-3" /></button>
-                  <button onClick={() => duplicateLayer(selectedLayer.id)} className="p-1 hover:bg-muted rounded"><Copy className="w-3 h-3" /></button>
-                  <button onClick={() => removeLayer(selectedLayer.id)} className="p-1 hover:bg-muted rounded text-destructive"><Trash2 className="w-3 h-3" /></button>
-                </div>
-              </div>
-
-              {/* Position */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-bold text-muted-foreground">X</label>
-                  <input type="number" value={selectedLayer.x} onChange={(e) => updateLayer(selectedLayer.id, { x: Number(e.target.value) })} className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-muted-foreground">Y</label>
-                  <input type="number" value={selectedLayer.y} onChange={(e) => updateLayer(selectedLayer.id, { y: Number(e.target.value) })} className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold" />
-                </div>
-              </div>
-
-              {/* Size */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-bold text-muted-foreground">W</label>
-                  <input type="number" value={selectedLayer.width} onChange={(e) => updateLayer(selectedLayer.id, { width: Number(e.target.value) })} className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-muted-foreground">H</label>
-                  <input type="number" value={selectedLayer.height} onChange={(e) => updateLayer(selectedLayer.id, { height: Number(e.target.value) })} className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold" />
-                </div>
-              </div>
-
-              {selectedLayer.type === "text" && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isEn ? "Content" : "Contenu"}</label>
-                    <input
-                      type="text" value={selectedLayer.content}
-                      onChange={(e) => updateLayer(selectedLayer.id, { content: e.target.value })}
-                      className="w-full h-9 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isEn ? "Font Size" : "Taille police"}</label>
-                    <input
-                      type="number" min={8} max={120}
-                      value={selectedLayer.style.fontSize ?? 18}
-                      onChange={(e) => updateLayer(selectedLayer.id, { style: { ...selectedLayer.style, fontSize: Number(e.target.value) } })}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold"
-                    />
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => updateLayer(selectedLayer.id, { style: { ...selectedLayer.style, fontWeight: selectedLayer.style.fontWeight === "900" ? "400" : "900" } })}
-                      className={`p-2 rounded-lg text-xs ${selectedLayer.style.fontWeight === "900" ? "bg-primary text-primary-foreground" : "bg-muted/50 hover:bg-muted"}`}
-                    >
-                      <Bold className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        const s = { ...selectedLayer.style };
-                        if (s.fontStyle === "italic") delete s.fontStyle; else s.fontStyle = "italic";
-                        updateLayer(selectedLayer.id, { style: s });
-                      }}
-                      className={`p-2 rounded-lg text-xs ${selectedLayer.style.fontStyle === "italic" ? "bg-primary text-primary-foreground" : "bg-muted/50 hover:bg-muted"}`}
-                    >
-                      <Italic className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        const s = { ...selectedLayer.style };
-                        if (s.textDecoration === "underline") delete s.textDecoration; else s.textDecoration = "underline";
-                        updateLayer(selectedLayer.id, { style: s });
-                      }}
-                      className={`p-2 rounded-lg text-xs ${selectedLayer.style.textDecoration === "underline" ? "bg-primary text-primary-foreground" : "bg-muted/50 hover:bg-muted"}`}
-                    >
-                      <Underline className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="flex gap-1">
-                    {(["left", "center", "right"] as const).map((align) => (
-                      <button
-                        key={align}
-                        onClick={() => updateLayer(selectedLayer.id, { style: { ...selectedLayer.style, textAlign: align } })}
-                        className={`flex-1 p-2 rounded-lg text-xs flex items-center justify-center gap-1 ${
-                          (selectedLayer.style.textAlign ?? "left") === align ? "bg-primary text-primary-foreground" : "bg-muted/50 hover:bg-muted"
-                        }`}
-                      >
-                        {align === "left" ? <AlignLeft className="w-3 h-3" /> : align === "center" ? <AlignCenter className="w-3 h-3" /> : <AlignRight className="w-3 h-3" />}
-                      </button>
-                    ))}
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isEn ? "Color" : "Couleur"}</label>
-                    <input
-                      type="color"
-                      value={selectedLayer.style.color ?? "#ffffff"}
-                      onChange={(e) => updateLayer(selectedLayer.id, { style: { ...selectedLayer.style, color: e.target.value } })}
-                      className="w-full h-9 rounded-lg cursor-pointer border border-border/50"
-                    />
-                  </div>
-                </>
-              )}
-
-              {selectedLayer.type === "image" && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isEn ? "Opacity" : "Opacité"}</label>
-                    <input
-                      type="range" min={0} max={100}
-                      value={Math.round((selectedLayer.style.opacity ?? 1) * 100)}
-                      onChange={(e) => updateLayer(selectedLayer.id, { style: { ...selectedLayer.style, opacity: Number(e.target.value) / 100 } })}
-                      className="w-full"
-                    />
-                    <span className="text-[10px] text-muted-foreground">{Math.round((selectedLayer.style.opacity ?? 1) * 100)}%</span>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isEn ? "Border radius" : "Rayon de bord"}</label>
-                    <input
-                      type="number" min={0} max={100}
-                      value={selectedLayer.style.borderRadius ?? 0}
-                      onChange={(e) => updateLayer(selectedLayer.id, { style: { ...selectedLayer.style, borderRadius: Number(e.target.value) } })}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isEn ? "Rotation" : "Rotation"}°</label>
-                <input
-                  type="number" min={-180} max={180}
-                  value={selectedLayer.rotation ?? 0}
-                  onChange={(e) => updateLayer(selectedLayer.id, { rotation: Number(e.target.value) })}
-                  className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-semibold"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Crop Modal */}
-      <Dialog open={showCropModal !== null} onOpenChange={(open) => { if (!open) { setShowCropModal(null); setCropFile(null); setCropImageUrl(null); } }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{isEn ? "Crop image" : "Rogner l'image"}</DialogTitle>
-          </DialogHeader>
-          {cropImageUrl && (
-            <div
-              onMouseMove={onCropImageMouseMove}
-              onMouseUp={onCropImageMouseUp}
-              onMouseLeave={onCropImageMouseUp}
-            >
-              <p className="text-xs text-muted-foreground mb-4">
-                {isEn ? "Drag the image to position it within the crop area." : "Déplacez l'image pour la positionner dans la zone de rognage."}
-              </p>
-              <div className="relative bg-muted rounded-xl overflow-hidden" style={{ aspectRatio: `${design.width} / ${design.height}`, maxHeight: "400px" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- aperçu local (blob:), hors de portée de next/image */}
-                <img
-                  src={cropImageUrl}
-                  alt={isEn ? "Crop preview" : "Aperçu du rognage"}
-                  draggable={false}
-                  onMouseDown={onCropImageMouseDown}
-                  className="absolute cursor-grab active:cursor-grabbing"
-                  style={{
-                    minWidth: "100%",
-                    minHeight: "100%",
-                    objectFit: "cover",
-                    transform: `translate(${cropOffset.x}px, ${cropOffset.y}px)`,
-                    transition: cropDrag ? "none" : "transform 0.1s"
-                  }}
-                />
-                <div className="absolute inset-0 border-4 border-indigo-500/60 pointer-events-none rounded-xl" />
-                <div className="absolute top-3 left-3 bg-indigo-500/80 text-white text-[10px] font-bold px-2 py-0.5 rounded">
-                  {design.width} × {design.height}
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end mt-4">
-                <Button variant="secondary" onClick={() => { setShowCropModal(null); setCropFile(null); setCropImageUrl(null); }}>
-                  {isEn ? "Cancel" : "Annuler"}
-                </Button>
-                <Button onClick={applyCrop}>
-                  <Crop className="w-4 h-4 mr-1" />
-                  {isEn ? "Apply" : "Appliquer"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <p className="text-[11px] text-muted-foreground">
+        {isEn
+          ? "Tips: double-click a text to edit it · drag, paste or drop images onto the ticket · Shift keeps proportions or rotates by 15° · Alt moves without guides · arrows nudge (Shift ×10)."
+          : "Astuces : double-cliquez un texte pour l'écrire · glissez, collez ou déposez des images sur le billet · Maj garde les proportions ou pivote par 15° · Alt déplace sans repères · les flèches ajustent (Maj ×10)."}
+      </p>
     </div>
   );
 }

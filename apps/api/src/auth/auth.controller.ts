@@ -100,7 +100,10 @@ export class AuthController {
     }
     const payload = cookieToken ? { refreshToken: cookieToken } : request.body;
     const result = await this.authService.refresh(payload, extractSessionMeta(request));
-    response.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    // Pas de nouveau cookie quand une requête parallèle a déjà fait la rotation.
+    if (result.refreshToken) {
+      response.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    }
     return { accessToken: result.accessToken };
   }
 

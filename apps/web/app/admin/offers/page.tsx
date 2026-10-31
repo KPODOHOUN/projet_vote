@@ -22,6 +22,7 @@ import {
 /** Règles d'argent de la plateforme (GET/PUT /admin/offers/settings) — source unique côté API. */
 type FinanceSettings = {
   commissionDefaultBps: number;
+  ticketCommissionBps: number;
   heldBps: number;
   heldReleaseDelayHours: number;
   otpTtlSeconds: number;
@@ -194,16 +195,22 @@ export default function AdminOffersSettingsPage() {
             title={isEn ? "Platform rules" : "Règles de la plateforme"}
             description={
               isEn
-                ? "Default commission for organizers without a negotiated rate (set per organizer from the user page). Payment provider fees are included in the commission."
-                : "Commission par défaut des organisateurs sans taux négocié (à fixer par organisateur depuis la fiche utilisateur). Les frais du prestataire sont inclus dans la commission."
+                ? "Default vote commission for organizers without a negotiated rate (set per organizer from the user page), and the commission on every ticket sold. Both are frozen by each contest's contract when signed. Payment provider fees are included."
+                : "Commission par défaut sur les votes des organisateurs sans taux négocié (à fixer par organisateur depuis la fiche utilisateur), et commission sur chaque billet vendu. Les deux sont figées par le contrat de chaque concours à sa signature. Les frais du prestataire sont inclus."
             }
           >
-            <div className={`grid gap-4 sm:grid-cols-3 ${panel}`}>
+            <div className={`grid gap-4 sm:grid-cols-2 ${panel}`}>
               <PercentField
                 id="commissionDefaultBps"
                 label={isEn ? "Default commission (%)" : "Commission par défaut (%)"}
                 bps={settings.commissionDefaultBps}
                 onChange={(value) => updateField("commissionDefaultBps", value)}
+              />
+              <PercentField
+                id="ticketCommissionBps"
+                label={isEn ? "Commission on each ticket sold (%)" : "Commission sur chaque billet vendu (%)"}
+                bps={settings.ticketCommissionBps}
+                onChange={(value) => updateField("ticketCommissionBps", value)}
               />
               <PercentField
                 id="heldBps"

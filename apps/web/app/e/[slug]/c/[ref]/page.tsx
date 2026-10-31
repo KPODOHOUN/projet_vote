@@ -15,7 +15,7 @@ import { ogImageUrl } from "../../../../../lib/og-image-url";
 import { PublicEventShell } from "../../../../../components/public-event-shell";
 import { ArrowLeft } from "lucide-react";
 
-import { getApiBaseUrl } from "@/lib/api-base-url";
+import { fetchPublicApi, previewParam } from "@/lib/server-api";
 
 type CandidateProfile = {
   organizer: { displayName: string; slug: string };
@@ -39,25 +39,22 @@ type CandidateProfile = {
   };
 };
 
-async function fetchCandidate(slug: string, ref: string): Promise<CandidateProfile | null> {
-  try {
-    const response = await fetch(
-      `${getApiBaseUrl()}/votes/public/event/${encodeURIComponent(slug)}/candidate/${encodeURIComponent(ref)}`,
-      { cache: "no-store", headers: { "Content-Type": "application/json" } }
-    );
-    if (!response.ok) return null;
-    return (await response.json()) as CandidateProfile;
-  } catch {
-    return null;
-  }
+async function fetchCandidate(slug: string, ref: string, preview: string | undefined): Promise<CandidateProfile | null> {
+  return fetchPublicApi<CandidateProfile>(
+    `/votes/public/event/${encodeURIComponent(slug)}/candidate/${encodeURIComponent(ref)}`,
+    preview
+  );
 }
 
-type PageProps = { params: Promise<{ slug: string; ref: string }> };
+type PageProps = {
+  params: Promise<{ slug: string; ref: string }>;
+  searchParams: Promise<{ preview?: string | string[] }>;
+};
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug, ref } = await params;
   const locale = await getServerLocale();
-  const data = await fetchCandidate(slug, ref);
+  const data = await fetchCandidate(slug, ref, previewParam(await searchParams));
   if (!data) {
     return { title: `${translate(locale, "pub.candidateNotFound")} · ${SITE_NAME}`, robots: { index: false, follow: false } };
   }
@@ -84,10 +81,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function CandidateProfilePage({ params }: PageProps) {
+export default async function CandidateProfilePage({ params, searchParams }: PageProps) {
   const { slug, ref } = await params;
   const locale = await getServerLocale();
-  const data = await fetchCandidate(slug, ref);
+  const data = await fetchCandidate(slug, ref, previewParam(await searchParams));
   if (!data) {
     notFound();
   }

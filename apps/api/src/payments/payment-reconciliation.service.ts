@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PaymentStatus, UserRole, TicketStatus } from "@prisma/client";
+import { PaymentPurpose, PaymentStatus, UserRole, TicketStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { PaymentVerifyService } from "./payment-verify.service";
 
@@ -39,12 +39,24 @@ export class PaymentReconciliationService {
    * @param opts.expireAfterMinutes  Orphan PENDING with no providerRef older
    *   than this are marked FAILED (default 60). Mobile-money USSD prompts expire
    *   well before an hour, so a providerRef-less row this old will never resolve.
+   * @param opts.abandonAfterHours  PENDING rows WITH a providerRef that the
+   *   provider still reports pending (or that keep failing verification) after
+   *   this long are marked FAILED (default 24) and audited for a manual check.
+   * @param opts.ticketHoldMinutes  A ticket purchase (with or without a
+   *   providerRef) still unpaid after this long is abandoned (default 15) so its
+   *   seats go back on sale: one buyer who never confirms the USSD prompt must
+   *   not block the others. A payment confirmed after that is recovered by
+   *   PaymentVerifyService (tickets re-issued if seats remain, else flagged for refund).
    * @param opts.limit  Max rows processed per run (default 200) — bounds the
    *   work per cron tick so a backlog degrades gracefully instead of timing out.
+   *   Rows are taken least-recently-examined first and touched after each
+   *   attempt, so stuck rows can never starve newer ones.
    */
   async reconcilePending(opts?: {
     pullAfterMinutes?: number;
     expireAfterMinutes?: number;
+    abandonAfterHours?: number;
+    ticketHoldMinutes?: number;
     limit?: number;
   }): Promise<{
     scanned: number;
@@ -52,20 +64,25 @@ export class PaymentReconciliationService {
     failed: number;
     stillPending: number;
     expired: number;
+    abandoned: number;
     skipped: number;
   }> {
     const pullAfterMinutes = opts?.pullAfterMinutes ?? 3;
     const expireAfterMinutes = opts?.expireAfterMinutes ?? 60;
+    const abandonAfterHours = opts?.abandonAfterHours ?? 24;
+    const ticketHoldMinutes = opts?.ticketHoldMinutes ?? 15;
     const limit = opts?.limit ?? 200;
 
     const now = Date.now();
     const pullCutoff = new Date(now - pullAfterMinutes * 60_000);
     const expireCutoff = new Date(now - expireAfterMinutes * 60_000);
+    const abandonCutoff = new Date(now - abandonAfterHours * 3_600_000);
+    const ticketHoldCutoff = new Date(now - ticketHoldMinutes * 60_000);
 
     const pending = await this.prisma.client.paymentTransaction.findMany({
       where: { status: PaymentStatus.PENDING, createdAt: { lt: pullCutoff } },
-      select: { id: true, providerRef: true, createdAt: true, tenantId: true },
-      orderBy: { createdAt: "asc" },
+      select: { id: true, providerRef: true, createdAt: true, tenantId: true, purpose: true },
+      orderBy: [{ updatedAt: "asc" }, { createdAt: "asc" }],
       take: limit
     });
 
@@ -75,15 +92,17 @@ export class PaymentReconciliationService {
       failed: 0,
       stillPending: 0,
       expired: 0,
+      abandoned: 0,
       skipped: 0
     };
 
     for (const tx of pending) {
+      const isTicket = tx.purpose === PaymentPurpose.TICKET;
       // Orphan (no providerRef): the PSP push never bound a reference, so a pull
       // is impossible. Expire it once it is old enough; otherwise leave it for a
       // later tick (a push may still be in flight).
       if (!tx.providerRef) {
-        if (tx.createdAt < expireCutoff) {
+        if (tx.createdAt < (isTicket ? ticketHoldCutoff : expireCutoff)) {
           await this.expireOrphan(tx.id, tx.tenantId);
           summary.expired += 1;
         } else {
@@ -95,6 +114,7 @@ export class PaymentReconciliationService {
       // Has a providerRef → funnel through the authoritative verify-by-pull.
       // verifyAndApplyByReference is fully idempotent and CAS-guarded, so a race
       // with a webhook or another cron tick is safe.
+      let unresolved = false;
       try {
         const result = await this.verifyService.verifyAndApplyByReference(tx.providerRef);
         switch (result.outcome) {
@@ -106,9 +126,14 @@ export class PaymentReconciliationService {
             break;
           case "still_pending":
             summary.stillPending += 1;
+            unresolved = true;
+            break;
+          case "ignored_terminal":
+            summary.skipped += 1;
             break;
           default:
             summary.skipped += 1;
+            unresolved = true;
         }
       } catch (err) {
         // A single bad row must never abort the whole sweep.
@@ -118,11 +143,54 @@ export class PaymentReconciliationService {
           err: err instanceof Error ? err.message : String(err)
         });
         summary.skipped += 1;
+        unresolved = true;
+      }
+      if (!unresolved) continue;
+      if (tx.createdAt < (isTicket ? ticketHoldCutoff : abandonCutoff)) {
+        const reason = isTicket ? "ticket_hold_timeout" : "provider_unresolved_timeout";
+        if (await this.abandonPending(tx.id, tx.tenantId, tx.providerRef, reason)) summary.abandoned += 1;
+      } else {
+        // Back of the queue: the next tick examines the rows not seen for longest.
+        await this.prisma.client.paymentTransaction.updateMany({
+          where: { id: tx.id, status: PaymentStatus.PENDING },
+          data: { updatedAt: new Date() }
+        });
       }
     }
 
     this.logger.log({ msg: "payment.reconcile.done", ...summary });
     return summary;
+  }
+
+  /**
+   * Give up on a PENDING row the provider never resolved: FAILED, its tickets
+   * released, audited. If the provider confirms it later, PaymentVerifyService
+   * recovers it (late success). CAS-guarded on PENDING.
+   */
+  private async abandonPending(txId: string, tenantId: string, providerRef: string, reason: string): Promise<boolean> {
+    return this.prisma.client.$transaction(async (trx) => {
+      const updated = await trx.paymentTransaction.updateMany({
+        where: { id: txId, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.FAILED }
+      });
+      if (updated.count === 0) return false;
+      await trx.ticket.updateMany({
+        where: { paymentTransactionId: txId, status: TicketStatus.RESERVED },
+        data: { status: TicketStatus.CANCELLED }
+      });
+      await trx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId: "system:payment:reconcile",
+          actorRole: UserRole.PLATFORM_ADMIN,
+          action: "payment.abandoned_pending",
+          targetType: "PaymentTransaction",
+          targetId: txId,
+          metadata: { reason, providerRef }
+        }
+      });
+      return true;
+    });
   }
 
   /**

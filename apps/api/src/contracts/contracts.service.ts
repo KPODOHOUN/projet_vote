@@ -251,10 +251,12 @@ export class ContractsService {
       if (signed.count === 0) {
         throw new ConflictException("Ce contrat vient d'être signé ou remplacé.");
       }
-      // Publication : taux et réserve figés par le contrat signé.
+      // Publication : taux et réserve figés par le contrat signé. Un contrat
+      // antérieur sans taux billets applique le taux des votes à tout paiement.
+      const ticketCommissionBps = snapshot.money.ticketCommissionBps ?? snapshot.money.commissionBps;
       const published = await tx.event.updateMany({
         where: { id: event.id, status: EventStatus.DRAFT },
-        data: { status: EventStatus.ACTIVE, commissionBps: snapshot.money.commissionBps, heldBps: snapshot.money.heldBps }
+        data: { status: EventStatus.ACTIVE, commissionBps: snapshot.money.commissionBps, ticketCommissionBps, heldBps: snapshot.money.heldBps }
       });
       if (published.count === 0) {
         throw new ConflictException("Ce concours vient d'être modifié : rechargez la page.");
@@ -272,6 +274,7 @@ export class ContractsService {
             contentHash: contract.contentHash,
             signedPdfSha256: sha256Hex(pdfBuffer),
             commissionBps: snapshot.money.commissionBps,
+            ticketCommissionBps,
             heldBps: snapshot.money.heldBps
           }
         }
@@ -421,9 +424,10 @@ export class ContractsService {
     identity: ContractIdentity,
     generatedAt: Date
   ): Promise<ContractSnapshot> {
-    const [settings, commissionBps] = await Promise.all([
+    const [settings, commissionBps, ticketCommissionBps] = await Promise.all([
       this.offerSettings.getSettings(),
-      this.offerSettings.resolveCommissionBps(event.id)
+      this.offerSettings.resolveCommissionBps(event.id),
+      this.offerSettings.resolveTicketCommissionBps(event.id)
     ]);
     return {
       templateVersion: CONTRACT_TEMPLATE_VERSION,
@@ -455,6 +459,7 @@ export class ContractsService {
       },
       money: {
         commissionBps,
+        ticketCommissionBps,
         heldBps: event.heldBps ?? settings.heldBps,
         heldReleaseDelayHours: settings.heldReleaseDelayHours
       }

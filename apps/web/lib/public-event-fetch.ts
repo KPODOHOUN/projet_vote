@@ -1,10 +1,10 @@
 // lib/public-event-fetch.ts — Fetch SSR partagé de la zone publique /e/*.
 // Contrat RÉEL de GET /votes/public/event/:slug → { organizer, event, candidates }.
 // Consommateurs : hub (app/e/[slug]/page.tsx), billetterie (app/e/[slug]/tickets/page.tsx).
-// Les pages results et profil candidat appellent des endpoints dédiés
-// (…/results, …/candidate/:ref) et conservent leurs fetchs locaux.
+// Les pages results et profil candidat appellent leurs endpoints dédiés
+// (…/results, …/candidate/:ref) par le même fetchPublicApi (lib/server-api.ts).
 
-import { getApiBaseUrl } from "@/lib/api-base-url";
+import { fetchPublicApi } from "./server-api";
 import type { EventBranding } from "@/lib/brand";
 
 export type PublicCandidate = {
@@ -37,16 +37,8 @@ export type PublicEventResponse = {
   paymentNetworks?: string[];
 };
 
-export async function fetchPublicEvent(slug: string): Promise<PublicEventResponse | null> {
-  try {
-    // Données live (statut/candidats peuvent évoluer) → no-store.
-    const response = await fetch(`${getApiBaseUrl()}/votes/public/event/${encodeURIComponent(slug)}`, {
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" }
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as PublicEventResponse;
-  } catch {
-    return null;
-  }
+/** `previewToken` : un concours en brouillon n'est renvoyé qu'avec le jeton d'aperçu de son organisateur. */
+export async function fetchPublicEvent(slug: string, previewToken?: string): Promise<PublicEventResponse | null> {
+  // Données live (statut/candidats peuvent évoluer) → no-store.
+  return fetchPublicApi<PublicEventResponse>(`/votes/public/event/${encodeURIComponent(slug)}`, previewToken);
 }

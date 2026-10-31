@@ -98,6 +98,8 @@ export class PrivacyService {
         where: { userId: user.userId, revokedAt: null },
         data: { revokedAt: now }
       }),
+      // La liaison Google/Facebook porte e-mail, nom et photo, et rouvrirait le compte.
+      this.prisma.client.oAuthAccount.deleteMany({ where: { userId: user.userId } }),
       this.prisma.client.user.update({
         where: { id: user.userId },
         data: {
@@ -107,6 +109,8 @@ export class PrivacyService {
           lastName: null,
           phone: null,
           photoUrl: null,
+          // Plus aucune connexion possible (mot de passe ou Google) sur ce compte.
+          emailVerifiedAt: null,
           updatedAt: now
         }
       }),

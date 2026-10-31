@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
  * Ce modèle n'est pas un document juridiquement validé : il doit être relu par
  * un juriste avant le lancement commercial (CONTRACT_TEMPLATE_LEGALLY_REVIEWED).
  */
-export const CONTRACT_TEMPLATE_VERSION = "2026-10-30.1";
+export const CONTRACT_TEMPLATE_VERSION = "2026-10-31.2";
 
 export type ContractIdentity = {
   firstName: string;
@@ -53,6 +53,8 @@ export type ContractSnapshot = {
   };
   money: {
     commissionBps: number;
+    /** Taux sur les billets. Absent des contrats antérieurs à 2026-10-31.2 : le taux des votes s'y applique à tout. */
+    ticketCommissionBps?: number;
     heldBps: number;
     heldReleaseDelayHours: number;
   };
@@ -127,7 +129,10 @@ export function buildContractDocument(s: ContractSnapshot, contractId: string): 
         title: "Article 3 — Encaissement et commission",
         paragraphs: [
           "SHADOMA encaisse sur son propre compte la totalité des paiements du concours (votes et billets). L'Organisateur s'interdit de les encaisser par un autre moyen.",
-          `SHADOMA perçoit une commission de ${percent(m.commissionBps)} du montant de chaque paiement confirmé, frais du prestataire de paiement inclus, arrondie au franc CFA inférieur. Cette commission appartient à SHADOMA et n'est jamais due à l'Organisateur. Son taux ne change pas pendant le concours.`
+          m.ticketCommissionBps === undefined
+            ? `SHADOMA perçoit une commission de ${percent(m.commissionBps)} du montant de chaque paiement confirmé, frais du prestataire de paiement inclus, arrondie au franc CFA inférieur. Cette commission appartient à SHADOMA et n'est jamais due à l'Organisateur. Son taux ne change pas pendant le concours.`
+            : `SHADOMA perçoit une commission de ${percent(m.commissionBps)} du montant de chaque vote payé et de ${percent(m.ticketCommissionBps)} du prix de chaque billet vendu, frais du prestataire de paiement inclus, arrondie au franc CFA inférieur. Cette commission appartient à SHADOMA et n'est jamais due à l'Organisateur. Ces taux ne changent pas pendant le concours.`,
+          "Les votes que l'Organisateur ajoute lui-même sont payés au prix normal du vote et sont des paiements comme les autres : la commission de SHADOMA y est prélevée au même taux et de la même manière que sur tout vote."
         ]
       },
       {

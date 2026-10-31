@@ -8,6 +8,7 @@ import { Test } from "@nestjs/testing";
 import { AppModule } from "./app.module";
 import request from "supertest";
 import { assertTestDatabase, prisma, resetDatabase } from "./test-utils/db";
+import { eventPreviewToken } from "./common/event-preview-token";
 import type { FeexpayInitRequest, FeexpayInitResult, FeexpayStatusPayload } from "./payments/feexpay/feexpay.types";
 import { FeexpayGateway } from "./payments/psp/feexpay.gateway";
 import { parseStrictProviderAmount } from "./payments/psp/parse-provider-amount";
@@ -201,8 +202,11 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
     where: { id: tenantId },
     data: { logoUrl: "https://cdn.votezpro.africa/campus-africa.png" }
   });
+  // Brouillon : invisible publiquement, visible avec le jeton d'aperçu de l'organisateur.
+  const hiddenDraftResponse = await request(app.getHttpServer()).get("/api/v1/votes/public/event/finale-2026");
+  assert.equal(hiddenDraftResponse.status, 404);
   const publicEventResponse = await request(app.getHttpServer()).get(
-    "/api/v1/votes/public/event/finale-2026"
+    `/api/v1/votes/public/event/finale-2026?preview=${encodeURIComponent(eventPreviewToken(eventId))}`
   );
   assert.equal(publicEventResponse.status, 200);
   assert.equal(publicEventResponse.body.organizer.displayName, "Demo Vote");
@@ -493,7 +497,7 @@ test("API integration flow: auth, events, votes, payments", async (t: TestContex
   assert.match(String(privacyDeleteWhileLive.body.message), /événements en cours/);
 
   const maintenanceCronPayload = {
-    auditLogsRetentionDays: 7,
+    auditLogsRetentionDays: 30,
     idempotencyRetentionDays: 1,
     revokedSessionsRetentionDays: 1,
     tenantSlug,

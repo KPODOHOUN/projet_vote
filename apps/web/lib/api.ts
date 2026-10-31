@@ -1,27 +1,15 @@
 import { getApiBaseUrl } from "./api-base-url";
-import { getStoredToken, setStoredToken } from "./auth";
+import { getStoredToken, restoreSession } from "./auth";
 
 export { getApiBaseUrl };
 
-let refreshPromise: Promise<string | null> | null = null;
-
+/**
+ * Rafraîchissement sur 401 : passe par le MÊME single-flight que la restauration
+ * de session (lib/auth.ts). Deux mécanismes séparés envoyaient deux fois le même
+ * cookie en parallèle au chargement d'une page.
+ */
 async function runRefresh(): Promise<string | null> {
-  try {
-    const res = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" }
-    });
-    if (!res.ok) {
-      return null;
-    }
-    const data = (await res.json()) as { accessToken: string | null };
-    if (!data.accessToken) return null;
-    setStoredToken(data.accessToken);
-    return data.accessToken;
-  } catch {
-    return null;
-  }
+  return (await restoreSession()) ? getStoredToken() : null;
 }
 
 /** Délai au-delà duquel une requête est abandonnée (évite un spinner infini). */
@@ -55,7 +43,33 @@ export interface ApiFetchOptions extends RequestInit {
  * apiFetch de base — sans gestion d'auth automatique.
  * Utilisé pour les endpoints publics (login, register, refresh, etc.).
  */
+/** Routes d'authentification : jamais de rafraîchissement automatique sur 401. */
+const NO_RETRY_PATHS = ["/auth/refresh", "/auth/login", "/auth/logout", "/auth/verify-otp"];
+
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  try {
+    return await apiFetchOnce<T>(path, options);
+  } catch (error) {
+    // Jeton d'accès expiré sur une requête authentifiée : la session est
+    // rafraîchie (cookie httpOnly) et la requête rejouée une fois, avec le
+    // nouveau jeton. Toutes les pages en profitent, sans code à part.
+    const authorization = new Headers(options.headers).get("Authorization");
+    if (!(error instanceof ApiError) || error.status !== 401 || !authorization || NO_RETRY_PATHS.some((p) => path.startsWith(p))) {
+      throw error;
+    }
+    const fresh = (await restoreSession()) ? getStoredToken() : null;
+    if (!fresh) throw error;
+    // Mêmes en-têtes, mêmes noms (un « content-type » en double casserait le JSON) ; seul le jeton change.
+    const original: Record<string, string> =
+      options.headers instanceof Headers ? Object.fromEntries(options.headers.entries()) : { ...((options.headers as Record<string, string> | undefined) ?? {}) };
+    for (const name of Object.keys(original)) {
+      if (name.toLowerCase() === "authorization") delete original[name];
+    }
+    return apiFetchOnce<T>(path, { ...options, headers: { ...original, Authorization: `Bearer ${fresh}` } });
+  }
+}
+
+async function apiFetchOnce<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = options;
 
   const controller = new AbortController();
@@ -134,10 +148,7 @@ export async function authedFetch<T>(path: string, options: ApiFetchOptions = {}
   } catch (err) {
     // Refresh transparent sur 401
     if (err instanceof ApiError && err.status === 401 && !path.startsWith("/auth/")) {
-      if (!refreshPromise) {
-        refreshPromise = runRefresh().finally(() => { refreshPromise = null; });
-      }
-      const newToken = await refreshPromise;
+      const newToken = await runRefresh();
       if (!newToken) {
         // Refresh échoué → rediriger vers login
         if (typeof window !== "undefined") {

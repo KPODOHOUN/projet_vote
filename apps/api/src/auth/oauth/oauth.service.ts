@@ -4,7 +4,7 @@ import { createHash, randomBytes } from "crypto";
 import { SignJWT } from "jose";
 import { env } from "../../config/env";
 import { PrismaService } from "../../prisma/prisma.service";
-import type { FacebookUserInfo, GoogleUserInfo, OAuthProvider, ProviderConfig } from "./oauth.types";
+import type { GoogleUserInfo, OAuthProvider, ProviderConfig } from "./oauth.types";
 
 type SessionMeta = { userAgent?: string | null; ipAddress?: string | null };
 
@@ -27,15 +27,6 @@ const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
     callbackUrl: env.GOOGLE_CALLBACK_URL,
-  },
-  facebook: {
-    authorizeUrl: "https://www.facebook.com/v19.0/dialog/oauth",
-    tokenUrl: "https://graph.facebook.com/v19.0/oauth/access_token",
-    userInfoUrl: "https://graph.facebook.com/v19.0/me?fields=id,name,email,picture",
-    scope: "email,public_profile",
-    clientId: env.FACEBOOK_CLIENT_ID,
-    clientSecret: env.FACEBOOK_CLIENT_SECRET,
-    callbackUrl: env.FACEBOOK_CALLBACK_URL,
   },
 };
 
@@ -207,19 +198,6 @@ export class OAuthService {
         lastName: data.family_name ?? "",
         displayName: data.name ?? data.email?.split("@")[0] ?? "",
         photoUrl: data.picture ?? "",
-      };
-    }
-
-    if (provider === "facebook") {
-      const data = (await response.json()) as FacebookUserInfo;
-      return {
-        id: data.id,
-        email: data.email ?? "",
-        emailVerified: false,
-        firstName: data.name?.split(" ").slice(0, -1).join(" ") ?? "",
-        lastName: data.name?.split(" ").pop() ?? "",
-        displayName: data.name ?? data.email?.split("@")[0] ?? "",
-        photoUrl: data.picture?.data?.url ?? "",
       };
     }
 

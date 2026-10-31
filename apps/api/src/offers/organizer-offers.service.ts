@@ -36,6 +36,7 @@ export class OrganizerOffersService {
       commissionBps: rate.bps,
       commissionSource: rate.source,
       upcomingCommission: upcoming ? { bps: upcoming.bps, effectiveFrom: upcoming.effectiveFrom } : null,
+      ticketCommissionBps: rules.ticketCommissionBps,
       heldBps: rules.heldBps,
       heldReleaseDelayHours: rules.heldReleaseDelayHours
     };

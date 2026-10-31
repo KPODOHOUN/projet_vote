@@ -23,7 +23,8 @@ if (typeof window !== "undefined") {
 let accessToken: string | null = null;
 
 // ── Coordination multi-onglets ────────────────────────────────────────────
-const broadcast = typeof BroadcastChannel !== "undefined"
+// Navigateur seulement : côté serveur (rendu, tests) un canal garderait le processus en vie.
+const broadcast = typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
   ? new BroadcastChannel(BROADCAST_CHANNEL)
   : null;
 
@@ -33,6 +34,7 @@ if (broadcast) {
     if (!data?.type) return;
     if (data.type === "token") {
       accessToken = data.token ?? null;
+      scheduleRenewal(accessToken);
     }
     if (data.type === "logout") {
       accessToken = null;
@@ -45,6 +47,33 @@ if (broadcast) {
 
 function broadcastToken(token: string | null) {
   broadcast?.postMessage({ type: "token", token });
+}
+
+// ── Renouvellement anticipé ───────────────────────────────────────────────
+// Le jeton d'accès vit 15 min : il est renouvelé une minute avant d'expirer,
+// tant que la page reste ouverte (tableau de bord, éditeur, scanner à l'entrée).
+let renewTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Date d'expiration (ms) lue dans le jeton, sans le vérifier (le serveur le fait). */
+export function accessTokenExpiry(token: string): number | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const json = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: unknown };
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function scheduleRenewal(token: string | null) {
+  if (typeof window === "undefined") return;
+  if (renewTimer) clearTimeout(renewTimer);
+  renewTimer = null;
+  const expiry = token ? accessTokenExpiry(token) : null;
+  if (!expiry) return;
+  const delay = Math.max(5_000, expiry - Date.now() - 60_000);
+  renewTimer = setTimeout(() => { void restoreSession(); }, delay);
 }
 
 function broadcastLogout() {
@@ -77,6 +106,7 @@ async function doRefresh(): Promise<boolean> {
     }
     accessToken = data.accessToken;
     broadcastToken(accessToken);
+    scheduleRenewal(accessToken);
     return true;
   } catch {
     accessToken = null;
@@ -103,6 +133,7 @@ export function getStoredToken(): string | null {
 export function setStoredToken(token: string) {
   accessToken = token;
   broadcastToken(token);
+  scheduleRenewal(token);
 }
 
 /**
@@ -111,6 +142,7 @@ export function setStoredToken(token: string) {
  */
 export function clearStoredToken() {
   accessToken = null;
+  scheduleRenewal(null);
   broadcastLogout();
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(STORAGE_KEY);

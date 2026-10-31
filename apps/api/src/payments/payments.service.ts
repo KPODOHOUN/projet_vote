@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
-import { createHash, timingSafeEqual } from "crypto";
+import { createHash } from "crypto";
 import {
   PaymentProvider,
   PaymentPurpose,
@@ -16,13 +16,14 @@ import {
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
-import { hashVoterPhone } from "../common/voter-phone";
+import { voterPhoneMatches } from "../common/voter-phone";
 import { paymentStatusToken, verifyPaymentStatusToken } from "../common/payment-status-token";
 import { PaymentVerifyService } from "./payment-verify.service";
 import { PspRegistry } from "./psp/psp.registry";
 import { normalizePayinPhone, payinNetworksFor, resolvePayinNetwork } from "../common/mobile-operator";
 import { env } from "../config/env";
 import { OfferSettingsService } from "../offers/offer-settings.service";
+import { assertVotingOpen } from "../events/event-lifecycle";
 
 /** Entrée commune de création d'un paiement (vote public ou votes ajoutés). */
 type InitPaymentInput = z.infer<typeof _initPaymentSchema>;
@@ -131,6 +132,7 @@ export class PaymentsService {
     if (event.closedAt || event.status === "CLOSED" || event.status === "ARCHIVED") {
       throw new ConflictException("Impossible d'ajouter des votes sur un événement clôturé.");
     }
+    assertVotingOpen(event);
     const unitPrice = event.voteUnitPriceCfa;
     if (!unitPrice || unitPrice <= 0) {
       throw new BadRequestException("Définissez un prix unitaire de vote avant d'ajouter des votes.");
@@ -204,6 +206,7 @@ export class PaymentsService {
     if (!event) {
       throw new UnauthorizedException("Événement introuvable.");
     }
+    assertVotingOpen(event);
     const vote = await this.prisma.client.vote.findFirst({
       where: {
         id: input.voteId,
@@ -291,16 +294,26 @@ export class PaymentsService {
     const { operator, phoneNumber } = await this.acceptedNetworkOrFail(tx.id, tx.provider, args.operator, args.payerPhone);
     const gateway = this.pspRegistry.get(tx.provider);
     const creds = await this.pspRegistry.resolvePlatformCredentials(tx.provider);
-    const payin = await gateway.initPayin(
-      {
-        amountCfa: args.amountCfa,
-        phoneNumber,
-        operator,
-        customId: tx.id,
-        description: args.description
-      },
-      creds
-    );
+    let payin: Awaited<ReturnType<typeof gateway.initPayin>>;
+    try {
+      payin = await gateway.initPayin(
+        {
+          amountCfa: args.amountCfa,
+          phoneNumber,
+          operator,
+          customId: tx.id,
+          description: args.description,
+          onReference: (reference) => this.attachProviderRef(tx.id, reference)
+        },
+        creds
+      );
+    } catch (error) {
+      // Envoi en échec sans référence : la transaction est close, un rejeu de la
+      // même clé ne relance donc jamais d'envoi USSD. Avec une référence déjà
+      // liée, elle reste en attente et la réconciliation interroge le prestataire.
+      await this.failUnsentPayment(tx.id);
+      throw error;
+    }
     await this.attachProviderRef(tx.id, payin.reference);
 
     return {
@@ -403,14 +416,7 @@ export class PaymentsService {
     const tokenOk = input.statusToken
       ? verifyPaymentStatusToken(transaction.id, input.statusToken)
       : false;
-    const phoneOk = (() => {
-      if (tokenOk || !input.voterPhone) return tokenOk;
-      const providedHash = Buffer.from(hashVoterPhone(input.voterPhone), "utf8");
-      const storedHash = Buffer.from(vote.voterPhoneHash ?? "", "utf8");
-      return (
-        providedHash.length === storedHash.length && timingSafeEqual(providedHash, storedHash)
-      );
-    })();
+    const phoneOk = !tokenOk && input.voterPhone !== undefined && voterPhoneMatches(input.voterPhone, vote.voterPhoneHash);
     if (!tokenOk && !phoneOk) {
       throw new UnauthorizedException("Contexte de vote invalide.");
     }
@@ -672,6 +678,21 @@ export class PaymentsService {
         data: { status: TicketStatus.CANCELLED }
       })
     ]);
+  }
+
+  /** Envoi au prestataire échoué avant toute référence : paiement échoué, billets libérés. */
+  private async failUnsentPayment(transactionId: string) {
+    await this.prisma.client.$transaction(async (trx) => {
+      const failed = await trx.paymentTransaction.updateMany({
+        where: { id: transactionId, status: PaymentStatus.PENDING, providerRef: null },
+        data: { status: PaymentStatus.FAILED }
+      });
+      if (failed.count === 0) return;
+      await trx.ticket.updateMany({
+        where: { paymentTransactionId: transactionId, status: TicketStatus.RESERVED },
+        data: { status: TicketStatus.CANCELLED }
+      });
+    });
   }
 
   private async maybeAutoConfirmDemoPayment(transactionId: string) {

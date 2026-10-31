@@ -104,16 +104,4 @@ export class VaultService {
       snapshot: JSON.parse(plain) as Record<string, unknown>
     };
   }
-
-  /**
-   * Sum of confiscated revenue across the vault. Used by the platform overview
-   * and by the Phase 3 payout calculation (revenue that goes 100% to the
-   * platform, never to the organizer).
-   */
-  async sumConfiscatedAmountCfa(): Promise<number> {
-    const agg = await this.prisma.client.vaultEntry.aggregate({
-      _sum: { amountCfa: true }
-    });
-    return agg._sum.amountCfa ?? 0;
-  }
 }

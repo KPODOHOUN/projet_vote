@@ -33,12 +33,46 @@ export type PublicVoteStatus = {
   error: string;
 };
 
+const FINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "VOIDED"]);
+/** Erreurs réseau consécutives tolérées avant d'interrompre le suivi par relecture. */
+const MAX_POLL_ERRORS = 3;
+
+// Paiement en cours gardé pour l'onglet : un rechargement de page reprend le
+// suivi au lieu de laisser le votant sans nouvelles d'un débit en cours.
+function pendingPaymentKey(eventSlug: string) {
+  return `vp.vote-payment.${eventSlug}`;
+}
+
+function readPendingPayment(eventSlug: string): InitPublicPaymentResponse | null {
+  try {
+    const raw = window.sessionStorage.getItem(pendingPaymentKey(eventSlug));
+    const parsed = raw ? (JSON.parse(raw) as Partial<InitPublicPaymentResponse>) : null;
+    return parsed?.transactionId && parsed.statusToken ? (parsed as InitPublicPaymentResponse) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingPayment(eventSlug: string, payment: InitPublicPaymentResponse | null) {
+  try {
+    if (payment) window.sessionStorage.setItem(pendingPaymentKey(eventSlug), JSON.stringify(payment));
+    else window.sessionStorage.removeItem(pendingPaymentKey(eventSlug));
+  } catch {
+    // Stockage indisponible (navigation privée) : le suivi reste en mémoire.
+  }
+}
+
 export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: string; isEn: boolean }) {
   const { tenantSlug, eventSlug, isEn } = opts;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [paymentResult, setPaymentResult] = useState<InitPublicPaymentResponse | null>(null);
   const [livePaymentStatus, setLivePaymentStatus] = useState<PublicPaymentStatusResponse | null>(null);
+
+  useEffect(() => {
+    const pending = readPendingPayment(eventSlug);
+    if (pending) setPaymentResult((current) => current ?? pending);
+  }, [eventSlug]);
 
   async function submit(args: {
     candidatePublicRef: string;
@@ -51,6 +85,7 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
     setError("");
     setPaymentResult(null);
     setLivePaymentStatus(null);
+    writePendingPayment(eventSlug, null);
     setIsSubmitting(true);
 
     try {
@@ -84,6 +119,7 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
         })
       });
       setPaymentResult(payment);
+      if (!FINAL_STATUSES.has(payment.status)) writePendingPayment(eventSlug, payment);
       setLivePaymentStatus({
         transactionId: payment.transactionId,
         status: payment.status,
@@ -99,6 +135,7 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
   }
 
   function reset() {
+    writePendingPayment(eventSlug, null);
     setPaymentResult(null);
     setLivePaymentStatus(null);
     setError("");
@@ -112,11 +149,30 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
 
     let hasFinalStatus = false;
     let fallbackIntervalId: ReturnType<typeof setInterval> | null = null;
+    const interruptedMessage = isEn
+      ? "Payment tracking was interrupted. Your payment is still being checked: reload the page to see its result."
+      : "Le suivi du paiement a été interrompu. Votre paiement continue d'être vérifié : rechargez la page pour voir son résultat.";
+
+    const applyStatus = (statusResponse: PublicPaymentStatusResponse) => {
+      setLivePaymentStatus(statusResponse);
+      if (FINAL_STATUSES.has(statusResponse.status)) {
+        hasFinalStatus = true;
+        writePendingPayment(eventSlug, null);
+      }
+    };
+
+    const stopPolling = () => {
+      if (fallbackIntervalId) {
+        clearInterval(fallbackIntervalId);
+        fallbackIntervalId = null;
+      }
+    };
 
     const startPollingFallback = () => {
       if (fallbackIntervalId || hasFinalStatus) return;
       let attempts = 0;
-      const maxAttempts = 40;
+      let consecutiveErrors = 0;
+      const maxAttempts = 100;
       fallbackIntervalId = setInterval(() => {
         attempts += 1;
         void apiFetch<PublicPaymentStatusResponse>("/payments/public/status", {
@@ -124,26 +180,22 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
           body: JSON.stringify({ tenantSlug, eventSlug, transactionId: paymentResult.transactionId, statusToken })
         })
           .then((statusResponse) => {
-            setLivePaymentStatus(statusResponse);
-            if (statusResponse.status === "SUCCEEDED" || statusResponse.status === "FAILED") {
-              hasFinalStatus = true;
-              if (fallbackIntervalId) {
-                clearInterval(fallbackIntervalId);
-                fallbackIntervalId = null;
-              }
-            }
+            consecutiveErrors = 0;
+            applyStatus(statusResponse);
+            if (hasFinalStatus) stopPolling();
           })
           .catch((caughtError) => {
-            setError(caughtError instanceof Error ? caughtError.message : isEn ? "Payment tracking error." : "Erreur de suivi du paiement.");
-            if (fallbackIntervalId) {
-              clearInterval(fallbackIntervalId);
-              fallbackIntervalId = null;
+            // Une coupure réseau passagère ne doit pas arrêter le suivi d'un débit en cours.
+            consecutiveErrors += 1;
+            if (consecutiveErrors >= MAX_POLL_ERRORS) {
+              stopPolling();
+              setError(caughtError instanceof Error && caughtError.message ? `${interruptedMessage} (${caughtError.message})` : interruptedMessage);
             }
           });
 
-        if (attempts >= maxAttempts && fallbackIntervalId) {
-          clearInterval(fallbackIntervalId);
-          fallbackIntervalId = null;
+        if (attempts >= maxAttempts && !hasFinalStatus) {
+          stopPolling();
+          setError(interruptedMessage);
         }
       }, 3_000);
     };
@@ -154,23 +206,18 @@ export function usePublicVotePayment(opts: { tenantSlug: string; eventSlug: stri
 
     eventSource.onmessage = (messageEvent) => {
       try {
-        const parsed = JSON.parse(messageEvent.data) as PublicPaymentStatusResponse;
-        setLivePaymentStatus(parsed);
-        if (parsed.status === "SUCCEEDED" || parsed.status === "FAILED") {
-          hasFinalStatus = true;
+        applyStatus(JSON.parse(messageEvent.data) as PublicPaymentStatusResponse);
+        if (hasFinalStatus) {
           eventSource.close();
-          if (fallbackIntervalId) {
-            clearInterval(fallbackIntervalId);
-            fallbackIntervalId = null;
-          }
+          stopPolling();
         }
       } catch {
-        setError(isEn ? "Invalid real-time stream." : "Flux en temps réel invalide.");
         eventSource.close();
         startPollingFallback();
       }
     };
 
+    // Flux coupé (réseau, durée maximale atteinte côté serveur) : relecture régulière.
     eventSource.onerror = () => {
       eventSource.close();
       if (!hasFinalStatus) {

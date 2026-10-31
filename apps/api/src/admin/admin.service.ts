@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import type { AuthUser } from "../auth/auth.types";
 import { isPlatformOperator } from "../auth/platform-roles";
+import { DELETABLE_AUDIT_LOGS, PROTECTED_AUDIT_MESSAGE, isProtectedAuditAction } from "../common/audit-retention";
 import { PrismaService } from "../prisma/prisma.service";
 
 const listAuditLogsQuerySchema = z.object({
@@ -120,6 +121,9 @@ export class AdminService {
     if (!isPlatformOperator(user.role) && log.tenantId !== user.tenantId) {
       throw new ForbiddenException("Accès refusé à cette entrée d'audit.");
     }
+    if (isProtectedAuditAction(log.action)) {
+      throw new ForbiddenException(PROTECTED_AUDIT_MESSAGE);
+    }
 
     await this.prisma.client.auditLog.delete({ where: { id } });
     return { deleted: true, id };
@@ -134,7 +138,7 @@ export class AdminService {
 
     const logs = await this.prisma.client.auditLog.findMany({
       where: { id: { in: input.ids } },
-      select: { id: true, tenantId: true }
+      select: { id: true, tenantId: true, action: true }
     });
 
     if (logs.length !== input.ids.length) {
@@ -146,6 +150,10 @@ export class AdminService {
       if (foreign) {
         throw new ForbiddenException("Accès refusé à certaines entrées d'audit.");
       }
+    }
+
+    if (logs.some((log) => isProtectedAuditAction(log.action))) {
+      throw new ForbiddenException(PROTECTED_AUDIT_MESSAGE);
     }
 
     const result = await this.prisma.client.auditLog.deleteMany({
@@ -177,7 +185,7 @@ export class AdminService {
     }
 
     const where = this.buildAuditLogWhere(user, parsedQuery);
-    const result = await this.prisma.client.auditLog.deleteMany({ where });
+    const result = await this.prisma.client.auditLog.deleteMany({ where: { AND: [where, DELETABLE_AUDIT_LOGS] } });
     return { deleted: result.count };
   }
 
@@ -327,7 +335,7 @@ export class AdminService {
     const cleanupBefore = new Date(now - 30 * 24 * 60 * 60 * 1000);
     const tenantFilter = isPlatformOperator(user.role) ? {} : { tenantId: user.tenantId };
 
-    const [pendingPayments, stalePendingPayments, failedPayments24h, expiredIdempotencyKeys, revokedSessionsToPurge, recentMaintenanceRuns] =
+    const [pendingPayments, stalePendingPayments, failedPayments24h, expiredIdempotencyKeys, revokedSessionsToPurge, recentMaintenanceRuns, lateSuccessToRefund] =
       await Promise.all([
         this.prisma.client.paymentTransaction.count({
           where: {
@@ -370,6 +378,12 @@ export class AdminService {
           },
           orderBy: { createdAt: "desc" },
           take: 5
+        }),
+        // Paiements confirmés par le prestataire après leur abandon, sans place
+        // libre ou concours fermé : l'argent est à rendre à la main. Trace
+        // protégée (jamais effacée) : on ne compte que les 30 derniers jours.
+        this.prisma.client.auditLog.count({
+          where: { ...tenantFilter, action: "payment.late_success_needs_refund", createdAt: { gte: cleanupBefore } }
         })
       ]);
 
@@ -379,6 +393,7 @@ export class AdminService {
       failedPayments24h,
       expiredIdempotencyKeys,
       revokedSessionsToPurge,
+      lateSuccessToRefund,
       recentMaintenanceRuns: recentMaintenanceRuns.map((item) => ({
         id: item.id,
         action: item.action,
@@ -448,25 +463,68 @@ export class AdminService {
     };
   }
 
+  /**
+   * Supprime UN utilisateur. Son organisation n'est supprimée avec lui que s'il
+   * en était le seul membre et qu'elle n'a aucune activité (concours, paiement,
+   * portefeuille, retrait) : un compte actif se suspend, il ne s'efface pas.
+   * L'audit est écrit dans l'espace de l'administrateur, qui survit à la suppression.
+   */
   async deleteUser(actor: AuthUser, userId: string) {
     const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException("Utilisateur introuvable.");
     if (user.role === UserRole.PLATFORM_SUPER_ADMIN) {
       throw new ForbiddenException("Impossible de supprimer un super-admin.");
     }
+    if (user.id === actor.userId) {
+      throw new ForbiddenException("Vous ne pouvez pas supprimer votre propre compte.");
+    }
 
-    // Delete tenant (cascades to events, votes, payments)
-    await this.prisma.client.tenant.delete({ where: { id: user.tenantId } });
+    const [otherMembers, otherOwners, signedContracts] = await Promise.all([
+      this.prisma.client.user.count({ where: { tenantId: user.tenantId, id: { not: user.id } } }),
+      this.prisma.client.user.count({ where: { tenantId: user.tenantId, id: { not: user.id }, role: user.role } }),
+      this.prisma.client.eventContract.count({ where: { signedByUserId: user.id } })
+    ]);
+    if (signedContracts > 0) {
+      throw new BadRequestException("Cet utilisateur a signé des contrats, qui doivent rester attribués : suspendez-le plutôt.");
+    }
+    if (user.role === UserRole.ORGANIZER_OWNER && otherMembers > 0 && otherOwners === 0) {
+      throw new BadRequestException(
+        "C'est le seul responsable de l'organisation : nommez un autre responsable, ou suspendez-le plutôt."
+      );
+    }
 
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorUserId: actor.userId,
-        actorRole: actor.role,
-        action: "user.deleted",
-        targetType: "User",
-        targetId: userId,
-        metadata: { email: user.email, tenantId: user.tenantId }
+    const deleteTenant = otherMembers === 0;
+    if (deleteTenant) {
+      const [events, payments, wallet, withdrawals] = await Promise.all([
+        this.prisma.client.event.count({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.paymentTransaction.count({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.organizerWallet.findUnique({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.withdrawalRequest.count({ where: { tenantId: user.tenantId } })
+      ]);
+      const hasMoney = wallet !== null && wallet.withdrawableCfa + wallet.heldCfa > 0;
+      if (events > 0 || payments > 0 || withdrawals > 0 || hasMoney) {
+        throw new BadRequestException(
+          "Cette organisation a des concours, des paiements ou de l'argent : suspendez le compte plutôt que de le supprimer."
+        );
+      }
+    }
+
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          actorUserId: actor.userId,
+          actorRole: actor.role,
+          action: "user.deleted",
+          targetType: "User",
+          targetId: userId,
+          metadata: { email: user.email, tenantId: user.tenantId, tenantDeleted: deleteTenant }
+        }
+      });
+      if (deleteTenant && user.tenantId !== actor.tenantId) {
+        await tx.tenant.delete({ where: { id: user.tenantId } });
+      } else {
+        await tx.user.delete({ where: { id: user.id } });
       }
     });
 

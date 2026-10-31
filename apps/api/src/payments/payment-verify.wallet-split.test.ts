@@ -16,7 +16,7 @@ const pspRegistry = {} as PspRegistry; // non utilisé par applyDemoSuccess
 const verifyService = new PaymentVerifyService(prisma, notifications, pspRegistry, wallet, offerSettings);
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-/** Concours publié : taux et réserve figés comme par un contrat signé (12 %, 50 %). */
+/** Concours publié : taux et réserve figés comme par un contrat signé (votes 12 %, billets 10 %, réserve 50 %). */
 async function seedPublishedEvent() {
   const tenant = await prisma.client.tenant.create({ data: { slug: `pv-${uid()}`, displayName: "PV" } });
   const event = await prisma.client.event.create({
@@ -28,6 +28,7 @@ async function seedPublishedEvent() {
       startsAt: new Date(),
       endsAt: new Date(Date.now() + 86_400_000),
       commissionBps: 1_200,
+      ticketCommissionBps: 1_000,
       heldBps: 5_000
     }
   });
@@ -70,15 +71,16 @@ test("vote de 1 000 F : commission 120 F (12 %), net 880 F partagé 440 réserve
   assert.ok(w.recentEntries.some((e) => e.kind === WalletLedgerKind.VOTE_CREDIT && e.amountCfa === 440));
 });
 
-test("billet de 1 500 F : même règle, écriture « billets » (et non « vote »)", async () => {
+test("billet de 1 500 F : commission billets de 10 %, écriture « billets » (et non « vote »)", async () => {
   const ctx = await seedPublishedEvent();
   const tx = await pendingTx(ctx, PaymentPurpose.TICKET, 1_500);
   await verifyService.applyDemoSuccess(tx.id);
-  // commission = 180, net = 1 320, réserve = 660, disponible = 660
+  // commission = 150, net = 1 350, réserve = 675, disponible = 675
+  assert.equal((await prisma.client.paymentTransaction.findUniqueOrThrow({ where: { id: tx.id } })).commissionCfa, 150);
   const w = await wallet.getWallet(ctx.tenant.id);
-  assert.equal(w.heldCfa, 660);
-  assert.equal(w.withdrawableCfa, 660);
-  assert.ok(w.recentEntries.some((e) => e.kind === WalletLedgerKind.TICKET_CREDIT && e.amountCfa === 660));
+  assert.equal(w.heldCfa, 675);
+  assert.equal(w.withdrawableCfa, 675);
+  assert.ok(w.recentEntries.some((e) => e.kind === WalletLedgerKind.TICKET_CREDIT && e.amountCfa === 675));
   assert.ok(!w.recentEntries.some((e) => e.kind === WalletLedgerKind.VOTE_CREDIT));
 });
 

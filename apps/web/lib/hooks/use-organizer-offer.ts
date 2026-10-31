@@ -14,6 +14,8 @@ export type OrganizerOffer = {
   commissionBps: number;
   commissionSource: "tenant" | "default";
   upcomingCommission: { bps: number; effectiveFrom: string } | null;
+  /** Commission sur chaque billet vendu (points de base). */
+  ticketCommissionBps: number;
   heldBps: number;
   heldReleaseDelayHours: number;
 };

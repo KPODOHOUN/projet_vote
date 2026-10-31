@@ -22,6 +22,10 @@ ne prouvait l'accord de l'organisateur sur la commission en cas de litige.
    au portefeuille, partagé entre réserve et part retirable. Taux applicable : celui figé par le contrat
    du concours, sinon le taux négocié en vigueur (`CommissionRate`, historisé, jamais rétroactif), sinon
    le défaut plateforme.
+   **Billets (31/10/2026)** : taux distinct, 10 % par défaut (`ticket_commission_bps`, réglable par
+   l'admin, hors fourchette 4–12 % par le super-admin seulement), figé par le contrat
+   (`Event.ticketCommissionBps`, modèle `2026-10-31.2`). Un contrat antérieur sans taux billets garde
+   son taux unique sur tous les paiements (rempli par la migration `20261031140000_ticket_commission`).
 3. **Mise en ligne = signature du contrat.** Le passage DRAFT → ACTIVE n'existe que dans la transaction
    de signature (`assertEventTransition(…, "contract")`). Le contrat est généré à partir d'un instantané
    figé (texte + SHA-256), signé par case à cocher, nom saisi et code envoyé par email (signature dessinée

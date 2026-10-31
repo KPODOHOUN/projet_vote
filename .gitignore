@@ -4,6 +4,7 @@ dist-test/
 .next/
 coverage/
 test-results/
+playwright-report/
 .data/
 *.tsbuildinfo
 *.env

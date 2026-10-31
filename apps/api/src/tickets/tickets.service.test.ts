@@ -132,21 +132,32 @@ test("purchaseTickets: des achats simultanés ne dépassent jamais le stock", as
   assert.equal(await prisma.ticket.count({ where: { ticketTypeId: ticketType.id } }), 4);
 });
 
-test("purchaseTickets: une réservation de plus de 15 min ne bloque plus le stock, et reste payable", async () => {
+test("purchaseTickets: une réservation en attente garde le stock même ancienne, un paiement échoué le libère", async () => {
   const { event, ticketType } = await seedTicketType();
   await prisma.ticketType.update({ where: { id: ticketType.id }, data: { quantity: 2, maxPerPerson: 10 } });
-  const stale = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
+  const pending = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
+
+  // Paiement toujours en attente, même après 16 min : le stock n'est pas revendu
+  // (un paiement confirmé en retard ne doit jamais dépasser la jauge).
+  await prisma.ticket.updateMany({ where: { paymentTransactionId: pending.transaction.id }, data: { createdAt: new Date(Date.now() - 16 * 60_000) } });
   await assert.rejects(tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 1, ...buyer }), /disponible/);
 
-  // Paiement jamais validé par l'acheteur : la réservation vieillit.
-  await prisma.ticket.updateMany({ where: { paymentTransactionId: stale.transaction.id }, data: { createdAt: new Date(Date.now() - 16 * 60_000) } });
-  const fresh = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
-  assert.equal(fresh.tickets.length, 2);
+  // Le paiement aboutit : billets payés, jauge respectée.
+  await prisma.paymentTransaction.update({ where: { id: pending.transaction.id }, data: { providerRef: `demo_${pending.transaction.id}` } });
+  await verify.applyDemoSuccess(pending.transaction.id);
+  assert.equal(await prisma.ticket.count({ where: { ticketTypeId: ticketType.id, status: { in: ["PAID", "RESERVED"] } } }), 2);
+});
 
-  // Si le premier paiement aboutit quand même, ses billets passent payés (l'argent fait foi).
-  await prisma.paymentTransaction.update({ where: { id: stale.transaction.id }, data: { providerRef: `demo_${stale.transaction.id}` } });
-  await verify.applyDemoSuccess(stale.transaction.id);
-  assert.equal(await prisma.ticket.count({ where: { paymentTransactionId: stale.transaction.id, status: "PAID" } }), 2);
+test("purchaseTickets: un paiement échoué libère aussitôt ses billets pour un autre acheteur", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { quantity: 2, maxPerPerson: 10 } });
+  const first = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
+  await prisma.$transaction([
+    prisma.paymentTransaction.update({ where: { id: first.transaction.id }, data: { status: "FAILED" } }),
+    prisma.ticket.updateMany({ where: { paymentTransactionId: first.transaction.id }, data: { status: "CANCELLED" } })
+  ]);
+  const second = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, ...buyer });
+  assert.equal(second.tickets.length, 2);
 });
 
 test("purchaseTickets: prestataire indisponible → paiement échoué et stock libéré", async () => {
@@ -211,7 +222,7 @@ test("validateTicket : le billet d'un autre organisateur est introuvable, et il 
   });
   await assert.rejects(
     tickets.validateTicket(organizer(intruder.event.tenantId), { ticketId: ticket.id, secret: "secret-other" }),
-    /Ticket introuvable/
+    /Billet inconnu de votre organisation/
   );
   assert.equal((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "PAID");
 });
@@ -293,4 +304,136 @@ test("saveDesign : design valide enregistré ; URL javascript et CSS url() refus
     /Design invalide/
   );
   await assert.rejects(tickets.saveDesign(ticketType.id, { foo: "bar" }), /Design invalide/);
+});
+
+test("listTickets: un filtre de statut inconnu est refusé proprement", async () => {
+  const { event } = await seedTicketType();
+  await assert.rejects(tickets.listTickets(event.id, { status: "nimporte" }), /Statut de billet inconnu/);
+});
+
+test("saveDesign : emplacement du QR code accepté, sans contenu", async () => {
+  const { ticketType } = await seedTicketType();
+  const qr = { id: "qr", type: "qr", content: "", x: 400, y: 50, width: 180, height: 180, zIndex: 2, visible: true, style: {} };
+  const design = { width: 600, height: 300, background: { type: "color", value: "#111111" }, backgroundImage: null, layers: [qr] };
+  await tickets.saveDesign(ticketType.id, design);
+  await assert.rejects(tickets.saveDesign(ticketType.id, { ...design, layers: [{ ...qr, content: "https://evil.example" }] }), /Design invalide/);
+  const stored = await tickets.getPublicTicket(
+    (await prisma.ticket.create({ data: { ticketTypeId: ticketType.id, eventId: ticketType.eventId, qrSecret: "s-design", status: "PAID", amountCfa: 1000 } })).id,
+    "s-design"
+  );
+  assert.equal((stored.ticketType.design as { layers: Array<{ type: string }> }).layers[0]!.type, "qr");
+  assert.ok(stored.event.startsAt instanceof Date);
+});
+
+test("e-mail du billet : billet dessiné joint, saisies de l'acheteur échappées", async () => {
+  const { ticketEmailHtml } = await import("./ticket-email.util");
+  const html = ticketEmailHtml({
+    id: "tkt_1", qrSecret: "sec/ret", amountCfa: 1000, holderName: "<img src=x onerror=alert(1)>",
+    holderPhone: null, holderEmail: "a@b.c", ticketType: { name: "VIP & Co" }, event: { title: "Gala <2026>", slug: "gala" }
+  });
+  assert.ok(html.includes("/t/tkt_1/image?s=sec%2Fret"));
+  assert.ok(!html.includes("<img src=x"));
+  assert.ok(html.includes("&lt;img src=x onerror=alert(1)&gt;"));
+  assert.ok(html.includes("VIP &amp; Co") && html.includes("Gala &lt;2026&gt;"));
+});
+
+test("saveDesign : formes, polices et verrouillage acceptés ; police inconnue et forme avec contenu refusées", async () => {
+  const { ticketType } = await seedTicketType();
+  const shape = { id: "s", type: "shape", content: "", x: 0, y: 0, width: 200, height: 4, zIndex: 1, visible: true, locked: true,
+    style: { shape: "line", stroke: "#ca8a04", strokeWidth: 3, fill: "transparent" } };
+  const text = { id: "t", type: "text", content: "{{titulaire}}\nVIP", x: 10, y: 10, width: 300, height: 80, zIndex: 2, visible: true,
+    style: { fontFamily: "playfair", letterSpacing: 2, lineHeight: 1.3, fontSize: 24 } };
+  const design = { width: 1200, height: 500, background: { type: "gradient", value: "linear-gradient(135deg, #111827 0%, #312e81 100%)" }, backgroundImage: null, layers: [shape, text] };
+  await tickets.saveDesign(ticketType.id, design);
+  await assert.rejects(tickets.saveDesign(ticketType.id, { ...design, layers: [{ ...text, style: { fontFamily: "comic-sans" } }] }), /Design invalide/);
+  await assert.rejects(tickets.saveDesign(ticketType.id, { ...design, layers: [{ ...shape, content: "x" }] }), /Design invalide/);
+});
+
+test("achat pour un groupe : chaque billet porte le nom de son invité, sinon celui de l'acheteur", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { maxPerPerson: 10 } });
+  const r = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 3, holderName: "Koffi", guests: ["Awa", "", "  Yao "], ...buyer });
+  const rows = await prisma.ticket.findMany({ where: { paymentTransactionId: r.transaction.id }, orderBy: { createdAt: "asc" } });
+  assert.deepEqual(rows.map((row) => row.holderName), ["Awa", "Koffi", "Yao"]);
+});
+
+test("limite par personne : comptée sur le numéro, tous achats confondus, quel que soit le format saisi", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { maxPerPerson: 3, quantity: 50 } });
+  await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, holderPhone: "+22997000001" });
+  await assert.rejects(
+    tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, holderPhone: "0197000001" }),
+    /peut encore en prendre 1/
+  );
+  await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 1, holderPhone: "0197000001" });
+  await assert.rejects(tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 1, holderPhone: "97000001" }), /déjà atteint la limite/);
+  // Un autre numéro n'est pas concerné.
+  await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 3, holderPhone: "0196000002" });
+});
+
+test("un acheteur qui réessaie n'est pas bloqué par son propre achat non payé ; un autre acheteur ne peut pas le libérer", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { maxPerPerson: 2, quantity: 3 } });
+  const first = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, holderPhone: "0197000021" });
+  // L'invite USSD est partie (référence connue) mais l'acheteur l'a fermée.
+  await prisma.paymentTransaction.update({ where: { id: first.transaction.id }, data: { providerRef: `ref_${first.transaction.id}` } });
+
+  // Un autre numéro ne libère rien : il ne reste qu'une place pour lui.
+  await assert.rejects(
+    tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, holderPhone: "0196000022" }),
+    /Seulement 1/
+  );
+  assert.equal((await prisma.paymentTransaction.findUniqueOrThrow({ where: { id: first.transaction.id } })).status, "PENDING");
+
+  // Le même acheteur réessaie : son ancienne tentative est remplacée.
+  const retry = await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, holderPhone: "+22997000021" });
+  assert.equal(retry.tickets.length, 2);
+  assert.equal((await prisma.paymentTransaction.findUniqueOrThrow({ where: { id: first.transaction.id } })).status, "FAILED");
+  assert.equal(await prisma.ticket.count({ where: { paymentTransactionId: first.transaction.id, status: "CANCELLED" } }), 2);
+  const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "payment.abandoned_pending", targetId: first.transaction.id } });
+  assert.equal((audit.metadata as { reason: string }).reason, "replaced_by_new_purchase");
+});
+
+test("numéros lisibles : attribués au paiement, à la suite, sans doublon même en parallèle", async () => {
+  const { event, ticketType } = await seedTicketType();
+  await prisma.ticketType.update({ where: { id: ticketType.id }, data: { maxPerPerson: 10, quantity: 50 } });
+  const purchases: Array<Awaited<ReturnType<typeof tickets.purchaseTickets>>> = [];
+  for (const phone of ["0197000011", "0197000012", "0197000013"]) {
+    purchases.push(await tickets.purchaseTickets(event.slug, { ticketTypeId: ticketType.id, quantity: 2, holderPhone: phone }));
+  }
+  assert.equal(await prisma.ticket.count({ where: { ticketTypeId: ticketType.id, number: { not: null } } }), 0, "pas de numéro avant paiement");
+  for (const p of purchases) {
+    await prisma.paymentTransaction.update({ where: { id: p.transaction.id }, data: { providerRef: `demo_${p.transaction.id}` } });
+  }
+  await Promise.all(purchases.map((p) => verify.applyDemoSuccess(p.transaction.id)));
+  const numbers = (await prisma.ticket.findMany({ where: { ticketTypeId: ticketType.id }, select: { number: true } })).map((t) => t.number).sort((a, b) => a! - b!);
+  assert.deepEqual(numbers, [1, 2, 3, 4, 5, 6]);
+  assert.equal((await prisma.ticketType.findUniqueOrThrow({ where: { id: ticketType.id } })).issuedCount, 6);
+});
+
+test("scanner : billet d'un autre événement refusé ; double passage indique l'heure du premier", async () => {
+  const { event, ticketType } = await seedTicketType();
+  const ticket = await prisma.ticket.create({
+    data: { ticketTypeId: ticketType.id, eventId: event.id, qrSecret: "secret-scan", status: "PAID", amountCfa: ticketType.priceCfa, number: 42, holderName: "Awa" }
+  });
+  const other = await prisma.event.create({
+    data: { tenantId: event.tenantId, slug: `autre-${Date.now()}`, title: "Autre", status: "ACTIVE", startsAt: new Date(), endsAt: new Date(Date.now() + 3_600_000) }
+  });
+  const staff = organizer(event.tenantId);
+  await assert.rejects(tickets.validateTicket(staff, { ticketId: ticket.id, secret: "secret-scan", eventId: other.id }), /autre événement/);
+  const ok = await tickets.validateTicket(staff, { ticketId: ticket.id, secret: "secret-scan", eventId: event.id });
+  assert.equal(ok.ticket.number, "0042");
+  assert.equal(ok.ticket.holderName, "Awa");
+  await assert.rejects(tickets.validateTicket(staff, { ticketId: ticket.id, secret: "secret-scan", eventId: event.id }), /déjà été utilisé \(le \d\d\/\d\d à \d\d:\d\d\)/);
+});
+
+test("lien public d'un billet : ni le téléphone ni l'e-mail de l'acheteur", async () => {
+  const { event, ticketType } = await seedTicketType();
+  const ticket = await prisma.ticket.create({
+    data: { ticketTypeId: ticketType.id, eventId: event.id, qrSecret: "secret-share", status: "PAID", amountCfa: 1000, holderPhone: "2290197000001", holderEmail: "acheteur@x.bj", holderName: "Awa" }
+  });
+  const shared = await tickets.getPublicTicket(ticket.id, "secret-share");
+  assert.equal("holderPhone" in shared, false);
+  assert.equal("holderEmail" in shared, false);
+  assert.equal(shared.holderName, "Awa");
 });

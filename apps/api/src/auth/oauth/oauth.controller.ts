@@ -6,7 +6,7 @@ import { env } from "../../config/env";
 import { OAuthService } from "./oauth.service";
 
 const callbackSchema = z.object({
-  provider: z.enum(["google", "facebook"]),
+  provider: z.enum(["google"]),
   code: z.string().min(1),
   state: z.string().min(1),
 });
