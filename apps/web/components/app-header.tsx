@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import type React from "react";
 import { Menu, X } from "lucide-react";
 import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
+import type { MessageKey } from "../lib/i18n";
 import { authLoginUrl, authRegisterUrl } from "../lib/auth-navigation";
 import { useAuthModal } from "./auth/auth-modal-provider";
 import type { AuthMode } from "./auth/auth-dialog";
@@ -35,27 +35,42 @@ export function AppHeader() {
     return null;
   }
 
+  // Ancres de la page d'accueil : seulement sur « / ».
+  const anchors: Array<{ href: string; label: MessageKey }> =
+    pathname === "/"
+      ? [
+          { href: "#fonctions", label: "home.l.nav.features" },
+          { href: "#comment", label: "home.l.nav.how" },
+          { href: "#argent", label: "home.l.nav.money" }
+        ]
+      : [];
+
   return (
-    <header
-      className="sticky top-0 z-50 border-b border-white/10 bg-slate-900 text-white"
-      role="banner"
-      // Le sélecteur de langue « brand-header » lit ces deux variables.
-      style={{ "--event-header-bg": "#0f172a", "--event-header-fg": "#ffffff" } as React.CSSProperties}
-    >
-      <div className="flex h-16 items-center justify-between gap-4 px-5 md:px-16">
-        <Link href="/" className="text-lg font-extrabold tracking-tight text-white" aria-label="SHADOMA">
+    <header className="sticky top-0 z-50 border-b border-border bg-white/85 text-slate-900 backdrop-blur-md" role="banner">
+      <div className="mx-auto flex h-16 w-[min(1160px,100%-2rem)] items-center justify-between gap-4">
+        <Link href="/" className="font-display text-lg font-extrabold tracking-[0.04em] text-slate-900" aria-label="SHADOMA">
           SHADOMA
         </Link>
 
+        {anchors.length ? (
+          <nav className="hidden items-center gap-7 text-sm font-medium lg:flex" aria-label={t("home.nav.label")}>
+            {anchors.map((anchor) => (
+              <a key={anchor.href} href={anchor.href} className="inline-flex min-h-11 items-center text-slate-600 transition-colors hover:text-slate-900">
+                {t(anchor.label)}
+              </a>
+            ))}
+          </nav>
+        ) : null}
+
         <div className="flex items-center gap-3">
-          <LanguageSwitcher variant="brand-header" />
+          <LanguageSwitcher />
           <Link
             href={authLoginUrl()}
             onClick={(event) => {
               event.preventDefault();
               handleOpenAuth("login");
             }}
-            className="hidden min-h-11 items-center text-sm font-semibold text-white/90 underline-offset-4 hover:underline sm:inline-flex"
+            className="hidden min-h-11 items-center text-sm font-semibold text-slate-700 hover:text-slate-900 sm:inline-flex"
             prefetch={false}
           >
             {t("home.login")}
@@ -66,14 +81,14 @@ export function AppHeader() {
               event.preventDefault();
               handleOpenAuth("register");
             }}
-            className="hidden h-10 items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 sm:inline-flex"
+            className="hidden h-10 items-center rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 sm:inline-flex"
             prefetch={false}
           >
             {t("home.cta")}
           </Link>
           <button
             type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-white/20 text-white sm:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border text-slate-900 sm:hidden"
             aria-label={mobileOpen ? t("home.menu.close") : t("home.menu.open")}
             aria-expanded={mobileOpen}
             aria-controls="marketing-mobile-menu"
@@ -85,12 +100,19 @@ export function AppHeader() {
       </div>
 
       {mobileOpen ? (
-        <nav id="marketing-mobile-menu" className="border-t border-white/10 px-5 py-3 sm:hidden" aria-label={t("home.nav.label")}>
+        <nav id="marketing-mobile-menu" className="border-t border-border bg-white px-5 py-3 sm:hidden" aria-label={t("home.nav.label")}>
           <ul className="space-y-2">
+            {anchors.map((anchor) => (
+              <li key={anchor.href}>
+                <a href={anchor.href} className="flex min-h-11 items-center text-sm font-semibold text-slate-900" onClick={() => setMobileOpen(false)}>
+                  {t(anchor.label)}
+                </a>
+              </li>
+            ))}
             <li>
               <Link
                 href={authLoginUrl()}
-                className="flex min-h-11 items-center text-sm font-semibold text-white"
+                className="flex min-h-11 items-center text-sm font-semibold text-slate-900"
                 onClick={(event) => {
                   event.preventDefault();
                   handleOpenAuth("login");

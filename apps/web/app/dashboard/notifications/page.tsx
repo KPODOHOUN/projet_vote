@@ -57,8 +57,8 @@ export default function NotificationsPage() {
     <div className="space-y-10">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-6">
         <div className="space-y-1">
-          <span className="text-sm font-bold tracking-widest uppercase text-primary block">{isEn ? "Activity" : "Activité"}</span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{t("notif.title")}</h2>
+          <span className="block text-sm font-semibold text-slate-600">{isEn ? "Activity" : "Activité"}</span>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-foreground">{t("notif.title")}</h1>
         </div>
         {items.some((n) => !n.readAt) ? (
           <Button type="button" variant="secondary" loading={markAllBusy} onClick={() => void onMarkAll()}>{t("notif.markAllRead")}</Button>

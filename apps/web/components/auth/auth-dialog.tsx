@@ -85,27 +85,27 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login", returnTo
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
       <div className="fixed inset-0 bg-black/60" onClick={close} aria-hidden="true" />
-      <div className="relative my-auto w-full max-w-[420px]">
+      <div className="relative my-auto w-full max-w-[600px]">
         <div
           ref={panelRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="auth-dialog-title"
           data-zone="secure-flow"
-          className="flex max-h-[90dvh] flex-col overflow-y-auto rounded-md border border-border bg-background"
+          className="flex max-h-[92dvh] flex-col overflow-y-auto rounded-xl border border-border bg-background shadow-2xl"
         >
           {/* En-tête plat (7.5) : wordmark, titre, fermer en 44 px. */}
-          <div className="relative border-b border-border px-6 pb-4 pt-5">
+          <div className="relative px-6 pb-2 pt-8 sm:px-12 sm:pt-10">
             <button
               type="button"
               onClick={close}
-              className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-600 hover:bg-muted hover:text-slate-900"
+              className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-600 hover:bg-muted hover:text-slate-900"
               aria-label={t("auth.dialog.close")}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
-            <p className="text-base font-extrabold tracking-tight text-slate-900">SHADOMA</p>
-            <h2 id="auth-dialog-title" className="mt-2 text-xl font-bold text-slate-900">
+            <p className="text-sm font-extrabold tracking-tight text-primary">SHADOMA</p>
+            <h2 id="auth-dialog-title" className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
               {mode === "login" ? t("auth.dialog.titleLogin") : t("auth.dialog.titleRegister")}
             </h2>
             <p className="mt-1 text-sm text-slate-600">
@@ -113,9 +113,9 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login", returnTo
             </p>
           </div>
 
-          <div className="p-6">
+          <div className="px-6 pb-8 pt-6 sm:px-12 sm:pb-12">
             {/* Tab switcher — pilule glissante animée sous l'onglet actif */}
-            <div role="tablist" aria-label={mode === "login" ? t("auth.dialog.titleLogin") : t("auth.dialog.titleRegister")} className="relative mb-5 grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
+            <div role="tablist" aria-label={mode === "login" ? t("auth.dialog.titleLogin") : t("auth.dialog.titleRegister")} className="relative mb-6 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
               {tabs.map((tab) => {
                 const selected = mode === tab.value;
                 return (

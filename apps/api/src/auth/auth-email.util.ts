@@ -20,6 +20,26 @@ export function otpVerificationEmailHtml(code: string, ttlMinutes: number): stri
   `;
 }
 
+export function otpContractSignatureEmailHtml(code: string, ttlMinutes: number, eventTitle: string): string {
+  return `
+    <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px">
+      <h1 style="font-size:22px;margin:0 0 12px">Signature de votre contrat</h1>
+      <p style="color:#444;line-height:1.6">
+        Vous êtes en train de signer le contrat du concours « ${escapeHtml(eventTitle)} » sur SHADOMA Votes.
+        Saisissez ce code pour confirmer que c'est bien vous :
+      </p>
+      <p style="margin:28px 0;font-size:32px;letter-spacing:8px;font-weight:700;text-align:center">${code}</p>
+      <p style="color:#666;font-size:13px;line-height:1.5">
+        Ce code expire dans ${ttlMinutes} minutes. Si vous n'êtes pas en train de signer un contrat, ne communiquez ce code à personne.
+      </p>
+    </div>
+  `;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+}
+
 export function otpPasswordResetEmailHtml(code: string, ttlMinutes: number): string {
   return `
     <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px">

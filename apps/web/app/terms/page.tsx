@@ -17,7 +17,7 @@ export default function TermsPage() {
           <p className="text-muted-foreground leading-relaxed">
             {isEn
               ? "SHADOMA Votes provides a SaaS service for events, candidates, and paid votes management. Using the service implies full acceptance of these terms."
-              : "SHADOMA Votes fournit un service SaaS permettant la gestion d'évènements, de candidats et de votes payants. L'utilisation du service implique l'acceptation pleine des présentes conditions."}
+              : "SHADOMA Votes fournit un service SaaS permettant la gestion d'événements, de candidats et de votes payants. L'utilisation du service implique l'acceptation pleine des présentes conditions."}
           </p>
         </section>
 
@@ -26,7 +26,7 @@ export default function TermsPage() {
           <p className="text-muted-foreground leading-relaxed">
             {isEn
               ? "The organizer remains responsible for event content, campaign legality, and local law compliance. SHADOMA Votes makes reasonable efforts to keep the service available, without guaranteeing uninterrupted access."
-              : "L'organisateur reste responsable du contenu de ses évènements, de la légalité des campagnes et du respect des règles locales. SHADOMA Votes fait des efforts raisonnables pour maintenir le service disponible, sans garantir un accès ininterrompu."}
+              : "L'organisateur reste responsable du contenu de ses événements, de la légalité des campagnes et du respect des règles locales. SHADOMA Votes fait des efforts raisonnables pour maintenir le service disponible, sans garantir un accès ininterrompu."}
           </p>
         </section>
 
@@ -52,8 +52,8 @@ export default function TermsPage() {
           <h2 className="text-2xl font-bold tracking-tight text-foreground mb-4">{isEn ? "Organizer funds and withdrawals" : "Fonds de l'organisateur et retraits"}</h2>
           <p className="text-muted-foreground leading-relaxed">
             {isEn
-              ? "The commission rate is shown to the organizer before the event is activated and does not change afterwards. Withdrawals are requested by the organizer and processed by hand by SHADOMA after approval; there is no automatic transfer."
-              : "Le taux de commission est indiqué à l'organisateur avant l'activation de l'événement et ne change plus ensuite. Les retraits sont demandés par l'organisateur et traités à la main par SHADOMA après validation ; il n'y a pas de virement automatique."}
+              ? "The commission rate is written in the contract the organizer signs before the contest goes online and does not change afterwards. Withdrawals are requested by the organizer and processed by hand by SHADOMA after approval; there is no automatic transfer."
+              : "Le taux de commission figure dans le contrat que l'organisateur signe avant la mise en ligne du concours et ne change plus ensuite. Les retraits sont demandés par l'organisateur et traités à la main par SHADOMA après validation ; il n'y a pas de virement automatique."}
           </p>
         </section>
 

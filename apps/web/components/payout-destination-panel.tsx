@@ -25,7 +25,7 @@ import { showToast } from "../lib/toast";
  * jamais le numéro complet, seulement le réseau et les 4 derniers chiffres.
  */
 export function PayoutDestinationPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const destinationQuery = usePayoutDestinationQuery();
   const mutation = usePayoutDestinationMutation();
   const [phone, setPhone] = useState("");
@@ -64,9 +64,18 @@ export function PayoutDestinationPanel() {
         ) : destinationQuery.isError ? (
           <FormError>{t("payoutDest.loadFailed")}</FormError>
         ) : current ? (
-          <p className="font-medium text-foreground tabular-nums">
-            {t("payoutDest.current", { network: mobileNetworkLabel(current.network), last4: current.last4 })}
-          </p>
+          <div className="space-y-2">
+            <p className="font-medium text-foreground tabular-nums">
+              {t("payoutDest.current", { network: mobileNetworkLabel(current.network), last4: current.last4 })}
+            </p>
+            {current.withdrawalsAvailableAt ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {t("payoutDest.cooldown", {
+                  date: new Date(current.withdrawalsAvailableAt).toLocaleString(locale === "en" ? "en-GB" : "fr-FR")
+                })}
+              </p>
+            ) : null}
+          </div>
         ) : (
           <p className="font-medium text-foreground">{t("payoutDest.none")}</p>
         )}

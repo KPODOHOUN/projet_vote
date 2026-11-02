@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { Throttle } from "@nestjs/throttler";
-import { Observable, interval, map, switchMap, takeWhile } from "rxjs";
+import { Observable, interval, map, switchMap, takeUntil, takeWhile, timer } from "rxjs";
 import { AuthGuard } from "../auth/auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { RolesGuard } from "../auth/roles.guard";
@@ -19,17 +19,12 @@ import { Roles } from "../auth/roles.decorator";
 import type { AuthUser } from "../auth/auth.types";
 import { PaymentsService } from "./payments.service";
 
+const TERMINAL_PAYMENT_STATUSES: ReadonlySet<string> = new Set(["SUCCEEDED", "FAILED", "VOIDED"]);
+const PUBLIC_STATUS_STREAM_MAX_MS = 10 * 60_000;
+
 @Controller("payments")
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
-
-  @Post("init")
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles(UserRole.PLATFORM_ADMIN, UserRole.ORGANIZER_OWNER, UserRole.ORGANIZER_STAFF)
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  initPayment(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.paymentsService.initPayment(user, body);
-  }
 
   @Post("public/init")
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
@@ -45,17 +40,11 @@ export class PaymentsController {
     return this.paymentsService.initOrganizerTopup(user, body);
   }
 
-  @Get("activation/fee")
-  getActivationFeeInfo() {
-    return this.paymentsService.getActivationFeeInfo();
-  }
-
-  @Post("activation/init")
+  @Get("networks")
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.PLATFORM_ADMIN, UserRole.ORGANIZER_OWNER, UserRole.ORGANIZER_STAFF)
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  initActivationPayment(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.paymentsService.initActivationPayment(user, body);
+  getPayinNetworks(@CurrentUser() user: AuthUser, @Query("eventId") eventId?: string) {
+    return this.paymentsService.getPayinNetworks(user, eventId);
   }
 
   @Get(":transactionId/status")
@@ -91,7 +80,10 @@ export class PaymentsController {
           statusToken
         })
       ),
-      takeWhile((statusSnapshot) => statusSnapshot.status !== "SUCCEEDED" && statusSnapshot.status !== "FAILED", true),
+      takeWhile((statusSnapshot) => !TERMINAL_PAYMENT_STATUSES.has(statusSnapshot.status), true),
+      // Durée bornée : un paiement resté en attente ne tient pas la connexion
+      // (ni les appels au prestataire) indéfiniment ; le navigateur bascule alors en relecture.
+      takeUntil(timer(PUBLIC_STATUS_STREAM_MAX_MS)),
       map((statusSnapshot) => ({ data: statusSnapshot }))
     );
   }

@@ -20,11 +20,6 @@ export interface FeexpayStatusPayload {
   financialTransactionId?: string | undefined;
   payer?: { partyIdType?: string | undefined; partyId?: string | undefined } | undefined;
   reason?: string | undefined;
-  /** Normalized Marketplace split returned by providers that support it. */
-  split?: {
-    beneficiaryReference: string;
-    amountCfa: number;
-  } | undefined;
 }
 
 /**

@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 
 // Phase de vote (7.11-c) : l'interface ne promet jamais un vote que l'API
-// refusera. L'activation passe par un paiement : on la pose en base (base e2e).
+// refusera. La mise en ligne passe par la signature du contrat (couverte par
+// organizer-flow.spec) : ici on la pose en base (base e2e).
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } } });
 const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3001/api/v1";
 
@@ -19,12 +20,13 @@ async function activeEvent(
   const unique = `${label}-${Date.now()}`;
   const register = await request.post(`${apiBaseUrl}/auth/register`, {
     data: {
-      tenantSlug: `e2e-${unique}`,
-      tenantDisplayName: `E2E ${unique}`,
+      firstName: "E2E",
+      lastName: "Organisateur",
+      phone: "0197000000",
+      organizationName: `E2E ${unique}`,
       email: `owner-${unique}@shadowa.test`,
       password: "SecurePass123!",
-      acceptPrivacyPolicy: true,
-      offerType: "ESCROW"
+      acceptPrivacyPolicy: true
     }
   });
   expect(register.ok()).toBeTruthy();
@@ -90,14 +92,24 @@ test("vote ouvert : le formulaire de paiement est proposé", async ({ page, requ
   await expect(page.getByRole("button", { name: /^Payer/ })).toBeVisible();
 });
 
-test("billetterie : vente fermée, aucun bouton d'achat actif", async ({ page, request }) => {
+test("billetterie : vente ouverte, le paiement exige un numéro Mobile Money", async ({ page, request }) => {
   const { slug } = await activeEvent(
     request,
     "tickets",
     new Date(Date.now() - 86_400_000),
     new Date(Date.now() + 86_400_000)
   );
+  const event = await prisma.event.findUniqueOrThrow({ where: { slug } });
+  await prisma.ticketType.create({ data: { eventId: event.id, name: "Entrée standard", priceCfa: 1500, quantity: 10 } });
+
   await page.goto(`/e/${slug}/tickets`);
-  await expect(page.getByText("La vente en ligne n'est pas encore ouverte.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Payer|Acheter/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Acheter des billets" })).toBeVisible();
+  await page.getByRole("button", { name: /Entrée standard/ }).click();
+  const pay = page.getByRole("button", { name: /^Payer/ });
+  await expect(pay).toBeDisabled();
+  await page.getByLabel("Numéro Mobile Money qui paie").fill("+22997000001");
+  // Sans réseau choisi, le paiement reste bloqué.
+  await expect(pay).toBeDisabled();
+  await page.getByLabel("Réseau").selectOption("mtn");
+  await expect(pay).toBeEnabled();
 });

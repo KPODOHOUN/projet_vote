@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHADOMA Votes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --action:#4F46E5; --action-d:#4338CA; --action-soft:#A5B4FC;
+  --ink:#0F172A; --muted:#475569; --bg:#FFFFFF; --rule:#E2E8F0; --on-dark:#CBD5E1; --dark-rule:rgba(255,255,255,.18);
+  --gut:clamp(16px,4vw,64px);
+  --display:"Plus Jakarta Sans",system-ui,sans-serif;
+  --text:"Inter",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{overflow-x:clip}
+body{background:var(--bg);color:var(--ink);font:400 17px/1.55 var(--text)}
+img{display:block;max-width:100%}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:-.045em;line-height:.9;font-style:normal;overflow-wrap:anywhere;min-width:0}
+.wrap{padding-inline:var(--gut)}
+:focus-visible{outline:2px solid var(--action);outline-offset:3px;border-radius:4px}
+
+/* header */
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;height:72px;background:rgba(255,255,255,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule)}
+.logo{font:800 20px/1 var(--display);letter-spacing:.06em;text-decoration:none}
+.nav{display:flex;align-items:center;gap:32px;font-size:15px;font-weight:500}
+.nav a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
+.nav a:not(.btn):hover{color:var(--action)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:0 26px;border-radius:10px;background:var(--action);color:#fff;font:600 16px/1 var(--text);text-decoration:none;white-space:nowrap;transition:background .15s,transform .15s}
+.btn:hover{background:var(--action-d)}
+.btn:active{transform:translateY(1px)}
+.btn.sm{min-height:44px;padding:0 18px;font-size:15px}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.btn.ghost:hover{background:var(--ink);color:#fff}
+
+/* hero */
+.hero{padding-top:clamp(48px,7vw,112px)}
+.hero h1{font-size:clamp(52px,11.4vw,184px)}
+.hero h1 span{color:var(--action)}
+.hero-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:24px 40px;margin-top:clamp(28px,3.4vw,48px);padding-bottom:clamp(40px,5vw,72px)}
+.hero-row p{font-size:clamp(19px,1.7vw,24px);line-height:1.35;max-width:22ch}
+.ctas{display:flex;flex-wrap:wrap;gap:12px}
+
+/* moving wall of real contest pages */
+.strip{overflow:hidden;padding-block:8px 24px;mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+.track{display:flex;gap:20px;width:max-content;animation:slide 48s linear infinite}
+.strip:hover .track{animation-play-state:paused}
+.card{width:clamp(220px,22vw,320px);flex:none}
+.shot{border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06),0 18px 40px -20px rgba(15,23,42,.28);transition:transform .25s}
+.card .shot{aspect-ratio:3/4.3}
+.card:hover .shot{transform:translateY(-6px)}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top center}
+.card b{display:block;margin-top:12px;font:700 16px/1 var(--display);letter-spacing:-.02em}
+@keyframes slide{to{transform:translateX(calc(-50% - 10px))}}
+
+/* sections */
+.sec{padding-block:clamp(80px,10vw,160px)}
+.label{font:600 13px/1 var(--text);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:24px}
+
+/* steps: four verbs */
+.steps{list-style:none;border-bottom:1px solid var(--ink)}
+.steps li{display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:clamp(16px,2vw,28px) 0;border-top:1px solid var(--ink)}
+.steps h3{font-size:clamp(52px,10vw,164px)}
+.steps p{font-size:clamp(16px,1.4vw,20px);color:var(--muted);text-align:right;white-space:nowrap}
+.steps li:nth-child(3) h3{color:var(--action)}
+
+/* money */
+.money{background:var(--ink);color:#fff}
+.money h2{font-size:clamp(48px,8vw,132px);line-height:.98}
+.money ul{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:clamp(40px,5vw,72px);border-top:1px solid var(--dark-rule)}
+.money li{padding:28px 28px 0 0}
+.money li+li{padding-left:28px;border-left:1px solid var(--dark-rule)}
+.money li b{display:block;font:800 clamp(24px,2.4vw,34px)/1.05 var(--display);letter-spacing:-.03em}
+.money li span{display:block;margin-top:10px;color:var(--on-dark)}
+
+/* voter */
+.voter{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:clamp(32px,6vw,96px)}
+.voter h2{font-size:clamp(52px,8vw,132px)}
+.ops{display:flex;flex-wrap:wrap;gap:8px;margin-top:32px}
+.ops span{border:1px solid var(--ink);border-radius:999px;padding:9px 16px;font-size:15px;font-weight:600}
+.pair{position:relative;display:flex;justify-content:flex-end;padding-bottom:4%}
+.pair .phone{width:min(300px,60%);aspect-ratio:555/1000;border-radius:16px}
+.pair .res{position:absolute;left:0;bottom:0;width:60%;aspect-ratio:1200/700;border-radius:10px}
+.pair .res img{object-position:top left}
+
+/* who */
+.who ul{list-style:none;display:flex;flex-wrap:wrap;column-gap:.3em;font:800 clamp(40px,6.6vw,108px)/1.12 var(--display);letter-spacing:-.045em}
+.who li{white-space:nowrap}
+.who li:not(:last-child)::after{content:"·";color:var(--action);margin-left:.3em}
+
+/* end */
+.end{border-top:1px solid var(--ink);display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:32px}
+.end h2{font-size:clamp(72px,16vw,260px);line-height:.84}
+footer{border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 24px;padding-block:16px;font-size:14px;color:var(--muted)}
+footer nav{display:flex;flex-wrap:wrap;gap:0 24px}
+footer a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
+footer a:hover{color:var(--ink)}
+
+/* reveal on scroll */
+.js .rv{opacity:0;transform:translateY(24px);transition:opacity .6s ease-out,transform .6s ease-out}
+.js .rv.in{opacity:1;transform:none}
+
+@media (prefers-reduced-motion:reduce){
+  .track{animation:none}
+  .js .rv{opacity:1;transform:none;transition:none}
+}
+@media (max-width:860px){
+  .nav a:not(.btn){display:none}
+  .voter{grid-template-columns:minmax(0,1fr)}
+  .money ul{grid-template-columns:minmax(0,1fr)}
+  .money li,.money li+li{padding:22px 0;border-left:0;border-bottom:1px solid var(--dark-rule)}
+  .steps li{flex-direction:column;align-items:flex-start;gap:8px}
+  .steps p{text-align:left;white-space:normal}
+  .who li{white-space:normal}
+}
+@media (max-width:480px){
+  .ctas{width:100%}
+  .ctas .btn{flex:1}
+}
+</style>
+</head>
+<body>
+<script>document.body.classList.add("js")</script>
+
+<header class="wrap top">
+  <a class="logo" href="#">SHADOMA</a>
+  <nav class="nav" aria-label="Principale">
+    <a href="#comment">Comment ça marche</a>
+    <a href="#">Tarifs</a>
+    <a href="#">Se connecter</a>
+    <a class="btn sm" href="#">Créer un compte</a>
+  </nav>
+</header>
+
+<main>
+<section class="wrap hero" aria-labelledby="h1">
+  <h1 id="h1">Votre concours.<br><span>Payé en Mobile Money.</span></h1>
+  <div class="hero-row">
+    <p>Le public vote depuis son téléphone. Sans compte.</p>
+    <div class="ctas">
+      <a class="btn" href="#">Créer mon concours</a>
+      <a class="btn ghost" href="#">Voir un exemple</a>
+    </div>
+  </div>
+</section>
+
+<div class="strip" aria-label="Exemples de pages de concours">
+  <div class="track">
+    <figure class="card"><div class="shot"><img src="assets/couronne-home.jpg" alt="Concours au style Couronne"></div><b>Couronne</b></figure>
+    <figure class="card"><div class="shot"><img src="assets/soiree-home.jpg" alt="Concours au style Soirée"></div><b>Soirée</b></figure>
+    <figure class="card"><div class="shot"><img src="assets/affiche-home.jpg" alt="Concours au style Affiche"></div><b>Affiche</b></figure>
+    <figure class="card"><div class="shot"><img src="assets/wax-home.jpg" alt="Concours au style Wax"></div><b>Wax</b></figure>
+    <figure class="card"><div class="shot"><img src="assets/stade-home.jpg" alt="Concours au style Stade"></div><b>Stade</b></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/couronne-home.jpg" alt=""></div><b>Couronne</b></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/soiree-home.jpg" alt=""></div><b>Soirée</b></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/affiche-home.jpg" alt=""></div><b>Affiche</b></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/wax-home.jpg" alt=""></div><b>Wax</b></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/stade-home.jpg" alt=""></div><b>Stade</b></figure>
+  </div>
+</div>
+
+<section class="wrap sec" id="comment" aria-label="Comment ça marche">
+  <p class="label rv">Comment ça marche</p>
+  <ol class="steps">
+    <li class="rv"><h3>Créez.</h3><p>Votre concours, vos candidats.</p></li>
+    <li class="rv"><h3>Partagez.</h3><p>Un lien, sur WhatsApp.</p></li>
+    <li class="rv"><h3>On vote.</h3><p>En Mobile Money.</p></li>
+    <li class="rv"><h3>Retirez.</h3><p>Sur votre Mobile Money.</p></li>
+  </ol>
+</section>
+
+<section class="money" aria-labelledby="h-money">
+  <div class="wrap sec">
+    <h2 id="h-money" class="rv">L’argent,<br>en clair.</h2>
+    <ul>
+      <li class="rv"><b>On encaisse pour vous.</b><span>Dans votre portefeuille.</span></li>
+      <li class="rv"><b>Voix payée = voix comptée.</b><span>Rien d’autre.</span></li>
+      <li class="rv"><b>Retrait vérifié.</b><span>Par une personne, pas un robot.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="wrap sec voter" aria-labelledby="h-voter">
+  <div class="rv">
+    <p class="label">Pour le votant</p>
+    <h2 id="h-voter">Un numéro.<br>C’est tout.</h2>
+    <div class="ops"><span>MTN</span><span>Moov</span><span>Celtiis</span></div>
+  </div>
+  <div class="pair rv">
+    <div class="shot phone"><img src="assets/campus-mobile.jpg" alt="Page d’un concours sur téléphone"></div>
+    <div class="shot res"><img src="assets/couronne-results.jpg" alt="Résultats en direct d’un concours"></div>
+  </div>
+</section>
+
+<section class="wrap sec who" aria-label="Pour qui" style="padding-top:0">
+  <p class="label rv">Pour</p>
+  <ul class="rv">
+    <li>Miss &amp; Mister</li><li>Festivals</li><li>Écoles</li><li>Chorales</li><li>Foires</li><li>Médias</li>
+  </ul>
+</section>
+
+<section class="wrap sec end" aria-labelledby="h-end">
+  <h2 id="h-end" class="rv">À vous.</h2>
+  <a class="btn rv" href="#">Créer mon concours</a>
+</section>
+</main>
+
+<footer class="wrap">
+  <nav aria-label="Informations légales">
+    <a href="#">Mentions légales</a><a href="#">Confidentialité</a><a href="#">Conditions</a><a href="#">Cookies</a>
+  </nav>
+  <span>© 2026 SHADOMA</span>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.15 });
+  document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+</script>
+</body>
+</html>

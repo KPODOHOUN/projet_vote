@@ -12,7 +12,6 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
 import { candidateTestData } from "../test-utils/candidate-fixture";
 import { PlatformSecretsService } from "../platform-control/platform-secrets.service";
-import { OrganizerSecretsService } from "../organizer-secrets/organizer-secrets.service";
 import { PaymentVerifyService } from "./payment-verify.service";
 import type {
   FeexpayInitRequest,
@@ -22,7 +21,6 @@ import type {
 import { FeexpayGateway } from "./psp/feexpay.gateway";
 import { parseStrictProviderAmount } from "./psp/parse-provider-amount";
 import { FedapayGateway } from "./psp/fedapay.gateway";
-import { KkiapayGateway } from "./psp/kkiapay.gateway";
 import { PspRegistry } from "./psp/psp.registry";
 import type { PspCredentials } from "./psp/psp.types";
 import { OfferSettingsService } from "../offers/offer-settings.service";
@@ -83,24 +81,19 @@ class FakeFeexpayGateway extends FeexpayGateway {
       amountCfa: parseStrictProviderAmount(payload.amount) ?? 0,
       providerAmount: payload.amount,
       currency: payload.currency ?? "XOF",
-      reason: payload.reason,
-      ...(payload.split ? { split: payload.split } : {})
+      reason: payload.reason
     };
   }
 }
 
 const prismaService = new PrismaService();
 const fake = new FakeFeexpay();
-const secrets = new OrganizerSecretsService(prismaService);
 const platformSecrets = new PlatformSecretsService(prismaService);
 const pspRegistry = new PspRegistry(
   prismaService,
-  secrets,
   platformSecrets,
   new FakeFeexpayGateway(fake),
-  new FedapayGateway(),
-  new KkiapayGateway()
-);
+  new FedapayGateway());
 const verify = new PaymentVerifyService(
   prismaService,
   new NotificationsService(prismaService),
@@ -124,8 +117,6 @@ async function seedPendingVotePayment(opts: {
   providerRef?: string;
   withVote?: boolean;
   purpose?: PaymentPurpose;
-  splitBeneficiaryRef?: string;
-  splitAmountCfa?: number;
 } = {}) {
   const amountCfa = opts.amountCfa ?? 500;
   const tenant = await prisma.tenant.create({
@@ -165,12 +156,6 @@ async function seedPendingVotePayment(opts: {
       currency: opts.currency ?? "XOF",
       status: PaymentStatus.PENDING,
       purpose: opts.purpose ?? PaymentPurpose.VOTE,
-      ...(opts.splitBeneficiaryRef
-        ? { splitBeneficiaryRef: opts.splitBeneficiaryRef }
-        : {}),
-      ...(opts.splitAmountCfa !== undefined
-        ? { splitAmountCfa: opts.splitAmountCfa }
-        : {}),
       idempotencyKey: `idem_${Math.random().toString(36).slice(2)}_aaaaaaaaaaaaaaaaaa`
     }
   });
@@ -228,31 +213,6 @@ test("ATTAQUE: pull SUCCESSFUL mais montant Feexpay < tx → REJET, vote.paidAt 
   const first = audits[0];
   assert.ok(first);
   assert.equal((first.metadata as { reason: string }).reason, "amount_mismatch");
-});
-
-test("ATTAQUE: split PSP différent du split attendu → REJET sans créditer le vote", async () => {
-  const { vote } = await seedPendingVotePayment({
-    amountCfa: 1_000,
-    providerRef: "fp_split_mismatch",
-    splitBeneficiaryRef: "acc_attendu",
-    splitAmountCfa: 900
-  });
-  fake.next = {
-    kind: "ok",
-    payload: {
-      status: "SUCCESSFUL",
-      amount: "1000",
-      currency: "XOF",
-      split: { beneficiaryReference: "acc_attaquant", amountCfa: 900 }
-    }
-  };
-
-  const result = await verify.verifyAndApplyByReference("fp_split_mismatch");
-
-  assert.equal(result.outcome, "rejected");
-  assert.equal(result.reason, "split_mismatch");
-  const afterVote = await prisma.vote.findUnique({ where: { id: vote!.id } });
-  assert.equal(afterVote?.paidAt, null);
 });
 
 test("ATTAQUE: montant amount renvoyé sous forme '500abc' non parsable → REJET amount_unparseable", async () => {
@@ -386,24 +346,22 @@ test("Feexpay indisponible (throw) → still_pending, aucune mutation, tx reste 
 });
 
 // ---------------------------------------------------------------------------
-// 🟢 Activation forfait
+// Anciens paiements (activation, abonnement) encore en attente
 // ---------------------------------------------------------------------------
 
-test("ACTIVATION SUCCESSFUL → event.activationPaidAt posé, pas de vote ni de commission", async () => {
-  const { tx, event } = await seedPendingVotePayment({
+test("ancien paiement d'activation confirmé : statut à jour, sans commission ni crédit organisateur", async () => {
+  const { tx, tenant } = await seedPendingVotePayment({
     amountCfa: 30_000,
-    providerRef: "fp_activ",
+    providerRef: "fp_legacy",
     purpose: PaymentPurpose.ACTIVATION,
     withVote: false
   });
-  // Pour ACTIVATION, voteId est null — on le confirme.
-  await prisma.paymentTransaction.update({ where: { id: tx.id }, data: { voteId: null } });
   fake.next = { kind: "ok", payload: { status: "SUCCESSFUL", amount: "30000", currency: "XOF" } };
 
-  const result = await verify.verifyAndApplyByReference("fp_activ");
+  const result = await verify.verifyAndApplyByReference("fp_legacy");
   assert.equal(result.outcome, "applied");
-  const after = await prisma.event.findUnique({ where: { id: event.id } });
-  assert.ok(after?.activationPaidAt, "activation doit être déverrouillée");
-  const txAfter = await prisma.paymentTransaction.findUnique({ where: { id: tx.id } });
-  assert.equal(txAfter?.commissionCfa, null, "pas de commission sur une ACTIVATION");
+  const txAfter = await prisma.paymentTransaction.findUniqueOrThrow({ where: { id: tx.id } });
+  assert.equal(txAfter.status, PaymentStatus.SUCCEEDED);
+  assert.equal(txAfter.commissionCfa, null);
+  assert.equal(await prisma.walletLedgerEntry.count({ where: { wallet: { tenantId: tenant.id } } }), 0);
 });

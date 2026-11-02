@@ -13,13 +13,19 @@ export type WithdrawalRow = {
   createdAt: string;
   processedAt: string | null;
   rejectReason: string | null;
+  /** Numéro figé à la demande : réseau + 4 derniers chiffres (le numéro complet se révèle à part). */
+  payoutNetwork: string | null;
+  payoutPhoneLast4: string | null;
   tenant: {
     id: string;
     slug: string;
     displayName: string;
-    offerType: string;
   };
 };
+
+/** Numéro complet à créditer pour un retrait accepté (consultation journalisée côté API). */
+export const revealWithdrawalDestination = (id: string) =>
+  authedFetch<{ network: string; phone: string; amountCfa: number }>(`/admin/offers/withdrawals/${id}/destination`);
 
 export function useAdminWithdrawalsQuery(statusFilter?: string, enabled = true) {
   const hasToken = Boolean(getStoredToken());

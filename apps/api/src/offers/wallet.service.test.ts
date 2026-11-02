@@ -3,21 +3,9 @@ import test from "node:test";
 import { PaymentProvider, PaymentPurpose, PaymentStatus, WalletLedgerKind } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "./wallet.service";
-import { supportsSplit } from "./psp-split.util";
 
 const prisma = new PrismaService();
 const wallet = new WalletService(prisma);
-
-test("supportsSplit: seul FedaPay Marketplace est compatible par défaut", async () => {
-  const noSettings = {
-    platformSetting: {
-      findUnique: async () => null
-    }
-  };
-  assert.equal(await supportsSplit(noSettings, PaymentProvider.FEEXPAY), false);
-  assert.equal(await supportsSplit(noSettings, PaymentProvider.FEDAPAY), true);
-  assert.equal(await supportsSplit(noSettings, PaymentProvider.KKIAPAY), false);
-});
 
 test("wallet credit puis debit conserve le solde", async () => {
   const tenant = await prisma.client.tenant.create({

@@ -9,6 +9,7 @@ import { getStoredToken } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { updateAdminUser, type AdminUser, type AdminUsersResponse } from "@/lib/admin-users";
 import { useI18n } from "@/lib/i18n-provider";
+import { roleLabel } from "@/lib/admin-labels";
 import { showToast } from "@/lib/toast";
 import {
   Button,
@@ -16,7 +17,6 @@ import {
   DataTable,
   EmptyState,
   Input,
-  KpiCard,
   LoadingState,
   StatusChip
 } from "@/components/ui";
@@ -26,7 +26,9 @@ import {
   AdminFilterCard,
   AdminPageHeader,
   AdminPageShell,
-  AdminSelect
+  AdminSelect,
+  AdminStatGrid,
+  AdminStatTile
 } from "@/components/admin/admin-shell";
 
 const ROLE_TONE: Record<string, "warning" | "active" | "muted" | "error"> = {
@@ -158,7 +160,7 @@ export default function AdminUsersPage() {
             {userItem.email}
           </Link>
           <p className="text-xs text-muted-foreground">
-            {userItem.tenantId.slice(0, 12)}… ·{" "}
+            {isEn ? "Joined " : "Inscrit le "}
             {new Date(userItem.createdAt).toLocaleDateString(isEn ? "en-GB" : "fr-FR")}
           </p>
         </div>
@@ -170,21 +172,22 @@ export default function AdminUsersPage() {
       render: (userItem) => {
         const isSelf = userItem.id === me?.userId;
         if (isSelf) {
-          return <StatusChip label={userItem.role} tone={ROLE_TONE[userItem.role] ?? "muted"} />;
+          return <StatusChip label={roleLabel(userItem.role, isEn)} tone={ROLE_TONE[userItem.role] ?? "muted"} />;
         }
         const rolesForRow = ASSIGNABLE_ROLES.filter(
           (r) => r !== "PLATFORM_SUPER_ADMIN" || canAssignSuperAdmin
         );
         return (
           <select
+            aria-label={isEn ? `Role of ${userItem.email}` : `Rôle de ${userItem.email}`}
             value={userItem.role}
             disabled={busyUserId === userItem.id || Boolean(userItem.suspendedAt)}
             onChange={(e) => void onRoleChange(userItem.id, e.target.value)}
-            className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
           >
             {rolesForRow.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {roleLabel(r, isEn)}
               </option>
             ))}
           </select>
@@ -197,13 +200,13 @@ export default function AdminUsersPage() {
       render: (userItem) =>
         userItem.suspendedAt ? (
           <div className="space-y-1">
-            <StatusChip label={isEn ? "SUSPENDED" : "SUSPENDU"} tone="error" />
+            <StatusChip label={isEn ? "Suspended" : "Suspendu"} tone="error" />
             {userItem.suspendedReason ? (
               <p className="max-w-xs text-xs text-muted-foreground">{userItem.suspendedReason}</p>
             ) : null}
           </div>
         ) : (
-          <StatusChip label={isEn ? "ACTIVE" : "ACTIF"} tone="live" />
+          <StatusChip label={isEn ? "Active" : "Actif"} tone="live" />
         )
     },
     {
@@ -258,40 +261,39 @@ export default function AdminUsersPage() {
     <AdminPageShell>
       <AdminPageHeader
         eyebrow={isEn ? "Platform" : "Plateforme"}
-        title={isEn ? "User management" : "Gestion des utilisateurs"}
+        title={isEn ? "Users" : "Utilisateurs"}
         description={
           isEn
-            ? "Change roles and suspend accounts. Suspended users cannot sign in and active sessions are revoked."
-            : "Modifiez les rôles et suspendez des comptes. Les utilisateurs suspendus ne peuvent plus se connecter et leurs sessions sont révoquées."
+            ? "Change a role or suspend an account."
+            : "Changez un rôle ou suspendez un compte."
         }
       />
 
-      <AdminFilterCard>
+      <AdminFilterCard columns="sm:grid-cols-2 lg:grid-cols-[1fr_14rem_8rem]">
         <Input
-          id="limit"
-          label={isEn ? "Page size" : "Taille de page"}
-          type="number"
-          min={1}
-          max={100}
-          value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
+          id="email"
+          type="search"
+          label={isEn ? "Search by email" : "Chercher un e-mail"}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={isEn ? "name@example.com" : "nom@exemple.com"}
         />
         <AdminSelect
           id="roleFilter"
-          label={isEn ? "Role filter" : "Filtre rôle"}
+          label={isEn ? "Role" : "Rôle"}
           value={roleFilter}
           onChange={setRoleFilter}
           options={[
             { value: "", label: isEn ? "All roles" : "Tous les rôles" },
-            ...ASSIGNABLE_ROLES.map((r) => ({ value: r, label: r }))
+            ...ASSIGNABLE_ROLES.map((r) => ({ value: r, label: roleLabel(r, isEn) }))
           ]}
         />
-        <Input
-          id="email"
-          label={isEn ? "Email search" : "Recherche email"}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder={isEn ? "organisateur@…" : "organisateur@…"}
+        <AdminSelect
+          id="limit"
+          label={isEn ? "Rows" : "Lignes"}
+          value={String(limit)}
+          onChange={(v) => setLimit(Number(v))}
+          options={[25, 50, 100].map((n) => ({ value: String(n), label: String(n) }))}
         />
       </AdminFilterCard>
 
@@ -301,11 +303,11 @@ export default function AdminUsersPage() {
         <AdminErrorAlert message={error} />
       ) : (
         <>
-          <section className="grid gap-4 md:grid-cols-3">
-            <KpiCard label={isEn ? "Shown" : "Affichés"} value={String(users.length)} />
-            <KpiCard label={isEn ? "Platform admins" : "Admins plateforme"} value={String(platformAdmins)} />
-            <KpiCard label={isEn ? "Suspended" : "Suspendus"} value={String(suspendedCount)} />
-          </section>
+          <AdminStatGrid columns="grid-cols-3">
+            <AdminStatTile label={isEn ? "Shown" : "Affichés"} value={String(users.length)} />
+            <AdminStatTile label={isEn ? "Platform admins" : "Admins plateforme"} value={String(platformAdmins)} />
+            <AdminStatTile label={isEn ? "Suspended" : "Suspendus"} value={String(suspendedCount)} />
+          </AdminStatGrid>
 
           {users.length === 0 ? (
             <EmptyState

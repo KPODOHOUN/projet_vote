@@ -13,7 +13,8 @@ export function GlassCard({
   children,
   className,
   hover = false,
-  intensity = "default",
+  // Extraite pour ne pas être transmise au <div> via ...props (prop conservée pour compatibilité).
+  intensity: _intensity = "default",
   ...props
 }: GlassCardProps) {
   return (

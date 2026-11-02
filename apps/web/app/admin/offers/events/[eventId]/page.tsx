@@ -15,21 +15,26 @@ import {
   AdminSection
 } from "@/components/admin/admin-shell";
 import { EventCommissionPanel } from "@/components/admin/event-commission-panel";
+import { EventContractsPanel } from "@/components/admin/event-contracts-panel";
+import { ArrowLeft } from "lucide-react";
+import { formatEventStatus } from "@/lib/i18n";
 
 type EventOfferStats = {
   eventId: string;
   title: string;
   status: string;
-  offerType: "EXTERNAL" | "ESCROW";
   closedAt: string | null;
+  votesGrossCfa: number;
+  ticketsGrossCfa: number;
   totalCollectedCfa: number;
   votesCount: number;
   publicVotesCount: number;
   topupVotesCount: number;
+  ticketsSoldCount: number;
   platformCommissionCfa: number;
   organizerNetCfa: number;
-  eventHeldCfa: number | null;
-  eventWithdrawableContributedCfa: number | null;
+  eventHeldCfa: number;
+  eventWithdrawableContributedCfa: number;
 };
 
 function formatCfa(amount: number, isEn: boolean) {
@@ -73,8 +78,9 @@ export default function AdminOfferEventDetailPage() {
         title={stats?.title ?? (isEn ? "Event detail" : "Détail événement")}
         description={isEn ? "Ranking / Money / Activity" : "Classement / Argent / Activité"}
         actions={
-          <Link href="/admin/offers/events" className="text-sm font-semibold text-primary hover:underline">
-            {isEn ? "← Back to list" : "← Retour à la liste"}
+          <Link href="/admin/offers/events" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            {isEn ? "Back to list" : "Retour à la liste"}
           </Link>
         }
       />
@@ -84,11 +90,7 @@ export default function AdminOfferEventDetailPage() {
       {stats ? (
         <>
           <div className="flex flex-wrap gap-2">
-            <StatusChip label={stats.status} tone="muted" />
-            <StatusChip
-              label={stats.offerType}
-              tone={stats.offerType === "ESCROW" ? "live" : "muted"}
-            />
+            <StatusChip label={formatEventStatus(stats.status, isEn)} tone={stats.status === "ACTIVE" ? "active" : "muted"} />
             {stats.closedAt ? (
               <StatusChip label={isEn ? "Closed" : "Clôturé"} tone="warning" />
             ) : null}
@@ -111,7 +113,7 @@ export default function AdminOfferEventDetailPage() {
                   <dd className="text-2xl font-extrabold">{stats.publicVotesCount}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">{isEn ? "Top-up votes" : "Votes ajoutés"}</dt>
+                  <dt className="text-xs text-muted-foreground">{isEn ? "Votes added by the organizer" : "Votes ajoutés par l'organisateur"}</dt>
                   <dd className="text-2xl font-extrabold">{stats.topupVotesCount}</dd>
                 </div>
               </dl>
@@ -121,8 +123,11 @@ export default function AdminOfferEventDetailPage() {
           <AdminSection title={isEn ? "Money" : "Argent"}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card className="p-5">
-                <p className="text-sm text-muted-foreground">{isEn ? "Collected" : "Encaissé"}</p>
+                <p className="text-sm text-muted-foreground">{isEn ? "Collected (votes + tickets)" : "Encaissé (votes + billets)"}</p>
                 <p className="mt-1 text-xl font-bold">{formatCfa(stats.totalCollectedCfa, isEn)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatCfa(stats.votesGrossCfa, isEn)} + {formatCfa(stats.ticketsGrossCfa, isEn)} · {stats.ticketsSoldCount} {isEn ? "tickets" : "billets"}
+                </p>
               </Card>
               <Card className="p-5">
                 <p className="text-sm text-muted-foreground">{isEn ? "Platform commission" : "Commission plateforme"}</p>
@@ -132,38 +137,30 @@ export default function AdminOfferEventDetailPage() {
                 <p className="text-sm text-muted-foreground">{isEn ? "Organizer net" : "Net organisateur"}</p>
                 <p className="mt-1 text-xl font-bold">{formatCfa(stats.organizerNetCfa, isEn)}</p>
               </Card>
-              {stats.offerType === "ESCROW" ? (
-                <Card className="p-5">
-                  <p className="text-sm text-muted-foreground">
-                    {isEn ? "This event's contribution to wallet" : "Contribution de cet event au portefeuille"}
-                  </p>
-                  <p className="mt-1 text-sm">
-                    {isEn ? "Sent to withdrawable (lifetime)" : "Versé au retirable (cumulé)"}:{" "}
-                    {formatCfa(stats.eventWithdrawableContributedCfa ?? 0, isEn)}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {isEn ? "Still held for this event" : "Encore en réserve pour cet event"}:{" "}
-                    {formatCfa(stats.eventHeldCfa ?? 0, isEn)}
-                  </p>
-                </Card>
-              ) : null}
+<Card className="p-5">
+                <p className="text-sm text-muted-foreground">{isEn ? "Organizer wallet" : "Portefeuille de l'organisateur"}</p>
+                <p className="mt-1 text-sm">
+                  {isEn ? "Paid into available (total)" : "Versé au disponible (cumulé)"} : {formatCfa(stats.eventWithdrawableContributedCfa, isEn)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {isEn ? "Still in reserve" : "Encore en réserve"} : {formatCfa(stats.eventHeldCfa, isEn)}
+                </p>
+              </Card>
             </div>
           </AdminSection>
 
-          {stats.offerType === "ESCROW" ? (
-            <AdminSection title={isEn ? "Commission" : "Commission"}>
-              <EventCommissionPanel eventId={stats.eventId} />
-            </AdminSection>
-          ) : null}
+          <AdminSection title={isEn ? "Commission" : "Commission"}>
+            <EventCommissionPanel eventId={stats.eventId} />
+          </AdminSection>
+
+          <AdminSection title={isEn ? "Contract" : "Contrat"}>
+            <EventContractsPanel eventId={stats.eventId} />
+          </AdminSection>
 
           <AdminSection title={isEn ? "Activity" : "Activité"}>
             <Card className="space-y-2 p-5 text-sm">
               <p>
-                <span className="text-muted-foreground">{isEn ? "Event ID" : "ID événement"}:</span>{" "}
-                <code className="font-mono text-xs">{stats.eventId}</code>
-              </p>
-              <p>
-                <span className="text-muted-foreground">{isEn ? "Status" : "Statut"}:</span> {stats.status}
+                <span className="text-muted-foreground">{isEn ? "Status" : "Statut"} :</span> {formatEventStatus(stats.status, isEn)}
               </p>
               <p>
                 <span className="text-muted-foreground">{isEn ? "Closed at" : "Clôturé le"}:</span>{" "}

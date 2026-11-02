@@ -34,11 +34,20 @@ function loadEnv() {
       // ignore
     }
   }
-  if (process.env.NODE_ENV === "test") {
-    process.env.API_PAYMENT_DEMO_MODE = "false";
-  }
 }
 loadEnv();
+
+/**
+ * Drapeau booléen d'environnement : seules « true/1 » et « false/0 » sont
+ * acceptées (absente ou vide = valeur par défaut). `z.coerce.boolean()` est
+ * proscrit ici : il convertit la chaîne "false" en true.
+ */
+export function envFlag(fallback: boolean) {
+  return z.preprocess(
+    (value) => (value === undefined || value === "" ? String(fallback) : String(value).trim().toLowerCase()),
+    z.enum(["true", "false", "1", "0"]).transform((value) => value === "true" || value === "1")
+  );
+}
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -77,15 +86,8 @@ export const envSchema = z.object({
   FEDAPAY_BASE_URL: z.string().url().default("https://sandbox-api.fedapay.com/v1"),
   FEDAPAY_API_KEY: z.string().min(16).default("sk_sandbox_dev_only_fedapay_key_change_me_xxxx"),
   FEDAPAY_HTTP_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(8_000),
-  // -- KkiaPay (front widget payin + server verify-by-pull) ----------------
-  // Three keys: public (x-api-key), private (x-private-key), secret (x-secret-key).
-  KKIAPAY_BASE_URL: z.string().url().default("https://api-sandbox.kkiapay.me"),
-  KKIAPAY_PUBLIC_KEY: z.string().min(8).default("dev_only_kkiapay_public_key_change_me"),
-  KKIAPAY_PRIVATE_KEY: z.string().min(8).default("dev_only_kkiapay_private_key_change_me"),
-  KKIAPAY_SECRET_KEY: z.string().min(8).default("dev_only_kkiapay_secret_key_change_me"),
-  KKIAPAY_HTTP_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(8_000),
   // Platform-wide default PSP when neither event nor tenant pins one.
-  DEFAULT_PSP_PROVIDER: z.enum(["FEEXPAY", "KKIAPAY", "FEDAPAY"]).default("FEEXPAY"),
+  DEFAULT_PSP_PROVIDER: z.enum(["FEEXPAY", "FEDAPAY"]).default("FEEXPAY"),
   // Platform settlement (Flow A) master account: where the platform's own
   // commission/activation/confiscation share is paid out.
   PLATFORM_PAYOUT_NETWORK: z.string().min(2).default("MTN"),
@@ -100,13 +102,26 @@ export const envSchema = z.object({
   // rate limiter uses a shared Redis store so limits hold across all instances
   // (Cloud Run). When unset, falls back to the per-instance in-memory store.
   API_REDIS_URL: z.string().min(1).optional(),
+  // Sans Redis, la production doit déclarer explicitement tourner sur une seule
+  // instance : sinon les limites de débit seraient comptées par instance.
+  API_SINGLE_INSTANCE: envFlag(false),
+  // Nombre de proxys de confiance devant l'API (X-Forwarded-For) pour les
+  // appels directs : 1 = l'équilibreur de l'hébergeur. Le trafic du site passe
+  // par le front, qui transmet l'IP du visiteur signée par API_EDGE_PROXY_SECRET.
+  API_TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+  // Secret partagé avec le front (EDGE_PROXY_SECRET côté web) : authentifie
+  // l'IP du visiteur qu'il relaie. Sans lui, tous les visiteurs du site
+  // partageraient l'IP du front (limites de débit communes, preuves de signature fausses).
+  API_EDGE_PROXY_SECRET: z.string().min(32).optional(),
+  // Réservé aux tests e2e ; refusé en production.
+  API_DISABLE_THROTTLE: envFlag(false),
+  // Balayages de secours toutes les 5 min dans l'API (rapprochement, clôtures,
+  // réserves), en plus du worker cron. false pour ne garder que le worker.
+  API_INTERNAL_SCHEDULER: envFlag(true),
   // -- OAuth (Google, Facebook) ---------------------------------------------
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   GOOGLE_CALLBACK_URL: z.string().url().default("http://localhost:3000/oauth/callback/google"),
-  FACEBOOK_CLIENT_ID: z.string().default(""),
-  FACEBOOK_CLIENT_SECRET: z.string().default(""),
-  FACEBOOK_CALLBACK_URL: z.string().url().default("http://localhost:3000/oauth/callback/facebook"),
   // -- Cloudinary (Phase 2 upload photo candidat) --------------------------
   // Optionnelles : si l'une manque, l'upload est « non configuré » (l'app reste
   // fonctionnelle via le coller-URL). Le secret ne quitte jamais le serveur.
@@ -125,10 +140,24 @@ export const envSchema = z.object({
   MAIL_ADMIN_EXTRA_RECIPIENTS: z.string().optional(),
   // URL publique du frontend (liens dans e-mails et webhooks).
   APP_PUBLIC_URL: z.string().url().default("http://localhost:3000"),
+  // Identité légale de l'exploitant de SHADOMA, reprise dans chaque contrat de
+  // concours. Jamais inventée : tant qu'une valeur manque, le contrat affiche
+  // « à renseigner » et la signature est refusée en production.
+  PLATFORM_LEGAL_NAME: z.string().trim().default(""),
+  PLATFORM_LEGAL_FORM: z.string().trim().default(""),
+  PLATFORM_LEGAL_ADDRESS: z.string().trim().default(""),
+  PLATFORM_LEGAL_REGISTRATION: z.string().trim().default(""),
+  PLATFORM_LEGAL_REPRESENTATIVE: z.string().trim().default(""),
+  PLATFORM_LEGAL_EMAIL: z.string().trim().default(""),
+  CONTRACT_JURISDICTION: z.string().trim().default(""),
+  // Passe à true une fois le modèle de contrat relu et validé par un juriste.
+  // Tant que false, chaque contrat porte la mention « modèle en attente de
+  // validation juridique ».
+  CONTRACT_TEMPLATE_LEGALLY_REVIEWED: envFlag(false),
   /** Webhook Slack / alertes (POST JSON) pour les demandes partenaires. */
   PLATFORM_ALERT_WEBHOOK_URL: z.string().url().optional(),
   /** Confirme automatiquement les paiements sans PSP (développement / démo). */
-  API_PAYMENT_DEMO_MODE: z.coerce.boolean().default(false),
+  API_PAYMENT_DEMO_MODE: envFlag(false),
   // -- Couverture pan-africaine des paiements ------------------------------
   // Indicatif pays (sans +) appliqué UNIQUEMENT aux numéros locaux saisis sans
   // indicatif. Les numéros déjà internationaux (avec + / 00 / indicatif connu)
@@ -141,9 +170,9 @@ export const envSchema = z.object({
   // par le client est validé contre cette liste avant d'atteindre l'URL du PSP,
   // ce qui interdit toute injection de segment de chemin. Extensible sans
   // redéploiement selon le contrat PSP de la plateforme.
-  PSP_SUPPORTED_OPERATORS: z.string().min(2).default("mtn,moov,orange"),
+  PSP_SUPPORTED_OPERATORS: z.string().min(2).default("mtn,moov,celtiis"),
   // Indicatifs pays (CSV, sans +) réellement chargeables par les PSP intégrés
-  // (FeexPay/FedaPay/KkiaPay). Défaut = zone UEMOA/XOF couverte par les trois :
+  // (FeexPay/FedaPay). Défaut = zone UEMOA/XOF couverte par les deux :
   // Bénin 229, Côte d'Ivoire 225, Togo 228, Sénégal 221, Niger 227,
   // Burkina 226, Mali 223, Guinée 224. Un numéro hors de cette liste est refusé
   // AVANT l'appel PSP (message clair plutôt qu'un échec opaque du PSP).
@@ -168,9 +197,26 @@ export const envSchema = z.object({
   // never be enabled outside dev/test.
   if (value.API_PAYMENT_DEMO_MODE) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["API_PAYMENT_DEMO_MODE"],
       message: "API_PAYMENT_DEMO_MODE ne doit jamais etre active en production."
+    });
+  }
+
+  if (value.API_DISABLE_THROTTLE) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["API_DISABLE_THROTTLE"],
+      message: "API_DISABLE_THROTTLE ne doit jamais etre active en production."
+    });
+  }
+
+  if (!value.API_REDIS_URL && !value.API_SINGLE_INSTANCE) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["API_REDIS_URL"],
+      message:
+        "API_REDIS_URL doit etre defini en production (limites de debit partagees), ou API_SINGLE_INSTANCE=true si l'API tourne sur une seule instance."
     });
   }
 
@@ -178,9 +224,17 @@ export const envSchema = z.object({
   // email. Without a key, nobody can sign up — fail at boot, not at first OTP.
   if (!value.MAIL_RESEND_API_KEY) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["MAIL_RESEND_API_KEY"],
       message: "MAIL_RESEND_API_KEY doit etre defini en production."
+    });
+  }
+
+  if (!value.API_EDGE_PROXY_SECRET) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["API_EDGE_PROXY_SECRET"],
+      message: "API_EDGE_PROXY_SECRET doit etre defini en production (meme valeur que EDGE_PROXY_SECRET du front)."
     });
   }
 
@@ -219,20 +273,6 @@ export const envSchema = z.object({
         key: "FEDAPAY_API_KEY",
         value: "sk_sandbox_dev_only_fedapay_key_change_me_xxxx"
       }
-    ],
-    KKIAPAY: [
-      {
-        key: "KKIAPAY_PUBLIC_KEY",
-        value: "dev_only_kkiapay_public_key_change_me"
-      },
-      {
-        key: "KKIAPAY_PRIVATE_KEY",
-        value: "dev_only_kkiapay_private_key_change_me"
-      },
-      {
-        key: "KKIAPAY_SECRET_KEY",
-        value: "dev_only_kkiapay_secret_key_change_me"
-      }
     ]
   } as const;
 
@@ -245,7 +285,7 @@ export const envSchema = z.object({
     const current = value[secret.key as keyof typeof value];
     if (typeof current === "string" && current === secret.value) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: [secret.key],
         message: `${secret.key} doit etre remplace en production.`
       });
@@ -259,14 +299,14 @@ export const envSchema = z.object({
     // catch typos / misconfigured deploys at boot time, not at first webhook.
     if (!value.FEEXPAY_API_KEY.startsWith("fp_") && !value.FEEXPAY_API_KEY.startsWith("test_")) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["FEEXPAY_API_KEY"],
         message: "FEEXPAY_API_KEY doit commencer par 'fp_' (LIVE) ou 'test_' (SANDBOX)."
       });
     }
     if (value.FEEXPAY_SHOP_ID === "dev-shop") {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["FEEXPAY_SHOP_ID"],
         message: "FEEXPAY_SHOP_ID doit etre defini en production."
       });

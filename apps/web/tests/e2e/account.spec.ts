@@ -10,13 +10,12 @@ test.describe("Réglages compte", () => {
   test("affiche les infos, marque la session courante, rejette un mauvais mot de passe actuel", async ({ page, request }) => {
     const unique = `${Date.now()}`;
     const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3011/api/v1";
-    const tenantSlug = `e2e-account-${unique}`;
     const email = `owner-${unique}@shadowa.test`;
     const password = "SecurePass123!";
     const tenantDisplayName = `E2E Account ${unique}`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+      data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: tenantDisplayName, email, password, acceptPrivacyPolicy: true }
     });
     expect(registerResponse.ok()).toBeTruthy();
 

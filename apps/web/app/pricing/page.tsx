@@ -6,7 +6,7 @@ import { AppHeader } from "../../components/app-header";
 
 /**
  * /pricing (7.4) : même contenu que « Comment l'argent est séparé » sur la Home.
- * Aucun taux ni délai public (D5) : le taux est indiqué avant l'activation.
+ * Aucun taux ni délai public (D5) : le taux figure dans le contrat signé avant la mise en ligne.
  */
 export default function PricingPage() {
   const { t } = useI18n();
@@ -15,7 +15,7 @@ export default function PricingPage() {
   return (
     <>
       <AppHeader />
-      <main id="main-content" className="bg-background px-5 pb-24 pt-16 md:px-16">
+      <main id="main-content" className="mx-auto w-[min(1160px,100%-2rem)] bg-background pb-24 pt-16">
         <div className="max-w-2xl">
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">{t("home.money.title")}</h1>
           <div className="mt-6 space-y-4 text-base leading-relaxed text-slate-600">

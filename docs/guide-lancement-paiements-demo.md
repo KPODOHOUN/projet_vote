@@ -1,28 +1,27 @@
 # Lancer et tester SHADOMA en mode paiement démo
 
-Guide pratique pour lancer l’app en local, se connecter, créer un évènement Escrow,
-puis tester votes, portefeuille et retraits **sans argent réel**.
+Guide pratique pour lancer l’app en local, se connecter, créer un concours, signer
+son contrat, puis tester votes, billets, portefeuille et retraits **sans argent réel**.
 
 Le mode démo confirme les paiements localement, sans débiter de compte Mobile Money
-et sans appeler FeexPay, FedaPay ou KkiaPay. Il est **bloqué** si
-`NODE_ENV=production`.
+et sans appeler FeexPay ni FedaPay. L’API **refuse de démarrer** si
+`API_PAYMENT_DEMO_MODE=true` avec `NODE_ENV=production`.
 
-> **Phase de test :** seule l’offre **Escrow** est disponible.
-> L’offre External est parkée (`offer1_external_enabled=false`).
+Modèle en vigueur (ADR-022) : aucun abonnement, aucun forfait d’activation. Un concours
+passe en ligne quand son contrat est signé. SHADOMA prélève sa commission (12 % par
+défaut) sur chaque paiement ; le reste va au portefeuille de l’organisateur, en partie
+en réserve jusqu’à la clôture du concours.
 
 ---
 
-## Parcours recommandé (ce que vous voulez tester maintenant)
+## Parcours recommandé
 
 1. Lancer l’API + le frontend
-2. Se connecter (compte démo **ou** nouvel inscrit Escrow)
-3. Créer un évènement
-4. Ajouter des candidats
-5. Activer l’évènement
-6. Voter en public (paiement démo)
-7. Vérifier le portefeuille, clôturer, demander un retrait
-
-Les sections ci-dessous détaillent chaque étape.
+2. Se connecter (compte démo **ou** nouvel inscrit)
+3. Créer un concours, fixer le prix du vote, ajouter des candidats
+4. Lire et signer le contrat du concours → il passe en ligne
+5. Voter en public (paiement démo)
+6. Vérifier le portefeuille, clôturer, demander un retrait
 
 ---
 
@@ -45,7 +44,7 @@ Si PostgreSQL tourne ailleurs, adaptez les URL ci-dessous.
 
 ## 2. Configuration locale
 
-Créer `.env` à la racine du dépôt :
+Créer `.env` à la racine du dépôt (voir `.env.example` pour la liste complète) :
 
 ```dotenv
 NODE_ENV=development
@@ -66,16 +65,18 @@ SEED_PLATFORM_ADMIN_PASSWORD=AdminDemo123!
 MAIL_RESEND_API_KEY=
 ```
 
+Les drapeaux booléens n’acceptent que `true`/`false` (ou `1`/`0`) : toute autre valeur
+est refusée au démarrage.
+
 Créer `apps/web/.env.local` :
 
 ```dotenv
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1
 ```
 
-Sans clé Resend, l’OTP n’est **pas** envoyé par e-mail. En développement
-(`NODE_ENV=development`), l’API renvoie `otpCode` dans la réponse d’inscription /
-renvoi : la page `/check-email` l’affiche automatiquement et préremplit le champ.
-Sinon, utilisez un compte seed déjà vérifié (section 5).
+Sans clé Resend, aucun e-mail ne part. En développement, l’API renvoie le code OTP
+dans la réponse : la page `/check-email` l’affiche et préremplit le champ, et la page
+du contrat affiche le code de signature. Sinon, utilisez un compte seed déjà vérifié.
 
 ---
 
@@ -94,11 +95,11 @@ Le seed crée notamment :
 
 | Rôle | E-mail | Mot de passe |
 | --- | --- | --- |
-| Organisateur | `organisateur@demovote.africa` | `SecurePass123!` |
-| Staff | `equipe@demovote.africa` | `SecurePass123!` |
+| Organisateur (titulaire) | `organisateur@demovote.africa` | `SecurePass123!` |
+| Équipe | `equipe@demovote.africa` | `SecurePass123!` |
 | Admin plateforme | `admin@shadoma.africa` | valeur de `SEED_PLATFORM_ADMIN_PASSWORD` |
 
-Concours public déjà prêt : `http://localhost:3000/e/miss-campus-2026`
+Concours public déjà en ligne : `http://localhost:3000/e/miss-campus-2026`
 
 ---
 
@@ -114,51 +115,19 @@ npm run dev --workspace=@votezpro/api
 npm run dev --workspace=@votezpro/web
 ```
 
-Vérifier :
-
 | Service | URL |
 | --- | --- |
 | Frontend | http://localhost:3000 |
 | API santé | http://localhost:3001/api/v1/health |
 
-Si le frontend ne joint pas l’API, contrôlez `NEXT_PUBLIC_API_BASE_URL` et
-que le port API est bien `3001`.
-
 ---
 
 ## 5. Se connecter
 
-### Option A — Compte démo (le plus rapide)
-
-1. Ouvrir http://localhost:3000/login  
-   (ou le bouton Connexion sur l’accueil)
-2. E-mail : `organisateur@demovote.africa`
-3. Mot de passe : `SecurePass123!`
-4. Vous arrivez sur le **tableau de bord** organisateur
-
-Ce compte est déjà e-mail vérifié. Pas d’OTP.
-
-### Option B — Nouvel organisateur Escrow
-
-1. Ouvrir http://localhost:3000/register
-2. Remplir organisation, prénom, nom, e-mail, mot de passe (≥ 10 caractères,
-   2 types de caractères)
-3. L’offre **Escrow** est présélectionnée ; External est grisée (« En réflexion »)
-4. Accepter la politique de confidentialité → Créer le compte
-5. Sur `/check-email`, saisir le code OTP à 6 chiffres  
-   - avec mail (Resend) : regardez votre boîte  
-   - sans mail en local (`NODE_ENV=development`) : le code s’affiche sur la page
-     (bandeau « Mode local / développement ») et est prérempli — cliquez
-     « Confirmer l’e-mail »
-6. Après OTP, la session s’ouvre et vous êtes redirigé vers le dashboard
-
-### Option C — Admin
-
-1. http://localhost:3000/login avec `admin@shadoma.africa`
-2. Mot de passe = `SEED_PLATFORM_ADMIN_PASSWORD` (ex. `AdminDemo123!`)
-3. Accéder à http://localhost:3000/admin
-
-### Si la connexion échoue
+- **Compte démo** : `organisateur@demovote.africa` / `SecurePass123!` (e-mail déjà vérifié).
+- **Nouvel organisateur** : `/register` (prénom, nom, téléphone, e-mail, mot de passe),
+  puis code OTP sur `/check-email`.
+- **Admin** : `admin@shadoma.africa` + `SEED_PLATFORM_ADMIN_PASSWORD`, puis `/admin`.
 
 | Message | Cause probable | Action |
 | --- | --- | --- |
@@ -169,133 +138,105 @@ Ce compte est déjà e-mail vérifié. Pas d’OTP.
 
 ---
 
-## 6. Créer un évènement
+## 6. Créer un concours et le mettre en ligne
 
-Deux chemins possibles. Les deux fonctionnent en Escrow.
+1. `/dashboard/start` (chemin rapide : titre + premier candidat) ou
+   `/dashboard/events/new` (dates, mise en page).
+2. **Prix du vote** : obligatoire pour publier (`…/edit`).
+3. **Candidats** : au moins un (`…/candidates`).
+4. **Billets** (facultatif) : créez les types de billets **avant** de signer (`…/tickets`).
+5. **Contrat** : `…/contract`. Renseignez votre identité, relisez le contrat généré,
+   cochez l’acceptation, saisissez votre nom tel qu’il figure au contrat et le code reçu
+   par e-mail (affiché sur la page en local). La signature publie le concours (**ACTIVE**).
 
-### Chemin rapide (recommandé pour un premier essai)
+Seul le titulaire du compte (pas un membre d’équipe) peut signer.
 
-1. Connecté → aller sur http://localhost:3000/dashboard/start  
-   (souvent proposé juste après inscription)
-2. Saisir :
-   - **Titre** du concours (ex. `Mon concours test`)
-   - **Nom du premier candidat**
-   - Photo optionnelle (URL)
-3. Valider
-4. L’API crée le concours + le 1er candidat
-5. Si le forfait d’activation vaut **0 FCFA** (défaut local), l’évènement peut
-   déjà être **ACTIVE**
-6. Sinon, suivez le panneau d’activation (paiement démo) sur la page qui s’affiche
-
-Ensuite :
-
-- Personnaliser : `…/design`
-- Ajouter d’autres candidats : `…/candidates`
-- Lien public : `/e/{slug}`
-
-### Chemin classique (plus de contrôle)
-
-1. http://localhost:3000/dashboard/events
-2. **Créer un évènement** → http://localhost:3000/dashboard/events/new
-3. Remplir titre, dates début/fin, mise en page (Grille / Liste / Vedette)
-4. Créer → vous arrivez sur la fiche évènement
-5. **Candidats** : ajouter au moins 2 candidats (nom + photo URL optionnelle)
-6. **Éditer / activer** :
-   - ouvrir l’évènement → activation
-   - si forfait = 0 : bouton d’activation gratuite
-   - si forfait > 0 : paiement démo avec un numéro test, ex. `0166000000`
-7. Statut attendu : **ACTIVE**
-8. Copier le lien public `/e/{slug}`
-
-### Points d’attention à la création
-
-- Offre External : création **bloquée** pendant la phase de test
-- Dates : la fin doit être **après** le début
-- Sans candidat, le vote public n’a rien à afficher
-- Prix du vote : configurable sur l’évènement (sinon règles plateforme)
+Après signature, le **nom, les dates, le prix du vote et les billets** (nom, prix,
+quantité) sont fixés par le contrat : aucun nouveau type de billet ne peut être ajouté.
+L’apparence (logo, couleurs, styles) reste modifiable. Modifier le concours entre la
+génération et la signature du contrat oblige à en générer un nouveau.
 
 ---
 
 ## 7. Tester un vote (paiement démo)
 
-### Sur le concours seed
+1. Ouvrir `/e/{slug}` (concours **ACTIVE**, dans sa période de vote).
+2. Choisir un candidat, un nombre de votes, le réseau et un numéro test (ex. `0166000000`).
+3. En mode démo, le paiement passe immédiatement à `SUCCEEDED` et le classement se met à jour.
 
-1. Ouvrir http://localhost:3000/e/miss-campus-2026
-2. Choisir un candidat et un nombre de votes
-3. Numéro Mobile Money de test : `0166000000`
-4. Confirmer
-5. En mode démo, le paiement passe immédiatement à `SUCCEEDED`
-6. Le classement se met à jour
+Pour ajouter des votes en tant qu’organisateur : bouton **« Ajouter des votes »** sur la
+page du concours. C’est un paiement comme un autre (commission et réserve comprises).
 
-### Sur votre nouvel évènement
-
-1. Ouvrir `/e/{votre-slug}` (évènement **ACTIVE**)
-2. Même parcours de vote
-3. Se reconnecter organisateur → fiche évènement + **Portefeuille**
-
-Le mode démo teste la logique interne (idempotence, comptabilisation, classement,
-wallet), **pas** le réseau d’un PSP réel.
+Le mode démo teste la logique interne (idempotence, comptabilisation, portefeuille),
+**pas** le réseau d’un PSP réel.
 
 ---
 
-## 8. Escrow de bout en bout (wallet + retrait)
+## 8. Portefeuille et retrait
 
-1. Après un vote réussi sur un évènement Escrow, ouvrir  
-   http://localhost:3000/dashboard/wallet
-2. Le montant net apparaît en **pending** (en attente de clôture)
-3. **Clôturer** l’évènement :
-   - manuel : fiche évènement → clôturer  
-   - ou cron (section 10)
-4. Après clôture : retenue plateforme appliquée, solde en **available**
-5. Configurer la destination de paiement (numéro MoMo) si demandé
-6. Demander un retrait depuis le portefeuille
-7. Admin → http://localhost:3000/admin/offers/withdrawals  
-   - **Approuver**  
-   - **Marquer payé (démo)**
+1. Après un vote réussi : `/dashboard/wallet`. Le net (brut − 12 %) est partagé entre
+   **réserve** et **disponible**.
+2. **Clôturer** le concours (fiche concours, ou automatiquement à la date de fin).
+   La réserve se libère **48 h après la clôture** (délai réglable par l’admin).
+3. Enregistrer le **numéro de retrait** (`/dashboard/account#payout-destination`).
+   Par sécurité, un changement de numéro bloque les retraits **24 h** et déclenche un
+   e-mail au titulaire.
+4. Demander un retrait depuis le portefeuille.
+5. Admin → `/admin/offers/withdrawals` : **Approuver**, afficher le numéro, payer,
+   puis **Marquer payé**.
 
-Aucun débit PSP réel tant que `API_PAYMENT_DEMO_MODE=true`.
+Pour supprimer un concours en ligne, clôturez-le d’abord. Un concours qui a encaissé un
+paiement ou dont le contrat est signé est archivé, jamais effacé.
 
 ---
 
-## 9. Auth à vérifier (en plus de la connexion)
-
-Checklist courte :
+## 9. Auth à vérifier
 
 | Parcours | URL | Attendu |
 | --- | --- | --- |
-| Inscription Escrow | `/register` | OTP puis session |
+| Inscription | `/register` | OTP puis session |
 | Connexion | `/login` | Dashboard |
 | Mot de passe oublié | `/forgot-password` → `/reset-password` | Nouveau mot de passe |
 | Compte | `/dashboard/account` | Changement e-mail → re-vérification OTP |
-| Google | bouton Google sur login/register | Uniquement si `GOOGLE_CLIENT_*` est configuré |
+| Google | bouton Google | Uniquement si `GOOGLE_CLIENT_*` est configuré |
 | Déconnexion | header dashboard | Retour public, session effacée |
 
-External ne doit **pas** être sélectionnable à l’inscription.
+Un code OTP accepte au plus 5 essais, même envoyés en parallèle.
 
 ---
 
-## 10. Clôture automatique (cron)
+## 10. Tâches planifiées (cron)
 
-Mettre la date de fin d’un évènement **actif** dans le passé, puis :
+L’API lance elle-même, toutes les 5 minutes, le rapprochement des paiements, la clôture
+des concours échus et la libération des réserves (`API_INTERNAL_SCHEDULER=true`, par
+défaut). Le worker Cloudflare (`infra/maintenance-cron-worker`) fait les mêmes appels de
+l’extérieur, plus la purge quotidienne ; les deux peuvent tourner ensemble sans rien doubler.
+
+Appel manuel d’un endpoint cron (ex. clôture des concours échus) :
 
 ```bash
 set -a; source .env; set +a
-node -e 'const {createHmac}=require("crypto"); const body={limit:100,runAtIso:new Date().toISOString()}; const json=JSON.stringify(body); const signature=createHmac("sha256",process.env.API_MAINTENANCE_CRON_SECRET).update(json).digest("hex"); fetch("http://localhost:3001/api/v1/offers/cron/close-expired",{method:"POST",headers:{"content-type":"application/json","x-maintenance-cron-signature":signature},body:json}).then(async r=>{console.log(r.status,await r.text())})'
+node -e '
+const { createHmac } = require("crypto");
+const path = "/api/v1/offers/cron/close-expired";
+const body = { limit: 100, runAtIso: new Date().toISOString() };
+const sorted = JSON.stringify(Object.fromEntries(Object.entries(body).sort()));
+const signature = createHmac("sha256", process.env.API_MAINTENANCE_CRON_SECRET).update(path + "\n" + sorted).digest("hex");
+fetch("http://localhost:3001" + path, { method: "POST", headers: { "content-type": "application/json", "x-maintenance-cron-signature": signature }, body: JSON.stringify(body) })
+  .then(async (r) => console.log(r.status, await r.text()));'
 ```
 
-Réponse attendue : `selected`, `closed`, `skipped`, `failed`, `failures`.  
-Relancer ne doit **pas** appliquer deux fois la retenue.
+La signature couvre le **chemin** et le corps (clés triées) ; `runAtIso` est obligatoire
+et doit dater de moins de `API_MAINTENANCE_CRON_MAX_SKEW_SECONDS` (900 s par défaut).
 
-Worker Cloudflare local :
+Worker en local :
 
 ```bash
 cd infra/maintenance-cron-worker
 npm install
-printf 'MAINTENANCE_CRON_SECRET=local-cron-secret-change-me-at-least-32-characters\n' > .dev.vars
+printf 'API_MAINTENANCE_CRON_SECRET=local-cron-secret-change-me-at-least-32-characters\nAPI_BASE_URL=http://localhost:3001\nTENANT_SLUG=demo-vote\n' > .dev.vars
 npx wrangler dev --test-scheduled
 ```
-
-Même secret côté API et Worker.
 
 ---
 
@@ -303,46 +244,17 @@ Même secret côté API et Worker.
 
 | Page | Usage |
 | --- | --- |
-| `/admin/offers` | Offres, Escrow actif, External en réflexion |
-| `/admin/offers/events` | Événements actifs / stats |
-| `/admin/offers/withdrawals` | Approuver / marquer payé (démo) |
-| `/admin/users` | Comptes, suspension |
+| `/admin/offers` | Taux par défaut, réserve, délais, cohérence du grand livre |
+| `/admin/offers/events` | Concours en ligne, stats, contrats signés |
+| `/admin/offers/withdrawals` | Approuver / payer les retraits |
+| `/admin/users` | Comptes, suspension ; fiche d’un compte : taux négocié de l’organisateur |
 | `/admin/maintenance` | Mode maintenance |
 
 ---
 
-## 12. Après la phase démo (Escrow réel)
+## 12. Passer au paiement réel
 
-Avant de désactiver le mode démo :
-
-1. configurer les credentials PSP **plateforme** ;
-2. `API_PAYMENT_DEMO_MODE=false` ;
-3. vote sandbox → wallet pending ;
-4. clôture → available ;
-5. retrait admin manuel.
-
-Ne réactivez External (`offer1_external_enabled=true`) qu’après décision produit
-et split validé (ADR-018).
-
----
-
-## 13. Déployer le cron
-
-```bash
-cd infra/maintenance-cron-worker
-npx wrangler secret put MAINTENANCE_CRON_SECRET --env staging
-npm run deploy:staging
-```
-
-Puis production :
-
-```bash
-npx wrangler secret put MAINTENANCE_CRON_SECRET --env production
-npm run deploy:production
-```
-
-Le Worker appelle périodiquement réconciliation, maintenance et clôture des
-évènements expirés (HMAC + horodatage).
+Suivre `docs/runbooks/premier-paiement-reel.md` (sandbox puis live 100 FCFA).
 
 ---
 
@@ -351,9 +263,10 @@ Le Worker appelle périodiquement réconciliation, maintenance et clôture des
 | Problème | Piste |
 | --- | --- |
 | Frontend OK, API KO | API non démarrée / mauvais `PORT` |
+| L’API refuse de démarrer | Lire le message : variable manquante ou interdite (voir `.env.example`) |
 | Login OK puis déconnexion | Cookie `vp_refresh` / domaine différent |
-| Impossible de créer un event External | Normal : offre parkée |
-| Activation refusée | Forfait > 0 non payé → payer en démo |
-| Vote sans effet wallet | Évènement pas ACTIVE, ou pas Escrow |
+| Contrat impossible à générer | Prix du vote, candidat ou date de fin future manquants ; ou compte d’équipe |
+| « Le concours ou les conditions ont changé » | Générer un nouveau contrat et le relire |
+| Retrait refusé « moins de 24 h » | Numéro de retrait modifié récemment : attendre la fin du délai |
 | OTP introuvable | Pas de mail → bandeau sur `/check-email` en `development`, ou logs API |
 | Migration manquante | `npm run db:migrate:deploy` puis `db:seed` |

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHADOMA Votes</title>
+<meta name="description" content="Créez votre concours, partagez le lien, le public vote en Mobile Money.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --action:#4F46E5; --action-dk:#4338CA; --ink:#0F172A; --muted:#475569;
+  --bg:#F8FAFC; --line:#E2E8F0; --gold:#D97706; --ok:#047857; --white:#fff;
+  --head:"Plus Jakarta Sans",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif;
+  --wrap:1240px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font:400 17px/1.6 var(--body);overflow-x:hidden}
+img{display:block;max-width:100%}
+a{color:inherit}
+h1,h2,h3{font-family:var(--head);font-style:normal;letter-spacing:-.02em;line-height:1.05}
+h3{letter-spacing:-.005em;line-height:1.25}
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 32px}
+.kicker{font:600 13px/1 var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 22px;border-radius:8px;
+  font:600 16px/1 var(--body);text-decoration:none;transition:background .15s,transform .15s}
+.btn-primary{background:var(--action);color:#fff}
+.btn-primary:hover{background:var(--action-dk)}
+.btn-primary:active{transform:translateY(1px)}
+.link{display:inline-flex;align-items:center;min-height:48px;font-weight:600;color:var(--action);text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px}
+.link:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--action);outline-offset:3px;border-radius:4px}
+
+/* Header */
+header{border-bottom:1px solid var(--line);background:var(--bg)}
+.nav{display:flex;align-items:center;justify-content:space-between;height:72px}
+.logo{font:800 20px/1 var(--head);letter-spacing:.06em;text-decoration:none}
+.nav ul{display:flex;align-items:center;gap:28px;list-style:none}
+.nav ul a{text-decoration:none;font-weight:500;color:var(--muted);display:inline-flex;min-height:44px;align-items:center}
+.nav ul a:hover{color:var(--ink)}
+.nav ul a.btn{color:#fff}
+.nav .btn{min-height:44px;padding:0 18px;font-size:15px}
+
+/* Hero : le mur d'affiches */
+.hero{padding:72px 0 0}
+.hero h1{font-size:clamp(40px,6.6vw,96px);font-weight:800}
+.hero h1 .l{display:block;white-space:nowrap}
+@media (max-width:860px){.hero h1 .l{white-space:normal}}
+.hero h1 em{font-style:normal;color:var(--action)}
+.hero-row{display:flex;justify-content:space-between;align-items:flex-end;gap:48px;margin-top:28px}
+.hero p.lead{font-size:20px;color:var(--muted);max-width:34ch}
+.hero .ctas{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+
+.wall{margin-top:56px;position:relative}
+.wall-track{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;align-items:end;max-width:1440px;margin:0 auto;padding:0 32px}
+.poster{margin:0}
+.poster .frame{aspect-ratio:3/4.4;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#fff;
+  box-shadow:0 1px 2px rgba(15,23,42,.06),0 12px 32px -12px rgba(15,23,42,.22)}
+.poster img{width:100%;height:100%;object-fit:cover;object-position:top}
+.poster:nth-child(2) .frame,.poster:nth-child(4) .frame{aspect-ratio:3/4}
+.poster:nth-child(3) .frame{aspect-ratio:3/4.9}
+.poster figcaption{display:flex;justify-content:space-between;margin-top:12px;font-size:14px;color:var(--muted)}
+.poster figcaption b{font:700 15px/1.2 var(--head);color:var(--ink)}
+.wall-note{border-top:1px solid var(--line);margin-top:40px;padding:20px 0 0;display:flex;justify-content:space-between;gap:24px;color:var(--muted);font-size:16px}
+.wall-note strong{color:var(--ink);font-weight:600}
+
+/* Styles list */
+.styles{padding:96px 0;border-bottom:1px solid var(--line)}
+.split{display:grid;grid-template-columns:5fr 7fr;gap:64px;align-items:start}
+.styles h2,.sec h2{font-size:clamp(32px,4.2vw,56px);font-weight:800}
+.styles p{color:var(--muted);margin-top:20px;max-width:38ch}
+.stylenames{display:flex;flex-wrap:wrap;gap:0 10px;font:700 clamp(24px,2.6vw,36px)/1.35 var(--head);letter-spacing:-.02em}
+.stylenames span{color:var(--ink)}
+.stylenames span:after{content:"·";color:var(--line);margin-left:10px}
+.stylenames span:last-child:after{content:""}
+.stylenames .on{color:var(--action)}
+
+/* Steps */
+.sec{padding:96px 0;border-bottom:1px solid var(--line)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);margin-top:48px;border-top:1px solid var(--ink)}
+.step{padding:24px 24px 8px 0}
+.step+.step{padding-left:24px;border-left:1px solid var(--line)}
+.step .n{font:800 64px/1 var(--head);color:var(--line);letter-spacing:-.04em}
+.step h3{font-size:22px;font-weight:700;margin-top:20px}
+.step p{color:var(--muted);margin-top:8px;font-size:16px}
+
+/* Classement en direct */
+.live{padding:96px 0;background:var(--ink);color:#fff}
+.live .split{grid-template-columns:6fr 5fr;align-items:center}
+.live .kicker{color:#CBD5E1}
+.live h2{font-size:clamp(32px,4.2vw,56px);font-weight:800;margin-top:16px}
+.live h2 .gold{color:#FBBF24}
+.live p{color:#CBD5E1;margin-top:20px;max-width:40ch}
+.shot{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.14);box-shadow:0 24px 60px -20px rgba(0,0,0,.6)}
+.shot img{width:100%;aspect-ratio:1200/1135;object-fit:cover}
+.duo{position:relative}
+.duo .phone{position:absolute;right:-12px;bottom:-40px;width:34%;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.2);box-shadow:0 20px 50px -10px rgba(0,0,0,.7)}
+.duo .phone img{width:100%;aspect-ratio:555/1000;object-fit:cover;object-position:top}
+.rule-list{list-style:none;margin-top:32px;border-top:1px solid rgba(255,255,255,.16)}
+.rule-list li{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.16);display:flex;gap:14px;align-items:baseline}
+.rule-list .dot{width:8px;height:8px;border-radius:50%;background:#34D399;flex:none;transform:translateY(-2px)}
+
+/* Money */
+.flow{margin-top:48px;display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.flow li{list-style:none;padding:24px 22px;position:relative}
+.flow li+li{border-left:1px solid var(--line)}
+.flow .who{font:600 12px/1 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.flow h3{font-size:19px;font-weight:700;margin-top:12px}
+.flow p{font-size:15px;color:var(--muted);margin-top:6px}
+.flow .human{background:#EEF2FF}
+.flow .human .who{color:var(--action)}
+.money-foot{display:flex;gap:32px;flex-wrap:wrap;margin-top:24px;color:var(--muted);font-size:16px}
+.money-foot b{color:var(--ink);font-weight:600}
+
+/* For who */
+.who-list{margin-top:40px;border-top:1px solid var(--line)}
+.who-list li{list-style:none;display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-bottom:1px solid var(--line)}
+.who-list b{font:800 clamp(26px,3.4vw,44px)/1.1 var(--head);letter-spacing:-.025em}
+.who-list span{color:var(--muted);font-size:16px;text-align:right}
+
+/* FAQ */
+.faq{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:48px}
+.faq h3{font-size:20px;font-weight:700;padding-top:20px;border-top:2px solid var(--ink)}
+.faq p{color:var(--muted);margin-top:10px}
+
+/* CTA */
+.final{padding:112px 0;text-align:left}
+.final h2{font-size:clamp(40px,6vw,88px);font-weight:800;max-width:14ch}
+.final .ctas{display:flex;align-items:center;gap:24px;margin-top:32px;flex-wrap:wrap}
+.final p{color:var(--muted);margin-top:20px;font-size:18px}
+
+footer{border-top:1px solid var(--line);padding:28px 0 36px;font-size:15px;color:var(--muted)}
+footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
+footer ul{display:flex;gap:6px 22px;flex-wrap:wrap;list-style:none}
+footer a{text-decoration:none;display:inline-flex;min-height:44px;align-items:center}
+footer a:hover{color:var(--ink)}
+
+@media (max-width:1080px){
+  .wall-track{grid-template-columns:repeat(4,1fr)}
+  .poster:nth-child(5){display:none}
+  .flow{grid-template-columns:1fr 1fr}
+  .flow li+li{border-left:0}
+  .flow li{border-bottom:1px solid var(--line)}
+}
+@media (max-width:860px){
+  .nav ul li.hide-s{display:none}
+  .wrap{padding:0 20px}
+  .wall-track{padding:0 20px;grid-template-columns:1fr 1fr;gap:20px 12px;align-items:start}
+  .poster .frame,.poster:nth-child(n) .frame{aspect-ratio:3/4.2}
+  .poster:nth-child(even){margin-top:32px}
+  .poster figcaption span{display:none}
+  .hero{padding-top:44px}
+  .hero-row{flex-direction:column;align-items:flex-start;gap:24px}
+  .hero p.lead{font-size:18px}
+  .wall-note{flex-direction:column;gap:6px}
+  .split,.live .split{grid-template-columns:1fr;gap:32px}
+  .styles,.sec,.live{padding:64px 0}
+  .steps{grid-template-columns:1fr 1fr}
+  .step:nth-child(3){padding-left:0;border-left:0}
+  .step:nth-child(n+3){border-top:1px solid var(--line)}
+  .faq{grid-template-columns:1fr;gap:28px}
+  .duo{margin-bottom:40px;margin-right:12px}
+  .final{padding:72px 0}
+}
+@media (max-width:520px){
+  .nav{height:64px}
+  .nav ul{gap:14px}
+  .nav ul li.hide-xs{display:none}
+  .steps{grid-template-columns:1fr}
+  .step,.step+.step{padding:20px 0;border-left:0}
+  .step+.step{border-top:1px solid var(--line)}
+  .step .n{font-size:44px}
+  .flow{grid-template-columns:1fr}
+  .who-list li{flex-direction:column;gap:4px}
+  .who-list span{text-align:left}
+  .stylenames{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#">SHADOMA</a>
+    <nav aria-label="Principal">
+      <ul>
+        <li class="hide-s"><a href="#comment">Comment ça marche</a></li>
+        <li class="hide-s"><a href="#tarifs">Tarifs</a></li>
+        <li class="hide-xs"><a href="#">Se connecter</a></li>
+        <li><a class="btn btn-primary" href="#">Créer un compte</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <p class="kicker">Concours à vote payant · Mobile Money</p>
+      <h1 style="margin-top:20px"><span class="l">Votre concours. Sa page.</span> <em class="l">Le public vote.</em></h1>
+      <div class="hero-row">
+        <p class="lead">Créez le concours, partagez le lien : chacun vote depuis son téléphone en Mobile Money, sans compte.</p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="#">Créer mon concours</a>
+          <a class="link" href="#">Voir un exemple</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="wall" aria-label="Exemples de pages de concours">
+      <div class="wall-track">
+        <figure class="poster"><div class="frame"><img src="assets/couronne-home.jpg" alt="Page de concours au style Couronne"></div><figcaption><b>Couronne</b><span>style 1</span></figcaption></figure>
+        <figure class="poster"><div class="frame"><img src="assets/soiree-home.jpg" alt="Page de concours au style Soirée"></div><figcaption><b>Soirée</b><span>style 2</span></figcaption></figure>
+        <figure class="poster"><div class="frame"><img src="assets/stade-home.jpg" alt="Page de concours au style Stade"></div><figcaption><b>Stade</b><span>style 3</span></figcaption></figure>
+        <figure class="poster"><div class="frame"><img src="assets/wax-home.jpg" alt="Page de concours au style Wax"></div><figcaption><b>Wax</b><span>style 4</span></figcaption></figure>
+        <figure class="poster"><div class="frame"><img src="assets/affiche-home.jpg" alt="Page de concours au style Affiche"></div><figcaption><b>Affiche</b><span>style 5</span></figcaption></figure>
+      </div>
+      <div class="wrap">
+        <div class="wall-note">
+          <span><strong>Un même concours, autant de visages que de styles.</strong> Choisissez le vôtre parmi 17 styles.</span>
+          <span>Votre logo, votre couleur, votre lien.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="styles">
+    <div class="wrap split">
+      <div>
+        <p class="kicker">Chaque concours a sa page</p>
+        <h2 style="margin-top:16px">Une affiche, pas un formulaire.</h2>
+        <p>Accueil du concours, profil de chaque candidat, résultats en direct, billetterie. Tout est prêt, au style que vous choisissez.</p>
+      </div>
+      <p class="stylenames" aria-label="Les 17 styles de page">
+        <span>Affiche</span><span class="on">Soirée</span><span>Billet</span><span>Couronne</span><span>Magazine</span><span>Pop</span><span>Terroir</span><span>Stade</span><span>Line-up</span><span>Diplôme</span><span>Marché</span><span>Menu</span><span class="on">Wax</span><span>Campus</span><span>Badge</span><span>Story</span><span>Sanctuaire</span>
+      </p>
+    </div>
+  </section>
+
+  <section class="sec" id="comment">
+    <div class="wrap">
+      <p class="kicker">Comment ça marche</p>
+      <h2 style="margin-top:16px">Quatre étapes. Pas une de plus.</h2>
+      <div class="steps">
+        <div class="step"><div class="n">01</div><h3>Créez</h3><p>Titre, dates, prix d’une voix, candidats.</p></div>
+        <div class="step"><div class="n">02</div><h3>Partagez</h3><p>Un lien à envoyer sur WhatsApp, Facebook, partout.</p></div>
+        <div class="step"><div class="n">03</div><h3>On vote</h3><p>Un numéro MTN, Moov ou Celtiis, une confirmation sur le téléphone.</p></div>
+        <div class="step"><div class="n">04</div><h3>Vous retirez</h3><p>Demandez un retrait, SHADOMA vous l’envoie en Mobile Money.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="live">
+    <div class="wrap split">
+      <div class="duo">
+        <div class="shot"><img src="assets/couronne-results.jpg" alt="Page de résultats d’un concours, avec le classement des candidats"></div>
+        <div class="phone"><img src="assets/campus-mobile.jpg" alt="Page de concours au style Campus, sur téléphone"></div>
+      </div>
+      <div>
+        <p class="kicker">Le classement en direct</p>
+        <h2>Chaque voix payée fait <span class="gold">monter</span> le classement.</h2>
+        <p>Le public suit les résultats sur la page du concours. Les candidats partagent, leurs proches votent.</p>
+        <ul class="rule-list">
+          <li><span class="dot" aria-hidden="true"></span>Une voix compte quand le paiement est confirmé.</li>
+          <li><span class="dot" aria-hidden="true"></span>Le votant n’a pas besoin de compte.</li>
+          <li><span class="dot" aria-hidden="true"></span>Billets avec QR code, payés en Mobile Money.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="tarifs">
+    <div class="wrap">
+      <p class="kicker">L’argent, en clair</p>
+      <h2 style="margin-top:16px">Vous savez où est chaque franc.</h2>
+      <ol class="flow">
+        <li><div class="who">Le votant</div><h3>Paie sa voix</h3><p>En Mobile Money, en FCFA.</p></li>
+        <li><div class="who">SHADOMA</div><h3>Encaisse pour vous</h3><p>Via FeexPay ou FedaPay.</p></li>
+        <li><div class="who">Votre portefeuille</div><h3>Reçoit les montants</h3><p>Une partie reste en réserve jusqu’à la clôture.</p></li>
+        <li><div class="who">Vous</div><h3>Demandez un retrait</h3><p>Quand vous le souhaitez.</p></li>
+        <li class="human"><div class="who">Une personne</div><h3>Valide et envoie</h3><p>Un administrateur SHADOMA envoie l’argent sur votre Mobile Money.</p></li>
+      </ol>
+      <div class="money-foot">
+        <span><b>Pas de virement automatique :</b> chaque retrait est vérifié.</span>
+        <span><b>KkiaPay et SebPay :</b> bientôt.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="wrap">
+      <p class="kicker">Pour qui</p>
+      <h2 style="margin-top:16px">Pour tous ceux qui font voter.</h2>
+      <ul class="who-list">
+        <li><b>Miss et Mister campus</b><span>Comités et associations d’étudiants</span></li>
+        <li><b>Festivals</b><span>Vote du public et billetterie</span></li>
+        <li><b>Écoles</b><span>Concours de talents, élections</span></li>
+        <li><b>Chorales</b><span>Prix du public</span></li>
+        <li><b>Foires</b><span>Meilleur stand, meilleur produit</span></li>
+        <li><b>Médias</b><span>Émissions et prix des auditeurs</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="wrap">
+      <p class="kicker">Trois questions</p>
+      <div class="faq">
+        <div><h3>Le votant doit-il créer un compte ?</h3><p>Non. Un numéro Mobile Money suffit.</p></div>
+        <div><h3>Quand une voix compte-t-elle ?</h3><p>Dès que le paiement est confirmé sur le téléphone du votant.</p></div>
+        <div><h3>Quand vais-je recevoir l’argent ?</h3><p>Après votre demande de retrait, une fois validée par SHADOMA.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <h2>Votre concours mérite sa propre affiche.</h2>
+      <p>Créez-le maintenant, partagez-le ce soir.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="#">Créer mon concours</a>
+        <a class="link" href="#">Voir un exemple</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 SHADOMA</span>
+    <ul>
+      <li><a href="#">Mentions légales</a></li>
+      <li><a href="#">Confidentialité</a></li>
+      <li><a href="#">Conditions</a></li>
+      <li><a href="#">Cookies</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>

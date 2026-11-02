@@ -46,8 +46,8 @@ test("admin users: états loading + empty", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Aucun utilisateur" })).toBeVisible();
 });
 
-test("admin feature flags: état error", async ({ page }) => {
-  await page.route("**/api/v1/admin/feature-flags**", async (route) => {
+test("admin users: état error", async ({ page }) => {
+  await page.route("**/api/v1/admin/users**", async (route) => {
     await route.fulfill({
       status: 500,
       contentType: "application/json",
@@ -57,7 +57,7 @@ test("admin feature flags: état error", async ({ page }) => {
     });
   });
 
-  await page.goto("/admin/feature-flags");
+  await page.goto("/admin/users");
   await expect(page.getByText("Erreur backend simulée")).toBeVisible();
 });
 

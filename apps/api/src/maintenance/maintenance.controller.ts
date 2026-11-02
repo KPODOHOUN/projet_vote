@@ -6,16 +6,12 @@ import { PLATFORM_OPERATOR_ROLES } from "../auth/platform-roles";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { MaintenanceService } from "./maintenance.service";
-import { OrganizerSecretsService } from "../organizer-secrets/organizer-secrets.service";
 
 @Controller("admin/maintenance")
 @UseGuards(AuthGuard, RolesGuard)
 @Roles(...PLATFORM_OPERATOR_ROLES)
 export class MaintenanceController {
-  constructor(
-    private readonly maintenanceService: MaintenanceService,
-    private readonly organizerSecretsService: OrganizerSecretsService
-  ) {}
+  constructor(private readonly maintenanceService: MaintenanceService) {}
 
   @Get("mode")
   getMode() {
@@ -30,10 +26,5 @@ export class MaintenanceController {
   @Post("purge")
   purge(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.maintenanceService.purge(user, body);
-  }
-
-  @Post("migrate-secrets")
-  migrateSecrets(@CurrentUser() user: AuthUser) {
-    return this.organizerSecretsService.migrateAllSecrets(user);
   }
 }

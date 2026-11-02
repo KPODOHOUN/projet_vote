@@ -74,11 +74,11 @@ flowchart TB
 | **Organizer secrets** | `apps/api/src/organizer-secrets/` | ACTIF | Clés PSP orga/event, `payment-setup/status` |
 | **Payout destination** | `payouts/payout-destination.service.ts` | ACTIF | MoMo chiffré retrait ; UI = CIBLE F4 |
 | **Payouts (périodes)** | `apps/api/src/payouts/` | PARKÉ | Versements périodiques flow EXTERNAL ; admin legacy |
-| **Subscriptions** | `apps/api/src/subscriptions/` | PARKÉ | Abonnements / plans legacy ; gate vote encore dans verify |
+| **Subscriptions** | `apps/api/src/subscriptions/` | PARKÉ | Abonnements / plans legacy ; le gate vote ne s'applique plus qu'à l'offre EXTERNAL (27/10/2026) |
 | **Partners** | `apps/api/src/partners/` | PARKÉ | Programme partenaire |
 | **Display partners** | `apps/api/src/display-partners/` | PARKÉ | Carrousel partenaires affichage |
 | **Platform control** | `apps/api/src/platform-control/` | ACTIF | Secrets plateforme FeexPay, vault |
-| **Tickets** | `apps/api/src/tickets/` | ACTIF / partiel | Billetterie ; PSP prod incomplet |
+| **Tickets** | `apps/api/src/tickets/` | ACTIF | Billetterie : achat par le circuit de paiement des votes, stock verrouillé, recette ESCROW au portefeuille (27/10/2026) |
 | **Admin plans** | `apps/api/src/admin/plans/` | PARKÉ | Anciens plans → remplacé par `/admin/offers` |
 
 ---
@@ -158,7 +158,7 @@ flowchart TB
 |-------|------|-------|
 | **N1** | Documenter statuts (ce fichier) | Immédiat |
 | **N2** | Déplacer `/admin/subscriptions` + `/admin/plans` sous nav Hérité uniquement | Vague admin |
-| **N3** | Extraire gate `AccountSubscription` dans `payment-verify` derrière flag `legacy_subscription_gate` | F2 |
+| **N3** | ✅ Fait le 27/10/2026 : gate `AccountSubscription` du vote limité à l'offre EXTERNAL (`votes.service.ts`) | — |
 | **N4** | Implémenter held/withdrawable ; stopper retenue clôture 5 % | F2 |
 | **N5** | Dossier `apps/api/src/_legacy/` ou tag JSDoc `@legacy` sur modules PARKÉ | Post-F4 |
 | **N6** | Supprimer routes dashboard `/subscription` après 1 release sans trafic | Post-bêta |

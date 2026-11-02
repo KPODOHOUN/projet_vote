@@ -2,7 +2,6 @@ import "reflect-metadata";
 import { test, before, beforeEach, after } from "node:test";
 import * as assert from "node:assert/strict";
 import { compare } from "bcryptjs";
-import { TenantOfferType } from "@prisma/client";
 import { AccountService } from "./account.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -15,18 +14,18 @@ const authService = new AuthService(prismaService, new NotificationsService(pris
 const accountService = new AccountService(prismaService, authService);
 
 const creds = {
-  tenantSlug: "acct-test",
-  tenantDisplayName: "Acct Test",
+  firstName: "Acct",
+  lastName: "Test",
+  phone: "0197100001",
   email: "owner@acct-test.africa",
   password: "SecurePass123!",
-  offerType: TenantOfferType.ESCROW,
   acceptPrivacyPolicy: true as const
 };
 
 async function seedAndLogin() {
   await authService.register(creds);
   const { refreshToken, accessToken } = await authService.login({
-    tenantSlug: creds.tenantSlug, email: creds.email, password: creds.password
+    email: creds.email, password: creds.password
   });
   const user = await authService.verifyAccessToken(accessToken);
   return { user, refreshToken };
@@ -47,7 +46,7 @@ test("changePassword: mauvais mot de passe actuel → rejet", async () => {
 test("changePassword: succès met à jour le hash et révoque les autres sessions", async () => {
   const { user, refreshToken } = await seedAndLogin();
   // 2e session (autre appareil)
-  await authService.login({ tenantSlug: creds.tenantSlug, email: creds.email, password: creds.password }, { userAgent: "Other", ipAddress: "1.2.3.4" });
+  await authService.login({ email: creds.email, password: creds.password }, { userAgent: "Other", ipAddress: "1.2.3.4" });
   await accountService.changePassword(user, { currentPassword: creds.password, newPassword: "NewPass12345!" }, refreshToken);
   const dbUser = await prisma.user.findFirst({ where: { id: user.userId } });
   assert.ok(dbUser);

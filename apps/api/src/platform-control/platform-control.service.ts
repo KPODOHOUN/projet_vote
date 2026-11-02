@@ -1,37 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { EventStatus, PaymentPurpose, PaymentStatus } from "@prisma/client";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { LedgerDirection, PaymentPurpose, PaymentStatus, UserRole, WalletLedgerKind } from "@prisma/client";
 import { z } from "zod";
 import type { AuthUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  ACTIVATION_FEE_CFA_KEY,
-  COMMISSION_BPS_KEY,
-  DEFAULT_ACTIVATION_FEE_CFA,
-  parseIntSetting
-} from "../common/platform-settings";
-import { assertCommissionBpsAllowed } from "../offers/commission-guardrails";
 import { VaultService } from "./vault.service";
-
-export const COMMISSION_SETTING_KEY = COMMISSION_BPS_KEY;
-
-const commissionSchema = z.object({
-  // Basis points: 0..10000 (0% .. 100%). 0 disables commission.
-  commissionBps: z.number().int().min(0).max(10_000)
-});
-
-const updateSettingsSchema = z
-  .object({
-    commissionBps: z.number().int().min(0).max(10_000).optional(),
-    activationFeeCfa: z.number().int().min(0).max(100_000_000).optional()
-  })
-  .refine((v) => v.commissionBps !== undefined || v.activationFeeCfa !== undefined, {
-    message: "Aucun paramètre fourni."
-  });
-
-const eventCommissionSchema = z.object({
-  // null clears the per-event override (falls back to the platform default).
-  commissionBps: z.number().int().min(0).max(10_000).nullable()
-});
+import { WalletService } from "../offers/wallet.service";
 
 const cancelVoteSchema = z.object({
   reason: z.string().min(3).max(500)
@@ -39,7 +12,7 @@ const cancelVoteSchema = z.object({
 
 const listVotesQuerySchema = z.object({
   eventId: z.string().min(1).optional(),
-  includeCancelled: z.coerce.boolean().default(false),
+  includeCancelled: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).optional()
 });
@@ -53,148 +26,39 @@ const listVotesQuerySchema = z.object({
 export class PlatformControlService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly vault: VaultService
+    private readonly vault: VaultService,
+    private readonly wallet: WalletService
   ) {}
 
-  /**
-   * Resolve the effective commission (bps) following the chain:
-   * per-event override → organizer negotiated rate → platform default → 0.
-   */
-  async resolveCommissionBps(
-    eventCommissionBps: number | null,
-    tenantCommissionBps: number | null = null
-  ): Promise<number> {
-    if (eventCommissionBps !== null && eventCommissionBps >= 0) {
-      return eventCommissionBps;
-    }
-    if (tenantCommissionBps !== null && tenantCommissionBps >= 0) {
-      return tenantCommissionBps;
-    }
-    const setting = await this.prisma.client.platformSetting.findUnique({
-      where: { key: COMMISSION_SETTING_KEY }
-    });
-    const bps = setting ? Number.parseInt(setting.value, 10) : 0;
-    return Number.isFinite(bps) && bps > 0 ? bps : 0;
-  }
-
-  async setTenantCommission(user: AuthUser, tenantId: string, payload: unknown) {
-    const input = eventCommissionSchema.parse(payload);
-    if (input.commissionBps !== null) {
-      assertCommissionBpsAllowed(user, input.commissionBps);
-    }
-    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
-    if (!tenant) {
-      throw new NotFoundException("Organisateur introuvable.");
-    }
-    const oldBps = tenant.commissionBps;
-    await this.prisma.client.$transaction([
-      this.prisma.client.tenant.update({
-        where: { id: tenantId },
-        data: { commissionBps: input.commissionBps }
-      }),
-      this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          actorUserId: user.userId,
-          actorRole: user.role,
-          action: "commission.override_tenant",
-          targetType: "Tenant",
-          targetId: tenantId,
-          metadata: { oldBps, newBps: input.commissionBps, via: "platform-control" }
-        }
-      })
-    ]);
-    return { tenantId, commissionBps: input.commissionBps };
-  }
-
-  async getSettings() {
-    const rows = await this.prisma.client.platformSetting.findMany({
-      where: { key: { in: [COMMISSION_BPS_KEY, ACTIVATION_FEE_CFA_KEY] } }
-    });
-    const map = new Map(rows.map((r) => [r.key, r.value]));
-    return {
-      commissionBps: parseIntSetting(map.get(COMMISSION_BPS_KEY), 0),
-      activationFeeCfa: parseIntSetting(map.get(ACTIVATION_FEE_CFA_KEY), DEFAULT_ACTIVATION_FEE_CFA)
-    };
-  }
-
-  private async putSetting(user: AuthUser, key: string, value: number) {
-    await this.prisma.client.platformSetting.upsert({
-      where: { key },
-      create: { key, value: String(value), updatedByUserId: user.userId },
-      update: { value: String(value), updatedByUserId: user.userId }
-    });
-  }
-
-  // SILENT by design (commission must be ultra-discreet): NO audit log is
-  // written for any commission / platform-settings change — organizers must
-  // never see it surface in their own audit trail.
-  async updateCommission(user: AuthUser, payload: unknown) {
-    const input = commissionSchema.parse(payload);
-    await this.putSetting(user, COMMISSION_BPS_KEY, input.commissionBps);
-    return { commissionBps: input.commissionBps };
-  }
-
-  async updateSettings(user: AuthUser, payload: unknown) {
-    const input = updateSettingsSchema.parse(payload);
-    if (input.commissionBps !== undefined) {
-      await this.putSetting(user, COMMISSION_BPS_KEY, input.commissionBps);
-    }
-    if (input.activationFeeCfa !== undefined) {
-      await this.putSetting(user, ACTIVATION_FEE_CFA_KEY, input.activationFeeCfa);
-    }
-    return this.getSettings();
-  }
-
-  async setEventCommission(user: AuthUser, eventId: string, payload: unknown) {
-    const input = eventCommissionSchema.parse(payload);
-    if (input.commissionBps !== null) {
-      assertCommissionBpsAllowed(user, input.commissionBps);
-    }
-    const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
-    if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
-    }
-    if (event.status !== EventStatus.DRAFT) {
-      throw new ConflictException(
-        "Le taux de commission d'un event déjà activé est gelé — impossible de le modifier."
-      );
-    }
-    const oldBps = event.commissionBps;
-    await this.prisma.client.$transaction([
-      this.prisma.client.event.update({
-        where: { id: eventId },
-        data: { commissionBps: input.commissionBps }
-      }),
-      this.prisma.client.auditLog.create({
-        data: {
-          tenantId: event.tenantId,
-          actorUserId: user.userId,
-          actorRole: user.role,
-          action: "commission.override_event",
-          targetType: "Event",
-          targetId: eventId,
-          metadata: { oldBps, newBps: input.commissionBps, via: "platform-control" }
-        }
-      })
-    ]);
-    return { eventId, commissionBps: input.commissionBps };
-  }
-
-  // Option B+ : annuler un vote l'EFFACE du ledger principal (Vote +
-  // PaymentTransaction) et dépose une copie chiffrée dans le coffre. La seule
-  // trace survivante est la VaultEntry, lisible par un PLATFORM_SUPER_ADMIN
-  // après OTP. SILENCIEUX : aucun audit log côté normal.
   async cancelVote(user: AuthUser, voteId: string, payload: unknown) {
     const input = cancelVoteSchema.parse(payload);
+    return this.voidVote(user, voteId, input.reason);
+  }
+
+  /** Ancienne « suppression » : désormais la même annulation tracée, avec un motif par défaut. */
+  async deleteVote(user: AuthUser, voteId: string) {
+    return this.voidVote(user, voteId, "Annulé par l'administration de la plateforme.");
+  }
+
+  /**
+   * Annulation d'un vote par la plateforme — jamais silencieuse, jamais destructrice :
+   * le vote est marqué annulé (il sort du classement), son paiement passe VOIDED
+   * (la trace de l'encaissement reste), le portefeuille de l'organisateur est
+   * débité de ce qui lui avait été crédité, et une trace d'audit protégée est
+   * écrite. Un vote payé ne s'annule que par un super-admin, et seulement si
+   * l'organisateur n'a pas déjà retiré cet argent.
+   */
+  private async voidVote(user: AuthUser, voteId: string, reason: string) {
     const vote = await this.prisma.client.vote.findUnique({ where: { id: voteId } });
-    if (!vote) {
-      throw new NotFoundException("Vote introuvable.");
+    if (!vote) throw new NotFoundException("Vote introuvable.");
+    if (vote.cancelledAt) throw new ConflictException("Ce vote est déjà annulé.");
+    const payment = await this.prisma.client.paymentTransaction.findUnique({ where: { voteId } });
+    const paid = payment?.status === PaymentStatus.SUCCEEDED;
+    if (paid && user.role !== UserRole.PLATFORM_SUPER_ADMIN) {
+      throw new ForbiddenException("Annuler un vote payé est réservé au super-administrateur.");
     }
-    const payment = await this.prisma.client.paymentTransaction.findUnique({
-      where: { voteId }
-    });
-    // 1. Coffrer (chiffré) AVANT toute suppression — si ça échoue, rien n'est perdu.
+
+    // Copie chiffrée de l'état avant annulation (preuve en cas de litige).
     await this.vault.createEntry({
       kind: "vote_cancelled",
       tenantId: vote.tenantId,
@@ -203,47 +67,71 @@ export class PlatformControlService {
       amountCfa: vote.amountCfa,
       occurredAt: new Date(),
       actorUserId: user.userId,
-      snapshot: { reason: input.reason, vote, payment }
+      snapshot: { reason, vote, payment }
     });
-    // 2. Purger le ledger principal (atomique).
-    await this.prisma.client.$transaction([
-      ...(payment
-        ? [this.prisma.client.paymentTransaction.delete({ where: { id: payment.id } })]
-        : []),
-      this.prisma.client.vote.delete({ where: { id: voteId } })
-    ]);
-    return { voteId, cancelled: true, paymentVoided: payment !== null };
-  }
 
-  /**
-   * Hard-delete a vote — "make it disappear". Same purge-and-vault path as
-   * cancelVote but tagged `vote_deleted`. SILENT by design (no audit log).
-   */
-  async deleteVote(user: AuthUser, voteId: string) {
-    const vote = await this.prisma.client.vote.findUnique({ where: { id: voteId } });
-    if (!vote) {
-      throw new NotFoundException("Vote introuvable.");
-    }
-    const payment = await this.prisma.client.paymentTransaction.findUnique({
-      where: { voteId }
+    let reversedCfa = 0;
+    await this.prisma.client.$transaction(async (trx) => {
+      const claimed = await trx.vote.updateMany({
+        where: { id: vote.id, cancelledAt: null },
+        data: { cancelledAt: new Date(), cancelledReason: reason, cancelledByUserId: user.userId }
+      });
+      if (claimed.count === 0) throw new ConflictException("Ce vote est déjà annulé.");
+
+      if (payment && paid) {
+        await trx.paymentTransaction.update({ where: { id: payment.id }, data: { status: PaymentStatus.VOIDED } });
+        // Reprise de ce que ce paiement avait crédité à l'organisateur (réserve
+        // d'abord, puis disponible : une réserve libérée est passée au disponible).
+        const credits = await trx.walletLedgerEntry.findMany({
+          where: { paymentId: payment.id, direction: LedgerDirection.CREDIT },
+          select: { amountCfa: true }
+        });
+        reversedCfa = credits.reduce((sum, entry) => sum + entry.amountCfa, 0);
+        if (reversedCfa > 0) {
+          const wallet = await this.wallet.getOrCreateWallet(vote.tenantId, trx);
+          const fromHeld = Math.min(wallet.heldCfa, reversedCfa);
+          const fromWithdrawable = reversedCfa - fromHeld;
+          if (fromWithdrawable > wallet.withdrawableCfa) {
+            throw new ConflictException(
+              `L'organisateur a déjà retiré cet argent (${reversedCfa} FCFA à reprendre, ${wallet.heldCfa + wallet.withdrawableCfa} FCFA disponibles) : réglez d'abord la situation avec lui.`
+            );
+          }
+          const note = `Vote annulé par la plateforme : ${reason}`;
+          if (fromHeld > 0) {
+            await this.wallet.debit({ tenantId: vote.tenantId, amountCfa: fromHeld, kind: WalletLedgerKind.ADJUSTMENT, from: "held", eventId: vote.eventId, paymentId: payment.id, note }, trx);
+          }
+          if (fromWithdrawable > 0) {
+            await this.wallet.debit({ tenantId: vote.tenantId, amountCfa: fromWithdrawable, kind: WalletLedgerKind.ADJUSTMENT, from: "withdrawable", eventId: vote.eventId, paymentId: payment.id, note }, trx);
+          }
+        }
+      } else if (payment && payment.status === PaymentStatus.PENDING) {
+        await trx.paymentTransaction.update({ where: { id: payment.id }, data: { status: PaymentStatus.VOIDED } });
+      }
+
+      await trx.auditLog.create({
+        data: {
+          tenantId: vote.tenantId,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: "vote.cancelled",
+          targetType: "Vote",
+          targetId: vote.id,
+          metadata: {
+            reason,
+            eventId: vote.eventId,
+            votesCount: vote.votesCount,
+            amountCfa: vote.amountCfa,
+            paymentId: payment?.id ?? null,
+            paid,
+            reversedFromOrganizerCfa: reversedCfa,
+            // Le votant a payé : son remboursement se fait hors plateforme.
+            refundDueToVoterCfa: paid ? vote.amountCfa : 0
+          }
+        }
+      });
     });
-    await this.vault.createEntry({
-      kind: "vote_deleted",
-      tenantId: vote.tenantId,
-      eventId: vote.eventId,
-      originalVoteId: vote.id,
-      amountCfa: vote.amountCfa,
-      occurredAt: new Date(),
-      actorUserId: user.userId,
-      snapshot: { vote, payment }
-    });
-    await this.prisma.client.$transaction([
-      ...(payment
-        ? [this.prisma.client.paymentTransaction.delete({ where: { id: payment.id } })]
-        : []),
-      this.prisma.client.vote.delete({ where: { id: voteId } })
-    ]);
-    return { voteId, deleted: true, paymentVoided: payment !== null };
+
+    return { voteId, cancelled: true, paymentVoided: Boolean(payment && payment.status !== PaymentStatus.FAILED), reversedFromOrganizerCfa: reversedCfa };
   }
 
   async listVotes(query: unknown) {
@@ -265,7 +153,9 @@ export class PlatformControlService {
         amountCfa: true,
         createdAt: true,
         cancelledAt: true,
-        cancelledReason: true
+        cancelledReason: true,
+        event: { select: { title: true } },
+        candidate: { select: { fullName: true, number: true } }
       }
     });
     const hasMore = items.length > q.limit;
@@ -277,7 +167,7 @@ export class PlatformControlService {
   }
 
   async getOverview() {
-    const [tenants, events, activeVotes, cancelledVotes, revenue, commission, confiscated] =
+    const [tenants, events, activeVotes, cancelledVotes, revenue, commission, voided] =
       await Promise.all([
         this.prisma.client.tenant.count(),
         this.prisma.client.event.count(),
@@ -289,10 +179,8 @@ export class PlatformControlService {
             voteId: { not: null }
           }
         }),
-        // Cancelled votes no longer exist in the Vote table (Option B+ purges
-        // them). Kept at 0 for backward-compatible UIs; the real confiscation
-        // figure is surfaced separately below.
-        Promise.resolve(0),
+        // Votes annulés par la plateforme : conservés, marqués annulés.
+        this.prisma.client.vote.count({ where: { cancelledAt: { not: null } } }),
         this.prisma.client.paymentTransaction.aggregate({
           _sum: { amountCfa: true },
           where: { status: PaymentStatus.SUCCEEDED }
@@ -301,7 +189,11 @@ export class PlatformControlService {
           _sum: { commissionCfa: true },
           where: { status: PaymentStatus.SUCCEEDED }
         }),
-        this.vault.sumConfiscatedAmountCfa()
+        // Paiements de votes annulés : l'argent est à rembourser aux votants.
+        this.prisma.client.paymentTransaction.aggregate({
+          _sum: { amountCfa: true },
+          where: { status: PaymentStatus.VOIDED, purpose: PaymentPurpose.VOTE }
+        })
       ]);
     const grossRevenueCfa = revenue._sum.amountCfa ?? 0;
     const commissionCfa = commission._sum.commissionCfa ?? 0;
@@ -311,7 +203,7 @@ export class PlatformControlService {
       votes: { active: activeVotes, cancelled: cancelledVotes },
       grossRevenueCfa,
       commissionCfa,
-      confiscatedRevenueCfa: confiscated,
+      refundDueToVotersCfa: voided._sum.amountCfa ?? 0,
       netToOrganizersCfa: grossRevenueCfa - commissionCfa
     };
   }

@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHADOMA Votes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --action:#4F46E5; --action-d:#4338CA; --action-tint:#EEF2FF; --action-soft:#A5B4FC;
+  --ink:#0F172A; --muted:#475569; --bg:#FFFFFF; --soft:#F8FAFC; --rule:#E2E8F0; --on-dark:#CBD5E1; --dark-rule:rgba(255,255,255,.14);
+  --ok:#047857; --ok-tint:#ECFDF5; --on-action:#E0E7FF;
+  --display:"Plus Jakarta Sans",system-ui,sans-serif;
+  --text:"Inter",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+html,body{overflow-x:clip}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--text)}
+img{display:block;max-width:100%}
+a{color:inherit}
+svg{flex:none}
+h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:-.03em;line-height:1.08;font-style:normal}
+.wrap{width:min(1160px,100% - 32px);margin-inline:auto}
+:focus-visible{outline:2px solid var(--action);outline-offset:3px;border-radius:4px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:8px;background:var(--action);color:#fff;font:600 15px/1 var(--text);text-decoration:none;white-space:nowrap;transition:background .15s,transform .15s}
+.btn:hover{background:var(--action-d)}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:#fff;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule)}
+.btn.ghost:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.btn.white{background:#fff;color:var(--action)}
+.btn.white:hover{background:var(--action-tint)}
+.btn.sm{min-height:40px;padding:0 16px;font-size:14px}
+
+/* header */
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--rule)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;gap:24px}
+.logo{font:800 17px/1 var(--display);letter-spacing:.06em;text-decoration:none}
+.nav{display:flex;align-items:center;gap:28px;font-size:14px;font-weight:500}
+.nav a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
+.nav a:not(.btn):hover{color:var(--action)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:center;gap:48px;padding:clamp(48px,7vw,96px) 0 clamp(48px,6vw,80px)}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--action-tint);color:var(--action-d);font-size:13px;font-weight:600}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.hero h1{margin-top:20px;font-size:clamp(38px,4.8vw,60px)}
+.hero h1 span{color:var(--action)}
+.hero .lead{margin-top:18px;font-size:18px;color:var(--muted);max-width:32ch}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.checks{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:28px;list-style:none;font-size:14px;color:var(--muted)}
+.checks li{display:flex;align-items:center;gap:6px}
+.checks svg{color:var(--ok)}
+
+.visual{position:relative;padding:0 0 40px 40px}
+.shot{border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05),0 24px 48px -24px rgba(15,23,42,.30)}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top center}
+.visual .desk{aspect-ratio:16/11}
+.visual .phone{position:absolute;left:0;bottom:0;width:30%;aspect-ratio:555/1000;border-radius:14px}
+.toast{position:absolute;right:-12px;top:12%;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid var(--rule);box-shadow:0 12px 28px -12px rgba(15,23,42,.3);font-size:13px;color:var(--muted)}
+.toast b{display:block;font-size:14px;color:var(--ink)}
+.toast .dot{width:28px;height:28px;border-radius:50%;background:var(--ok-tint);color:var(--ok);display:grid;place-items:center}
+
+/* operators bar */
+.ops-bar{border-block:1px solid var(--rule);background:var(--soft)}
+.ops-bar .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px 40px;padding:20px 0;font-size:14px;color:var(--muted)}
+.ops-bar b{font:800 18px/1 var(--display);color:var(--ink);letter-spacing:-.02em}
+
+/* sections */
+.sec{padding:clamp(72px,9vw,112px) 0}
+.head{max-width:560px;margin-bottom:40px}
+.head.center{margin-inline:auto;text-align:center}
+.eyebrow{font-size:13px;font-weight:600;color:var(--action);letter-spacing:.02em}
+.head h2{margin-top:10px;font-size:clamp(28px,3.2vw,40px)}
+
+/* features bento */
+.bento{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.feat{border:1px solid var(--rule);border-radius:14px;background:#fff;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .2s,transform .2s}
+.feat:hover{transform:translateY(-3px);box-shadow:0 18px 36px -24px rgba(15,23,42,.35)}
+.feat .media{background:var(--soft);border-bottom:1px solid var(--rule);aspect-ratio:4/3;overflow:hidden;position:relative}
+.feat .media>img{width:100%;height:100%;object-fit:cover;object-position:top left}
+.feat .body{padding:20px 22px 24px}
+.feat h3{font-size:18px;letter-spacing:-.02em}
+.feat p{margin-top:6px;color:var(--muted);font-size:15px}
+.fan{display:flex;gap:10px;padding:20px;height:100%;align-items:flex-start}
+.fan .shot{flex:1;aspect-ratio:3/4.4;border-radius:8px}
+.fan .shot:nth-child(2){margin-top:18px}
+.fan .shot:nth-child(3){margin-top:36px}
+.ticket{position:absolute;inset:0;display:grid;place-items:center}
+.ticket .t{width:76%;background:#fff;border:1px solid var(--rule);border-radius:12px;display:grid;grid-template-columns:1fr auto;box-shadow:0 18px 36px -20px rgba(15,23,42,.35)}
+.ticket .t>div{padding:16px}
+.ticket small{display:block;font-size:12px;color:var(--muted)}
+.ticket b{display:block;margin:4px 0 8px;font:800 16px/1.2 var(--display)}
+.ticket .qr{border-left:1px dashed var(--rule);display:grid;place-items:center}
+
+/* styles marquee */
+.strip{overflow:hidden;padding:8px 0 16px;mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.track{display:flex;gap:16px;width:max-content;animation:slide 50s linear infinite}
+.strip:hover .track{animation-play-state:paused}
+.card{width:clamp(170px,16vw,220px);flex:none}
+.card .shot{aspect-ratio:3/4.2;border-radius:10px}
+.card figcaption{margin-top:10px;font-size:14px;font-weight:600}
+@keyframes slide{to{transform:translateX(calc(-50% - 8px))}}
+
+/* steps */
+.steps{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+.steps li{padding:24px 22px;border:1px solid var(--rule);border-radius:14px;background:#fff}
+.steps .n{width:36px;height:36px;border-radius:10px;background:var(--action-tint);color:var(--action-d);display:grid;place-items:center;font:800 15px/1 var(--display)}
+.steps h3{margin-top:16px;font-size:18px;letter-spacing:-.02em}
+.steps p{margin-top:6px;font-size:15px;color:var(--muted)}
+
+/* money */
+.money{background:var(--ink);color:#fff;border-radius:20px;padding:clamp(32px,5vw,64px);display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:48px;align-items:center}
+.money .eyebrow{color:var(--action-soft)}
+.money h2{margin-top:10px;font-size:clamp(28px,3.2vw,40px)}
+.money .intro{margin-top:12px;color:var(--on-dark)}
+.flow{list-style:none;display:grid;gap:12px}
+.flow li{display:grid;grid-template-columns:40px 1fr;gap:14px;align-items:center;padding:16px 18px;border:1px solid var(--dark-rule);border-radius:12px}
+.flow .ic{width:40px;height:40px;border-radius:10px;background:rgba(165,180,252,.14);color:var(--action-soft);display:grid;place-items:center}
+.flow b{display:block;font-size:16px}
+.flow span{font-size:14px;color:var(--on-dark)}
+
+/* audience */
+.who{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;list-style:none}
+.who li{padding:10px 18px;border:1px solid var(--rule);border-radius:999px;font-weight:600;font-size:15px;background:#fff}
+
+/* faq */
+.faq{max-width:760px;margin-inline:auto;border-top:1px solid var(--rule)}
+.faq details{border-bottom:1px solid var(--rule)}
+.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:64px;font:700 17px/1.3 var(--display);letter-spacing:-.01em}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary svg{transition:transform .2s;color:var(--muted)}
+.faq details[open] summary svg{transform:rotate(45deg)}
+.faq details p{padding:0 40px 20px 0;color:var(--muted)}
+
+/* final cta */
+.cta{background:var(--action);color:#fff;border-radius:20px;padding:clamp(40px,6vw,72px);text-align:center}
+.cta h2{font-size:clamp(28px,3.4vw,44px)}
+.cta p{margin-top:10px;color:var(--on-action);font-size:17px}
+.cta .ctas{justify-content:center}
+
+footer{margin-top:clamp(64px,8vw,96px);border-top:1px solid var(--rule)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 20px;padding:12px 0;font-size:13px;color:var(--muted)}
+footer nav{display:flex;flex-wrap:wrap;gap:0 20px}
+footer a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+footer a:hover{color:var(--ink)}
+
+/* reveal */
+.js .rv{opacity:0;transform:translateY(16px);transition:opacity .5s ease-out,transform .5s ease-out}
+.js .rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.track{animation:none}.js .rv{opacity:1;transform:none;transition:none}.feat:hover{transform:none}}
+
+@media (max-width:980px){
+  .nav a[href^="#"]:not(.btn){display:none}
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .visual{max-width:640px}
+  .bento{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .bento .feat:first-child{grid-column:1/-1}
+  .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .money{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:640px){
+  .nav a:not(.btn){display:none}
+  .visual{padding:0 0 32px 24px}
+  .toast{right:-4px}
+  .bento,.steps{grid-template-columns:minmax(0,1fr)}
+  .ctas .btn{flex:1}
+}
+</style>
+</head>
+<body>
+<script>document.body.classList.add("js")</script>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#">SHADOMA</a>
+    <nav class="nav" aria-label="Principale">
+      <a href="#fonctions">Fonctions</a>
+      <a href="#comment">Comment ça marche</a>
+      <a href="#argent">L’argent</a>
+      <a href="#">Se connecter</a>
+      <a class="btn sm" href="#">Créer un compte</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="wrap hero">
+  <div>
+    <span class="pill"><i></i>Votes payants en FCFA</span>
+    <h1>Votre concours.<br><span>Payé en Mobile Money.</span></h1>
+    <p class="lead">Créez la page, partagez le lien. Le public vote depuis son téléphone.</p>
+    <div class="ctas">
+      <a class="btn" href="#">Créer mon concours
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn ghost" href="#">Voir un exemple</a>
+    </div>
+    <ul class="checks">
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Sans compte pour le votant</li>
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Rien à installer</li>
+    </ul>
+  </div>
+  <div class="visual rv">
+    <div class="shot desk"><img src="assets/couronne-home.jpg" alt="Page d’un concours Miss Campus au style Couronne"></div>
+    <div class="shot phone"><img src="assets/campus-mobile.jpg" alt="Page d’un concours sur téléphone"></div>
+    <div class="toast" aria-hidden="true">
+      <span class="dot"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+      <span><b>Paiement confirmé</b>La voix est comptée</span>
+    </div>
+  </div>
+</section>
+
+<div class="ops-bar">
+  <div class="wrap">
+    <span>Le public paie avec</span><b>MTN</b><b>Moov</b><b>Celtiis</b>
+  </div>
+</div>
+
+<section class="wrap sec" id="fonctions">
+  <div class="head rv">
+    <p class="eyebrow">Fonctions</p>
+    <h2>Tout votre concours, au même endroit.</h2>
+  </div>
+  <div class="bento">
+    <article class="feat rv">
+      <div class="media">
+        <div class="fan">
+          <div class="shot"><img src="assets/soiree-home.jpg" alt=""></div>
+          <div class="shot"><img src="assets/wax-home.jpg" alt=""></div>
+          <div class="shot"><img src="assets/stade-home.jpg" alt=""></div>
+        </div>
+      </div>
+      <div class="body"><h3>Une page à votre style</h3><p>17 styles, votre logo, votre couleur.</p></div>
+    </article>
+    <article class="feat rv">
+      <div class="media"><img src="assets/couronne-results.jpg" alt="Résultats en direct d’un concours"></div>
+      <div class="body"><h3>Résultats en direct</h3><p>Seules les voix payées comptent.</p></div>
+    </article>
+    <article class="feat rv">
+      <div class="media">
+        <div class="ticket" aria-hidden="true">
+          <div class="t">
+            <div><small>Billet</small><b>Miss Campus 2026</b><small>Entrée · 1 personne</small></div>
+            <div class="qr"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h-2zM19 15h2M15 19h2M19 19h2v2M17 17h2v2"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="body"><h3>Billetterie</h3><p>Billets avec QR code, payés en Mobile Money.</p></div>
+    </article>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:0" aria-labelledby="h-styles">
+  <div class="wrap head center rv">
+    <p class="eyebrow">17 styles</p>
+    <h2 id="h-styles">Chaque concours a sa page.</h2>
+  </div>
+  <div class="strip">
+    <div class="track">
+      <figure class="card"><div class="shot"><img src="assets/couronne-home.jpg" alt="Style Couronne"></div><figcaption>Couronne</figcaption></figure>
+      <figure class="card"><div class="shot"><img src="assets/soiree-home.jpg" alt="Style Soirée"></div><figcaption>Soirée</figcaption></figure>
+      <figure class="card"><div class="shot"><img src="assets/affiche-home.jpg" alt="Style Affiche"></div><figcaption>Affiche</figcaption></figure>
+      <figure class="card"><div class="shot"><img src="assets/wax-home.jpg" alt="Style Wax"></div><figcaption>Wax</figcaption></figure>
+      <figure class="card"><div class="shot"><img src="assets/stade-home.jpg" alt="Style Stade"></div><figcaption>Stade</figcaption></figure>
+      <figure class="card"><div class="shot"><img src="assets/campus-mobile.jpg" alt="Style Campus"></div><figcaption>Campus</figcaption></figure>
+      <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/couronne-home.jpg" alt=""></div><figcaption>Couronne</figcaption></figure>
+      <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/soiree-home.jpg" alt=""></div><figcaption>Soirée</figcaption></figure>
+      <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/affiche-home.jpg" alt=""></div><figcaption>Affiche</figcaption></figure>
+      <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/wax-home.jpg" alt=""></div><figcaption>Wax</figcaption></figure>
+      <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/stade-home.jpg" alt=""></div><figcaption>Stade</figcaption></figure>
+      <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/campus-mobile.jpg" alt=""></div><figcaption>Campus</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="wrap sec" id="comment" style="padding-top:0">
+  <div class="head center rv">
+    <p class="eyebrow">Comment ça marche</p>
+    <h2>Quatre étapes.</h2>
+  </div>
+  <ol class="steps">
+    <li class="rv"><span class="n">1</span><h3>Créez</h3><p>Le concours, les candidats, le prix d’une voix.</p></li>
+    <li class="rv"><span class="n">2</span><h3>Partagez</h3><p>Le lien, sur WhatsApp ou Facebook.</p></li>
+    <li class="rv"><span class="n">3</span><h3>On vote</h3><p>Le public paie en Mobile Money.</p></li>
+    <li class="rv"><span class="n">4</span><h3>Retirez</h3><p>L’argent arrive sur votre Mobile Money.</p></li>
+  </ol>
+</section>
+
+<section class="wrap" id="argent">
+  <div class="money rv">
+    <div>
+      <p class="eyebrow">L’argent</p>
+      <h2>Clair, du vote au retrait.</h2>
+      <p class="intro">SHADOMA encaisse pour vous.</p>
+    </div>
+    <ul class="flow">
+      <li><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></span><div><b>Le votant paie</b><span>Il confirme sur son téléphone.</span></div></li>
+      <li><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><div><b>La voix compte</b><span>Une fois le paiement confirmé.</span></div></li>
+      <li><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18v12H3z"/><path d="M16 13h2M3 10h18"/></svg></span><div><b>Votre portefeuille</b><span>Une part reste en réserve jusqu’à la clôture.</span></div></li>
+      <li><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span><div><b>Retrait vérifié</b><span>Validé par l’équipe SHADOMA.</span></div></li>
+    </ul>
+  </div>
+</section>
+
+<section class="wrap sec">
+  <div class="head center rv">
+    <p class="eyebrow">Pour qui</p>
+    <h2>Pour tous les concours.</h2>
+  </div>
+  <ul class="who rv">
+    <li>Miss &amp; Mister campus</li><li>Festivals</li><li>Écoles</li><li>Chorales</li><li>Foires</li><li>Médias</li>
+  </ul>
+</section>
+
+<section class="wrap sec" style="padding-top:0" aria-labelledby="h-faq">
+  <div class="head center rv">
+    <p class="eyebrow">Questions</p>
+    <h2 id="h-faq">Questions fréquentes</h2>
+  </div>
+  <div class="faq rv">
+    <details><summary>Le votant doit-il créer un compte&nbsp;?<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></summary><p>Non. Un numéro Mobile Money suffit.</p></details>
+    <details><summary>Quand une voix compte-t-elle&nbsp;?<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></summary><p>Quand le paiement est confirmé.</p></details>
+    <details><summary>Quand je reçois l’argent&nbsp;?<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></summary><p>Après votre demande de retrait, validée par SHADOMA.</p></details>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="cta rv">
+    <h2>Lancez votre concours.</h2>
+    <p>Le public peut voter dès que vous partagez le lien.</p>
+    <div class="ctas">
+      <a class="btn white" href="#">Créer mon concours</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <nav aria-label="Informations légales">
+      <a href="#">Mentions légales</a><a href="#">Confidentialité</a><a href="#">Conditions</a><a href="#">Cookies</a>
+    </nav>
+    <span>© 2026 SHADOMA</span>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.12 });
+  document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+</script>
+</body>
+</html>

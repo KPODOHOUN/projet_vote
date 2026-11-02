@@ -7,7 +7,7 @@ import { authLoginUrl } from "@/lib/auth-navigation";
 import { authedFetch } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n-provider";
-import { DataTable, EmptyState, LoadingState, StatusChip } from "@/components/ui";
+import { DataTable, EmptyState, LoadingState } from "@/components/ui";
 import type { DataTableColumn } from "@/components/ui";
 import {
   AdminErrorAlert,
@@ -24,7 +24,6 @@ type ActiveEventRow = {
     id: string;
     slug: string;
     displayName: string;
-    offerType: "EXTERNAL" | "ESCROW";
   };
   stats: {
     votesCount: number;
@@ -82,20 +81,7 @@ export default function AdminOffersEventsPage() {
       key: "tenant",
       header: isEn ? "Organizer" : "Organisation",
       render: (row) => (
-        <div>
-          <p>{row.tenant.displayName}</p>
-          <p className="text-xs text-muted-foreground">{row.tenant.slug}</p>
-        </div>
-      )
-    },
-    {
-      key: "offer",
-      header: isEn ? "Offer" : "Offre",
-      render: (row) => (
-        <StatusChip
-          label={row.tenant.offerType}
-          tone={row.tenant.offerType === "ESCROW" ? "live" : "muted"}
-        />
+        <p>{row.tenant.displayName}</p>
       )
     },
     {
@@ -132,8 +118,8 @@ export default function AdminOffersEventsPage() {
         title={isEn ? "Active events" : "Événements actifs"}
         description={
           isEn
-            ? "Live events with offer type and confirmed payment totals."
-            : "Événements en cours avec type d'offre et totaux de paiements confirmés."
+            ? "Running events and what they collected."
+            : "Les événements en cours et ce qu'ils ont encaissé."
         }
       />
 

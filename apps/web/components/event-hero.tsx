@@ -25,6 +25,8 @@ type EventHeroProps = {
   /** Instant du rendu serveur (ms), point de départ du compte à rebours. */
   now: number;
   ticketsHref?: string | undefined;
+  /** Réseaux que le prestataire du concours sait débiter (absent d'une ancienne API : tous). */
+  paymentNetworks?: string[] | undefined;
 };
 
 const gutter = "px-[clamp(20px,4vw,56px)]";
@@ -57,7 +59,7 @@ function Fact({ label, children, className = "" }: { label: string; children: Re
   );
 }
 
-export function EventHero({ event, organizer, phase, locale, now, ticketsHref }: EventHeroProps) {
+export function EventHero({ event, organizer, phase, locale, now, ticketsHref, paymentNetworks }: EventHeroProps) {
   const t9n = (key: MessageKey) => translate(locale, key);
   const style = pageStyleOf(event.branding.pageStyle);
   const startLabel = formatEventDate(event.startsAt, locale);
@@ -65,7 +67,9 @@ export function EventHero({ event, organizer, phase, locale, now, ticketsHref }:
   const dates = startLabel && endLabel ? translateVars(locale, "hub.dates", { start: startLabel, end: endLabel }) : null;
   const hasPrice = Boolean(event.voteUnitPriceCfa && event.voteUnitPriceCfa > 0);
   const price = hasPrice ? formatCfa(event.voteUnitPriceCfa!, locale) : t9n("hub.howTo.noPrice");
-  const networks = MOBILE_NETWORKS.map((n) => n.label).join(" · ");
+  const networks = MOBILE_NETWORKS.filter((n) => !paymentNetworks || paymentNetworks.includes(n.value))
+    .map((n) => n.label)
+    .join(" · ");
   // Compte à rebours : vers la clôture pendant le vote, vers l'ouverture avant.
   const countdownTarget = phase === "open" ? event.endsAt : phase === "upcoming" ? event.startsAt : null;
   const showCta = phase === "open" && hasPrice;

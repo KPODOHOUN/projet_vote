@@ -79,10 +79,3 @@ export function deleteAuditLogsMatching(token: string, filters: Omit<AuditLogFil
   });
 }
 
-export function deleteFeatureFlag(token: string, key: string, tenantId?: string) {
-  const query = tenantId?.trim() ? `?tenantId=${encodeURIComponent(tenantId.trim())}` : "";
-  return apiFetch<{ deleted: boolean; key: string }>(`/admin/feature-flags/${encodeURIComponent(key)}${query}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-}

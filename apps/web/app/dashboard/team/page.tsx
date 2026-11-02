@@ -157,18 +157,18 @@ export default function DashboardTeamPage() {
     <div className="space-y-10">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-6">
         <div className="space-y-1">
-          <span className="text-sm font-bold tracking-widest uppercase text-primary block">
+          <span className="block text-sm font-semibold text-slate-600">
             {t("invitations.eyebrow")}
           </span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-foreground">
             {t("invitations.title")}
-          </h2>
+          </h1>
           <p className="text-muted-foreground">{t("invitations.subtitle")}</p>
         </div>
       </header>
 
       {canManage ? (
-        <form className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-card p-6 rounded-xl border border-border shadow-sm" onSubmit={onCreate}>
+        <form className="grid grid-cols-1 items-start gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5 md:grid-cols-12" onSubmit={onCreate}>
           <div className="md:col-span-5">
             <Input
               id="invite-email"
@@ -181,21 +181,22 @@ export default function DashboardTeamPage() {
               required
             />
           </div>
-          <div className="md:col-span-4 grid gap-1.5">
-            <label className="text-sm font-medium leading-none">
+          <div className="md:col-span-4 grid content-start gap-1.5">
+            <label htmlFor="invite-role" className="text-sm font-medium leading-none">
               {t("invitations.roleLabel")}
             </label>
             <select
+              id="invite-role"
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as InvitationRole)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:h-10"
             >
               <option value="ORGANIZER_STAFF" className="bg-background">{t("invitations.roleStaff")}</option>
               <option value="ORGANIZER_OWNER" className="bg-background">{t("invitations.roleOwner")}</option>
             </select>
             <p className="text-xs text-muted-foreground">{t("invitations.roleHelp")}</p>
           </div>
-          <div className="md:col-span-3 flex justify-end">
+          <div className="flex md:col-span-3 md:mt-5">
             <Button type="submit" loading={isCreating} className="w-full">
               {isCreating ? t("invitations.creating") : t("invitations.submit")}
             </Button>

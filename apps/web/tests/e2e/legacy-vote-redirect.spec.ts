@@ -8,5 +8,5 @@ test("legacy vote URL redirects to public event page", async ({ page }) => {
 
 test("vote entry accepts contest code", async ({ page }) => {
   await page.goto("/vote");
-  await expect(page.getByRole("heading", { name: "Accéder à un évènement" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Accéder à un événement" })).toBeVisible();
 });

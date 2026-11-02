@@ -9,14 +9,13 @@ test.describe("Invitations", () => {
   test("OWNER crée une invitation, voit le lien, révoque", async ({ page, request }) => {
     const unique = `${Date.now()}`;
     const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3011/api/v1";
-    const tenantSlug = `e2e-invite-${unique}`;
     const email = `owner-${unique}@shadowa.test`;
     const password = "SecurePass123!";
     const tenantDisplayName = `E2E Invite ${unique}`;
     const inviteeEmail = `invitee-${unique}@example.com`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+      data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: tenantDisplayName, email, password, acceptPrivacyPolicy: true }
     });
     expect(registerResponse.ok()).toBeTruthy();
 
@@ -48,14 +47,13 @@ test.describe("Invitations", () => {
   test("Invité active son accès via le lien et atterrit sur le dashboard", async ({ page, request }) => {
     const unique = `${Date.now()}-accept`;
     const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3011/api/v1";
-    const tenantSlug = `e2e-invite-${unique}`;
     const email = `owner-${unique}@shadowa.test`;
     const password = "SecurePass123!";
     const tenantDisplayName = `E2E Invite ${unique}`;
     const inviteeEmail = `invitee-${unique}@example.com`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+      data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: tenantDisplayName, email, password, acceptPrivacyPolicy: true }
     });
     expect(registerResponse.ok()).toBeTruthy();
 

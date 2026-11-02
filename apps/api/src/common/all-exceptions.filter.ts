@@ -11,7 +11,6 @@ import { captureSentryException } from "../observability/sentry";
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
-    console.error("Unhandled Exception:", exception);
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
@@ -51,6 +50,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       request.headers["x-trace-id"]?.toString() ?? response.getHeader("x-trace-id")?.toString();
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      // Seules les erreurs serveur sont journalisées : un 4xx est une réponse normale.
+      console.error("Unhandled Exception:", exception);
       captureSentryException(exception, {
         traceId: traceId ?? "missing-trace-id",
         path: request.url,

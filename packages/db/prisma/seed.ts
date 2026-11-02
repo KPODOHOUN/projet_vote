@@ -7,14 +7,17 @@ const prisma = new PrismaClient();
 // Démo : un concours ACTIF, 5 candidats avec photo réelle, et des votes PAYÉS
 // répartis pour peupler le classement. Idempotent (upsert + reset des votes).
 const CANDIDATES = [
-  { number: 1, fullName: "Awa Kouassi", photoUrl: "https://i.pravatar.cc/480?img=5", paidVotes: 18 },
-  { number: 2, fullName: "Nadia Mensah", photoUrl: "https://i.pravatar.cc/480?img=9", paidVotes: 31 },
-  { number: 3, fullName: "Fatou Diallo", photoUrl: "https://i.pravatar.cc/480?img=16", paidVotes: 12 },
-  { number: 4, fullName: "Mariam Touré", photoUrl: "https://i.pravatar.cc/480?img=20", paidVotes: 25 },
-  { number: 5, fullName: "Chantal Adjovi", photoUrl: "https://i.pravatar.cc/480?img=32", paidVotes: 6 }
+  { number: 1, fullName: "Awa Kouassi" },
+  { number: 2, fullName: "Nadia Mensah" },
+  { number: 3, fullName: "Fatou Diallo" },
+  { number: 4, fullName: "Mariam Touré" },
+  { number: 5, fullName: "Chantal Adjovi" }
 ];
 
 const PRICE_CFA = 200;
+
+// Identité du compte organisateur de démo (pré-remplit son contrat).
+const DEMO_OWNER = { firstName: "Démo", lastName: "Organisateur", phone: "2290197000000" };
 
 function seedPublicRef(): string {
   return randomBytes(12).toString("base64url");
@@ -33,13 +36,14 @@ async function main() {
   // Organisateur propriétaire (crée et gère ses concours).
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: "organisateur@demovote.africa" } },
-    update: { passwordHash: demoPasswordHash, role: UserRole.ORGANIZER_OWNER, emailVerifiedAt: new Date() },
+    update: { passwordHash: demoPasswordHash, role: UserRole.ORGANIZER_OWNER, emailVerifiedAt: new Date(), ...DEMO_OWNER },
     create: {
       tenantId: tenant.id,
       email: "organisateur@demovote.africa",
       passwordHash: demoPasswordHash,
       role: UserRole.ORGANIZER_OWNER,
-      emailVerifiedAt: new Date()
+      emailVerifiedAt: new Date(),
+      ...DEMO_OWNER
     }
   });
 
@@ -82,6 +86,9 @@ async function main() {
     });
   }
 
+  // Concours de démonstration publié d'office (sans contrat) pour tester le vote ;
+  // il porte les conditions qu'un contrat signé figerait : 12 % et 50 % réservés.
+  // Les concours réels ne passent en ligne que par la signature du contrat.
   const event = await prisma.event.upsert({
     where: { slug: "miss-campus-2026" },
     update: {
@@ -90,6 +97,8 @@ async function main() {
       brandColor: "#6366F1",
       tagline: "Élisez la Miss Campus de l'année — votre vote compte.",
       voteUnitPriceCfa: PRICE_CFA,
+      commissionBps: 1_200,
+      heldBps: 5_000,
       startsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
       endsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
     },
@@ -101,146 +110,37 @@ async function main() {
       brandColor: "#6366F1",
       tagline: "Élisez la Miss Campus de l'année — votre vote compte.",
       voteUnitPriceCfa: PRICE_CFA,
+      commissionBps: 1_200,
+      heldBps: 5_000,
       startsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
       endsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
     }
   });
 
-  // Reset des votes de l'event pour rester idempotent (les votes n'ont pas de clé naturelle).
+  // Aucun vote fabriqué : un vote n'existe qu'avec son paiement (portefeuille
+  // et comptabilité cohérents). Le classement se remplit par de vrais votes
+  // (mode démo). On purge les anciens votes sans paiement d'un seed précédent.
   await prisma.vote.deleteMany({ where: { eventId: event.id } });
+  await prisma.organizerWallet.upsert({ where: { tenantId: tenant.id }, update: {}, create: { tenantId: tenant.id } });
 
   for (const c of CANDIDATES) {
-    const candidate = await prisma.candidate.upsert({
+    await prisma.candidate.upsert({
       where: { eventId_number: { eventId: event.id, number: c.number } },
-      update: { fullName: c.fullName, photoUrl: c.photoUrl },
+      // Pas de photo factice : sans photo, le site affiche les initiales.
+      update: { fullName: c.fullName, photoUrl: null },
       create: {
         eventId: event.id,
         fullName: c.fullName,
         number: c.number,
-        photoUrl: c.photoUrl,
         publicRef: seedPublicRef()
       }
     });
-
-    if (c.paidVotes > 0) {
-      await prisma.vote.createMany({
-        data: Array.from({ length: c.paidVotes }, () => ({
-          tenantId: tenant.id,
-          eventId: event.id,
-          candidateId: candidate.id,
-          amountCfa: PRICE_CFA,
-          paidAt: new Date()
-        }))
-      });
-    }
   }
 
-  const total = CANDIDATES.reduce((acc, c) => acc + c.paidVotes, 0);
-
-  // Default subscription pricing grid (Standard plan).
-  const defaultPricing = [
-    { durationMonths: 1, priceCfa: 5_000 },
-    { durationMonths: 3, priceCfa: 12_000 },
-    { durationMonths: 6, priceCfa: 20_000 },
-    { durationMonths: 12, priceCfa: 35_000 }
-  ];
-  for (const p of defaultPricing) {
-    await prisma.subscriptionPricing.upsert({
-      where: { durationMonths: p.durationMonths },
-      update: { priceCfa: p.priceCfa },
-      create: { durationMonths: p.durationMonths, priceCfa: p.priceCfa }
-    });
-  }
-  console.log(`Seed OK — ${defaultPricing.length} formules d'abonnement Standard.`);
-
-  // Plans d'abonnement flexibles (Free, Starter, Pro, Enterprise).
-  const defaultPlans = [
-    {
-      slug: "free",
-      name: "Free",
-      description: "Pour démarrer. 1 événement gratuit, commission 15%.",
-      priceCfa: 0,
-      maxEvents: 1,
-      commissionRate: 1500, // 15%
-      sortOrder: 10,
-      features: ["1 événement maximum", "Commission 15% sur les votes", "Accès au dashboard"],
-      isActive: true
-    },
-    {
-      slug: "starter",
-      name: "Starter",
-      description: "Pour les organisateurs réguliers. Jusqu'à 5 événements.",
-      priceCfa: 9900,
-      maxEvents: 5,
-      commissionRate: 1000, // 10%
-      sortOrder: 20,
-      features: ["5 événements maximum", "Commission 10% sur les votes", "Support prioritaire"],
-      isActive: true
-    },
-    {
-      slug: "pro",
-      name: "Pro",
-      description: "Pour les professionnels. Événements illimités.",
-      priceCfa: 24900,
-      maxEvents: null, // illimité
-      commissionRate: 700, // 7%
-      sortOrder: 30,
-      features: ["Événements illimités", "Commission 7% sur les votes", "Support dédié", "Statistiques avancées"],
-      isActive: true
-    },
-    {
-      slug: "enterprise",
-      name: "Enterprise",
-      description: "Pour les grandes organisations. Tout illimité.",
-      priceCfa: 49900,
-      maxEvents: null, // illimité
-      commissionRate: 500, // 5%
-      sortOrder: 40,
-      features: ["Événements illimités", "Commission 5% sur les votes", "Support VIP", "API dédiée", "Marque blanche"],
-      isActive: true
-    }
-  ];
-  for (const plan of defaultPlans) {
-    await prisma.plan.upsert({
-      where: { slug: plan.slug },
-      update: {
-        name: plan.name,
-        description: plan.description,
-        priceCfa: plan.priceCfa,
-        maxEvents: plan.maxEvents,
-        commissionRate: plan.commissionRate,
-        sortOrder: plan.sortOrder,
-        features: plan.features,
-        isActive: plan.isActive
-      },
-      create: {
-        slug: plan.slug,
-        name: plan.name,
-        description: plan.description,
-        priceCfa: plan.priceCfa,
-        maxEvents: plan.maxEvents,
-        commissionRate: plan.commissionRate,
-        sortOrder: plan.sortOrder,
-        features: plan.features,
-        isActive: plan.isActive
-      }
-    });
-  }
-  console.log(`Seed OK — ${defaultPlans.length} plans d'abonnement (Free, Starter, Pro, Enterprise).`);
-
-  // Offres EXTERNAL / ESCROW + OTP + flags PSP split (defaults produit).
+  // Réglages produit : taux de commission (12 %), part réservée (50 %) et délai
+  // de libération (48 h) ont leurs valeurs par défaut dans le code ; seuls les
+  // délais des codes à usage unique sont posés ici.
   const platformDefaults: Array<{ key: string; value: string }> = [
-    // Offre 1 External en réflexion pendant la phase de test Escrow.
-    { key: "offer1_external_enabled", value: "false" },
-    { key: "offer2_escrow_enabled", value: "true" },
-    { key: "offer1_commission_bps", value: "1000" },
-    { key: "offer1_commission_fixed_cfa", value: "0" },
-    { key: "offer2_retention_bps", value: "500" },
-    { key: "offer2_per_vote_commission_enabled", value: "false" },
-    { key: "offer2_per_vote_commission_bps", value: "0" },
-    { key: "psp_feexpay_supports_split", value: "false" },
-    { key: "psp_fedapay_supports_split", value: "true" },
-    { key: "psp_kkiapay_supports_split", value: "false" },
     { key: "otp_ttl_seconds", value: "600" },
     { key: "otp_resend_delay_seconds", value: "60" }
   ];
@@ -251,9 +151,9 @@ async function main() {
       create: { key: s.key, value: s.value, updatedByUserId: "system:seed" }
     });
   }
-  console.log(`Seed OK — ${platformDefaults.length} réglages plateforme (offres / OTP / PSP split).`);
+  console.log(`Seed OK — ${platformDefaults.length} réglages plateforme (codes à usage unique).`);
 
-  console.log(`Seed OK — concours « ${event.title} » (/e/${event.slug}), ${CANDIDATES.length} candidats, ${total} votes payés.`);
+  console.log(`Seed OK — concours « ${event.title} » (/e/${event.slug}), ${CANDIDATES.length} candidats (0 vote : votez en mode démo).`);
   console.log("");
   console.log("Comptes de démo testeurs (mot de passe : SecurePass123!) :");
   console.log("  • Organisateur (owner) : organisateur@demovote.africa");

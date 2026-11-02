@@ -17,7 +17,7 @@ export default function LegalPage() {
           <p className="text-muted-foreground leading-relaxed">
             {isEn
               ? "SHADOMA Votes is a paid-voting platform operated for professional and cultural event organizers in French-speaking Africa."
-              : "SHADOMA Votes est une plateforme de vote payant opérée pour les organisateurs d'évènements professionnels et culturels en Afrique francophone."}
+              : "SHADOMA Votes est une plateforme de vote payant opérée pour les organisateurs d'événements professionnels et culturels en Afrique francophone."}
           </p>
         </section>
 

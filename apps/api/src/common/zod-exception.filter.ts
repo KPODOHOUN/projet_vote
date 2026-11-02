@@ -21,8 +21,9 @@ export class ZodExceptionFilter implements ExceptionFilter {
     response.status(status).json({
       statusCode: status,
       message: "Validation échouée.",
-      errors: exception.errors.map((issue) => ({
-        path: issue.path.join("."),
+      // zod 4 : `issues` (plus `errors`), et un chemin peut contenir des symboles.
+      errors: exception.issues.map((issue) => ({
+        path: issue.path.map(String).join("."),
         message: issue.message
       })),
       path: request.url,

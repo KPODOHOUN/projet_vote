@@ -221,6 +221,14 @@ body>* {
 }
 
 @layer base {
+  /* Tailwind 4 borde en currentColor par défaut : sans ça, un `border` sans
+     couleur explicite trace un cadre noir au milieu de cadres gris. */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
   a {
     color: inherit;
   }

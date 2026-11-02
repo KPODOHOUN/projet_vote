@@ -6,8 +6,15 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n-provider";
-import { KpiCard, StatusChip, EmptyState, LoadingState } from "@/components/ui";
-import { AdminErrorAlert, AdminPageHeader, AdminPageShell, AdminSection } from "@/components/admin/admin-shell";
+import { StatusChip, EmptyState, LoadingState } from "@/components/ui";
+import {
+  AdminErrorAlert,
+  AdminPageHeader,
+  AdminPageShell,
+  AdminSection,
+  AdminStatGrid,
+  AdminStatTile
+} from "@/components/admin/admin-shell";
 
 type JobsOverviewResponse = {
   pendingPayments: number;
@@ -61,8 +68,8 @@ export default function DashboardAdminJobsPage() {
         title={isEn ? "Jobs center" : "Centre de tâches"}
         description={
           isEn
-            ? "Monitor pending payments, failed transactions and maintenance runs."
-            : "Surveillez les paiements en attente, les échecs et les exécutions de maintenance."
+            ? "Pending and failed payments, and clean-up runs."
+            : "Paiements en attente ou échoués, et nettoyages."
         }
       />
 
@@ -76,28 +83,28 @@ export default function DashboardAdminJobsPage() {
         </p>
       ) : (
         <div className="space-y-10">
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            <KpiCard
+          <AdminStatGrid columns="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+            <AdminStatTile
               label={isEn ? "Pending payments" : "Paiements en attente"}
               value={String(overview.pendingPayments)}
             />
-            <KpiCard
+            <AdminStatTile
               label={isEn ? "Stalled (> 15 min)" : "Bloqués (> 15 min)"}
               value={String(overview.stalePendingPayments)}
             />
-            <KpiCard
+            <AdminStatTile
               label={isEn ? "Failed (24 h)" : "Échoués (24 h)"}
               value={String(overview.failedPayments24h)}
             />
-            <KpiCard
-              label={isEn ? "Expired idempotency" : "Idempotence expirée"}
+            <AdminStatTile
+              label={isEn ? "Expired duplicate guards" : "Protections anti-doublon expirées"}
               value={String(overview.expiredIdempotencyKeys)}
             />
-            <KpiCard
-              label={isEn ? "Sessions to purge" : "Sessions à purger"}
+            <AdminStatTile
+              label={isEn ? "Expired sessions" : "Sessions expirées"}
               value={String(overview.revokedSessionsToPurge)}
             />
-          </section>
+          </AdminStatGrid>
 
           <AdminSection title={isEn ? "Latest maintenance runs" : "Dernières exécutions de maintenance"}>
             {overview.recentMaintenanceRuns.length === 0 ? (

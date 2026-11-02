@@ -33,13 +33,15 @@ import { DashboardBreadcrumb } from "../../../../../components/dashboard-breadcr
 import { LogoUploadField } from "../../../../../components/logo-upload-field";
 import { ImageUploadField } from "../../../../../components/image-upload-field";
 import { CopyPublicLinkButton } from "../../../../../components/copy-public-link-button";
-import { ActivationPaymentPanel } from "../../../../../components/activation-payment-panel";
+import { PublishPanel } from "../../../../../components/publish-panel";
 import { showToast } from "../../../../../lib/toast";
 import { Button, Input, Card, FormError, LoadingState } from "@/components/ui";
 
 type EventDetail = {
   id: string;
   slug: string;
+  /** Aperçu de la page publique d'un brouillon. */
+  previewToken?: string;
   title: string;
   status: string;
   tagline: string | null;
@@ -303,6 +305,7 @@ export default function EventDesignPage() {
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [tagline, setTagline] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
@@ -370,6 +373,7 @@ export default function EventDesignPage() {
       }
       setTitle(found.title);
       setSlug(found.slug);
+      setPreviewToken(found.previewToken ?? null);
       setStatus(found.status);
       setTagline(found.tagline ?? "");
       setLogoUrl(found.logoUrl ?? "");
@@ -490,30 +494,21 @@ export default function EventDesignPage() {
 
       <header className="flex flex-col gap-4 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("design.title")}</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-slate-900">{t("design.title")}</h1>
           <p className="max-w-xl text-slate-600">{t("design.lead")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <CopyPublicLinkButton eventSlug={slug} isEn={isEn} />
           <Button asChild variant="secondary">
-            <Link href={publicEventPath(slug)} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+            <Link href={publicEventPath(slug, status === "DRAFT" ? previewToken : null)} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-4" aria-hidden="true" />
               {t("design.openPage")}
             </Link>
           </Button>
         </div>
       </header>
 
-      {status !== "" && status !== "ACTIVE" && getStoredToken() ? (
-        <ActivationPaymentPanel
-          eventId={eventId}
-          token={getStoredToken() ?? ""}
-          isEn={isEn}
-          title={t("design.publishTitle")}
-          description={t("design.publishDesc")}
-          onActivated={() => setStatus("ACTIVE")}
-        />
-      ) : null}
+      {status === "DRAFT" ? <PublishPanel eventId={eventId} eventStatus={status} isEn={isEn} /> : null}
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
         <Card className="p-5 lg:p-8">
@@ -849,7 +844,7 @@ export default function EventDesignPage() {
             <iframe
               key={previewKey}
               title={t("design.previewTitle")}
-              src={publicEventPath(slug)}
+              src={publicEventPath(slug, status === "DRAFT" ? previewToken : null)}
               className="mx-auto block h-[min(720px,70vh)] bg-background"
               style={{ width: previewWidth === "phone" ? 390 : "100%" }}
             />

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHADOMA Votes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --action:#4F46E5; --action-d:#4338CA;
+  --ink:#0F172A; --muted:#475569; --bg:#FFFFFF; --rule:#E2E8F0; --on-dark:#CBD5E1;
+  --display:"Plus Jakarta Sans",system-ui,sans-serif;
+  --text:"Inter",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{overflow-x:clip}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--text)}
+img{display:block;max-width:100%}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:-.03em;line-height:1.05;font-style:normal}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+:focus-visible{outline:2px solid var(--action);outline-offset:3px;border-radius:4px}
+
+.top{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{font:800 17px/1 var(--display);letter-spacing:.06em;text-decoration:none}
+.nav{display:flex;align-items:center;gap:28px;font-size:14px;font-weight:500}
+.nav a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
+.nav a:not(.btn):hover{color:var(--action)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:8px;background:var(--action);color:#fff;font:600 15px/1 var(--text);text-decoration:none;white-space:nowrap;transition:background .15s}
+.btn:hover{background:var(--action-d)}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule)}
+.btn.ghost:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.btn.sm{min-height:40px;padding:0 16px;font-size:14px}
+
+/* hero */
+.hero{padding:clamp(56px,8vw,104px) 0 clamp(40px,5vw,56px);text-align:center}
+.hero h1{font-size:clamp(36px,5.4vw,64px)}
+.hero h1 span{color:var(--action)}
+.hero p{margin-top:16px;font-size:18px;color:var(--muted)}
+.ctas{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:28px}
+
+/* moving strip of real contest pages */
+.strip{overflow:hidden;padding:8px 0 24px;mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.track{display:flex;gap:16px;width:max-content;animation:slide 50s linear infinite}
+.strip:hover .track{animation-play-state:paused}
+.card{width:clamp(180px,17vw,230px);flex:none}
+.shot{border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05),0 12px 28px -16px rgba(15,23,42,.25)}
+.card .shot{aspect-ratio:3/4.2}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top center}
+@keyframes slide{to{transform:translateX(calc(-50% - 8px))}}
+
+/* steps */
+.sec{padding:clamp(64px,8vw,96px) 0}
+.steps{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--rule)}
+.steps li{padding:20px 16px 0 0}
+.steps span{font-size:13px;font-weight:600;color:var(--muted)}
+.steps h3{margin-top:8px;font-size:22px}
+.steps li:nth-child(3) h3{color:var(--action)}
+
+/* voter band */
+.band{background:var(--ink);color:#fff;border-radius:16px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:center;gap:32px;padding:clamp(32px,5vw,56px);overflow:hidden}
+.band h2{font-size:clamp(28px,3.6vw,40px)}
+.band p{margin-top:12px;color:var(--on-dark)}
+.ops{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.ops span{border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:6px 14px;font-size:14px;font-weight:600}
+.band .shot{width:min(220px,100%);justify-self:center;aspect-ratio:555/1000;margin-bottom:calc(-1 * clamp(32px,5vw,56px) - 40px);border-color:rgba(255,255,255,.2)}
+
+/* end */
+.end{text-align:center}
+.end h2{font-size:clamp(28px,3.6vw,40px)}
+footer{border-top:1px solid var(--rule)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 20px;padding:12px 0;font-size:13px;color:var(--muted)}
+footer nav{display:flex;flex-wrap:wrap;gap:0 20px}
+footer a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+footer a:hover{color:var(--ink)}
+
+.js .rv{opacity:0;transform:translateY(16px);transition:opacity .5s ease-out,transform .5s ease-out}
+.js .rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.track{animation:none}.js .rv{opacity:1;transform:none;transition:none}}
+
+@media (max-width:760px){
+  .nav a:not(.btn){display:none}
+  .steps{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:20px}
+  .band{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+</head>
+<body>
+<script>document.body.classList.add("js")</script>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#">SHADOMA</a>
+    <nav class="nav" aria-label="Principale">
+      <a href="#comment">Comment ça marche</a>
+      <a href="#">Tarifs</a>
+      <a href="#">Se connecter</a>
+      <a class="btn sm" href="#">Créer un compte</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="wrap hero">
+  <h1>Votre concours.<br><span>Payé en Mobile Money.</span></h1>
+  <p>Le public vote. Sans compte.</p>
+  <div class="ctas">
+    <a class="btn" href="#">Créer mon concours</a>
+    <a class="btn ghost" href="#">Voir un exemple</a>
+  </div>
+</section>
+
+<div class="strip" aria-label="Exemples de pages de concours">
+  <div class="track">
+    <figure class="card"><div class="shot"><img src="assets/couronne-home.jpg" alt="Concours au style Couronne"></div></figure>
+    <figure class="card"><div class="shot"><img src="assets/soiree-home.jpg" alt="Concours au style Soirée"></div></figure>
+    <figure class="card"><div class="shot"><img src="assets/affiche-home.jpg" alt="Concours au style Affiche"></div></figure>
+    <figure class="card"><div class="shot"><img src="assets/wax-home.jpg" alt="Concours au style Wax"></div></figure>
+    <figure class="card"><div class="shot"><img src="assets/stade-home.jpg" alt="Concours au style Stade"></div></figure>
+    <figure class="card"><div class="shot"><img src="assets/campus-mobile.jpg" alt="Concours au style Campus"></div></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/couronne-home.jpg" alt=""></div></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/soiree-home.jpg" alt=""></div></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/affiche-home.jpg" alt=""></div></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/wax-home.jpg" alt=""></div></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/stade-home.jpg" alt=""></div></figure>
+    <figure class="card" aria-hidden="true"><div class="shot"><img src="assets/campus-mobile.jpg" alt=""></div></figure>
+  </div>
+</div>
+
+<section class="wrap sec" id="comment" aria-label="Comment ça marche">
+  <ol class="steps rv">
+    <li><span>01</span><h3>Créez</h3></li>
+    <li><span>02</span><h3>Partagez</h3></li>
+    <li><span>03</span><h3>On vote</h3></li>
+    <li><span>04</span><h3>Retirez</h3></li>
+  </ol>
+</section>
+
+<section class="wrap" aria-labelledby="h-band">
+  <div class="band rv">
+    <div>
+      <h2 id="h-band">Un numéro. C’est tout.</h2>
+      <p>Voix payée = voix comptée.</p>
+      <div class="ops"><span>MTN</span><span>Moov</span><span>Celtiis</span></div>
+    </div>
+    <div class="shot"><img src="assets/campus-mobile.jpg" alt="Page d’un concours sur téléphone"></div>
+  </div>
+</section>
+
+<section class="wrap sec end" aria-labelledby="h-end">
+  <h2 id="h-end" class="rv">Prêt&nbsp;?</h2>
+  <div class="ctas rv"><a class="btn" href="#">Créer mon concours</a></div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <nav aria-label="Informations légales">
+      <a href="#">Mentions légales</a><a href="#">Confidentialité</a><a href="#">Conditions</a><a href="#">Cookies</a>
+    </nav>
+    <span>© 2026 SHADOMA</span>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.15 });
+  document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+</script>
+</body>
+</html>

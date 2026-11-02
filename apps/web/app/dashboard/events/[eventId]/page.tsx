@@ -9,6 +9,7 @@ import { useI18n } from "@/lib/i18n-provider";
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { formatEventStatus } from "@/lib/i18n";
 import { sanitizePhoneInput } from "@/lib/phone";
+import { usePayinNetworks } from "@/lib/hooks/use-payin-networks";
 import {
   Button,
   Dialog,
@@ -23,6 +24,8 @@ import {
 import { EventDashboardShell } from "@/components/event-dashboard-shell";
 import { GlassCard } from "@/components/glass-card";
 import { showToast } from "@/lib/toast";
+import { useAuth } from "@/lib/auth-context";
+import { canManageEventLifecycle } from "@/lib/roles";
 
 type DashboardData = {
   event: {
@@ -50,16 +53,18 @@ type EventOfferStats = {
   eventId: string;
   title: string;
   status: string;
-  offerType: "EXTERNAL" | "ESCROW";
   closedAt: string | null;
+  votesGrossCfa: number;
+  ticketsGrossCfa: number;
   totalCollectedCfa: number;
   votesCount: number;
   publicVotesCount: number;
   topupVotesCount: number;
+  ticketsSoldCount: number;
   platformCommissionCfa: number;
   organizerNetCfa: number;
-  eventHeldCfa: number | null;
-  eventWithdrawableContributedCfa: number | null;
+  eventHeldCfa: number;
+  eventWithdrawableContributedCfa: number;
 };
 
 type TopupQuote = {
@@ -67,8 +72,14 @@ type TopupQuote = {
   unitPriceCfa: number;
   grossCfa: number;
   amountDueCfa: number;
-  offerType: "EXTERNAL" | "ESCROW";
-  breakdown: { description: string; platformCommissionCfa?: number };
+  breakdown: {
+    description: string;
+    commissionBps: number;
+    platformCommissionCfa: number;
+    organizerNetCfa: number;
+    heldCfa: number;
+    availableCfa: number;
+  };
 };
 
 function formatCfa(amount: number, isEn: boolean) {
@@ -90,6 +101,7 @@ export default function EventOverviewPage() {
   const router = useRouter();
   const params = useParams<{ eventId: string }>();
   const { locale } = useI18n();
+  const { role } = useAuth();
   const isEn = locale === "en";
   const [data, setData] = useState<DashboardData | null>(null);
   const [offerStats, setOfferStats] = useState<EventOfferStats | null>(null);
@@ -102,6 +114,9 @@ export default function EventOverviewPage() {
   const [candidateId, setCandidateId] = useState("");
   const [votesCount, setVotesCount] = useState("10");
   const [payerPhone, setPayerPhone] = useState("");
+  // Réseau obligatoire : deviner l'opérateur d'après le numéro envoie la demande au mauvais réseau.
+  const [operator, setOperator] = useState("");
+  const networks = usePayinNetworks(params.eventId);
   const [quote, setQuote] = useState<TopupQuote | null>(null);
   const [quoteError, setQuoteError] = useState("");
   const [quoting, setQuoting] = useState(false);
@@ -173,10 +188,10 @@ export default function EventOverviewPage() {
         result.deleted
           ? isEn
             ? "Event deleted."
-            : "Évènement supprimé."
+            : "Événement supprimé."
           : isEn
             ? "Event archived."
-            : "Évènement archivé."
+            : "Événement archivé."
       );
       router.push("/dashboard/events");
     } catch (caught) {
@@ -217,6 +232,10 @@ export default function EventOverviewPage() {
       showToast.error(isEn ? "Payer phone required." : "Numéro payeur requis.");
       return;
     }
+    if (!networks.some((network) => network.value === operator)) {
+      showToast.error(isEn ? "Choose your Mobile Money network." : "Choisissez votre réseau Mobile Money.");
+      return;
+    }
     setPaying(true);
     setPaymentHint("");
     try {
@@ -229,6 +248,7 @@ export default function EventOverviewPage() {
             candidateId,
             votesCount: count,
             payerPhone: payerPhone.trim(),
+            operator,
             idempotencyKey: newIdempotencyKey()
           })
         }
@@ -298,7 +318,9 @@ export default function EventOverviewPage() {
   ];
 
   const maxDailyVotes = Math.max(1, ...data.daily.map((row) => row.votes));
-  const canClose = !offerStats?.closedAt && data.event.status !== "CLOSED" && data.event.status !== "ARCHIVED";
+  // Terminer / supprimer : réservé au responsable (gardes API owner-only).
+  const mayManageLifecycle = canManageEventLifecycle(role);
+  const canClose = mayManageLifecycle && !offerStats?.closedAt && data.event.status !== "CLOSED" && data.event.status !== "ARCHIVED";
 
   return (
     <EventDashboardShell
@@ -306,47 +328,34 @@ export default function EventOverviewPage() {
       eventTitle={data.event.title}
       eventSlug={data.event.slug}
       eventStatus={formatEventStatus(data.event.status, isEn)}
-      onDeleteEvent={onDeleteEvent}
+      {...(mayManageLifecycle ? { onDeleteEvent } : {})}
       deleting={deleting}
     >
       {offerStats ? (
         <GlassCard intensity="subtle" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <p className="text-xs text-muted-foreground">{isEn ? "Collected" : "Total encaissé"}</p>
-              <p className="text-lg font-bold">{formatCfa(offerStats.totalCollectedCfa, isEn)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">{isEn ? "Votes" : "Votes"}</p>
-              <p className="text-lg font-bold">{offerStats.votesCount}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">{isEn ? "Commission" : "Commission"}</p>
-              <p className="text-lg font-bold">{formatCfa(offerStats.platformCommissionCfa, isEn)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">{isEn ? "Net" : "Net"}</p>
-              <p className="text-lg font-bold">{formatCfa(offerStats.organizerNetCfa, isEn)}</p>
-            </div>
-            {offerStats.offerType === "ESCROW" ? (
-              <div className="sm:col-span-2">
-                <p className="text-xs text-muted-foreground">
-                  {isEn ? "Contributed to withdrawable (lifetime)" : "Versé au solde retirable (cumulé)"}
-                </p>
-                <p className="text-lg font-bold">
-                  {formatCfa(offerStats.eventWithdrawableContributedCfa ?? 0, isEn)}
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({isEn ? "still held for this event" : "encore en réserve pour cet event"}{" "}
-                    {formatCfa(offerStats.eventHeldCfa ?? 0, isEn)})
-                  </span>
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {isEn
-                    ? "Withdrawals draw from your total wallet balance, shared across all your events — see Wallet."
-                    : "Les retraits puisent dans le solde total de votre portefeuille, partagé entre tous vos events — voir Portefeuille."}
-                </p>
+            {(
+              [
+                [isEn ? "Votes collected" : "Votes encaissés", formatCfa(offerStats.votesGrossCfa, isEn)],
+                [isEn ? "Tickets collected" : "Billets encaissés", formatCfa(offerStats.ticketsGrossCfa, isEn)],
+                [isEn ? "Total collected" : "Total encaissé", formatCfa(offerStats.totalCollectedCfa, isEn)],
+                [isEn ? "Votes · tickets sold" : "Voix · billets vendus", `${offerStats.votesCount} · ${offerStats.ticketsSoldCount}`],
+                [isEn ? "SHADOMA commission" : "Commission SHADOMA", formatCfa(offerStats.platformCommissionCfa, isEn)],
+                [isEn ? "Your net share" : "Votre part nette", formatCfa(offerStats.organizerNetCfa, isEn)],
+                [isEn ? "Still in reserve" : "Encore en réserve", formatCfa(offerStats.eventHeldCfa, isEn)],
+                [isEn ? "Paid into available (total)" : "Versé au disponible (cumulé)", formatCfa(offerStats.eventWithdrawableContributedCfa, isEn)]
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="text-lg font-bold">{value}</p>
               </div>
-            ) : null}
+            ))}
+            <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
+              {isEn
+                ? "Withdrawals draw from your total available balance, shared across your contests — see Wallet."
+                : "Les retraits puisent dans votre solde disponible total, commun à tous vos concours — voir Portefeuille."}
+            </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => setTopupOpen(true)}>
@@ -480,6 +489,24 @@ export default function EventOverviewPage() {
               value={payerPhone}
               onChange={(e) => setPayerPhone(sanitizePhoneInput(e.target.value))}
             />
+            <div className="grid gap-1.5">
+              <label htmlFor="topupOperator" className="text-sm font-medium">
+                {isEn ? "Mobile Money network" : "Réseau Mobile Money"}
+              </label>
+              <select
+                id="topupOperator"
+                value={operator}
+                onChange={(e) => setOperator(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              >
+                <option value="" disabled>{isEn ? "Choose your network" : "Choisissez votre réseau"}</option>
+                {networks.map((network) => (
+                  <option key={network.value} value={network.value}>
+                    {network.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             {quoting ? (
               <p className="text-sm text-muted-foreground">{isEn ? "Calculating…" : "Calcul…"}</p>
             ) : null}
@@ -490,6 +517,11 @@ export default function EventOverviewPage() {
                   {isEn ? "Amount due" : "Montant dû"}: {formatCfa(quote.amountDueCfa, isEn)}
                 </p>
                 <p className="mt-1 text-muted-foreground">{quote.breakdown.description}</p>
+                <p className="mt-1 text-muted-foreground">
+                  {isEn ? "Commission" : "Commission"} {formatCfa(quote.breakdown.platformCommissionCfa, isEn)} ·{" "}
+                  {isEn ? "reserve" : "réserve"} {formatCfa(quote.breakdown.heldCfa, isEn)} ·{" "}
+                  {isEn ? "available" : "disponible"} {formatCfa(quote.breakdown.availableCfa, isEn)}
+                </p>
               </div>
             ) : null}
             {paymentHint ? (

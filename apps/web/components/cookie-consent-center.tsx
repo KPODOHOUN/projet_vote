@@ -121,7 +121,7 @@ export function CookieConsentCenter() {
   }
 
   return (
-    <aside
+    <div
       className="fixed bottom-0 left-0 right-0 z-50 p-3 pointer-events-none sm:p-6"
       role="dialog"
       aria-modal="false"
@@ -209,6 +209,6 @@ export function CookieConsentCenter() {
           </div>
         </div>
       </div>
-    </aside>
+    </div>
   );
 }

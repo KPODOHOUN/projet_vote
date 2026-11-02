@@ -55,7 +55,8 @@ export function useWithdrawalsQuery(enabled = true) {
   });
 }
 
-export type PayoutDestination = { network: string; last4: string } | null;
+/** `withdrawalsAvailableAt` : fin du délai de sécurité de 24 h après un changement de numéro (null s'il est écoulé). */
+export type PayoutDestination = { network: string; last4: string; withdrawalsAvailableAt: string | null } | null;
 
 export function usePayoutDestinationQuery(enabled = true) {
   const hasToken = Boolean(getStoredToken());
@@ -70,7 +71,7 @@ export function usePayoutDestinationMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { phone: string; network: string }) =>
-      authedFetch<{ network: string; last4: string }>("/organizer/payout-destination", {
+      authedFetch<NonNullable<PayoutDestination>>("/organizer/payout-destination", {
         method: "POST",
         body: JSON.stringify(input),
       }),

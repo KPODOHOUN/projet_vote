@@ -1,5 +1,7 @@
 # PSP Split capability audit — 2026-07-29
 
+> **Obsolète (2026-10-29)** : plus aucun partage de paiement — SHADOMA encaisse tout. Voir [ADR-022](./ADR-022-contrat-par-concours-modele-unique.md).
+
 ## Verdict
 
 - **FedaPay Marketplace** : split natif via sous-comptes et

@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 
 /* ── Button ────────────────────────────────────────────────────────────────
    API historique : variant primary|secondary|destructive|ghost + loading. */
-type ButtonVariant = "primary" | "secondary" | "destructive" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "outline" | "destructive" | "ghost";
 
 export interface ButtonProps
   extends Omit<React.ComponentProps<"button">, "color"> {
@@ -42,9 +42,10 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
-const VARIANT_MAP: Record<ButtonVariant, "default" | "secondary" | "destructive" | "ghost"> = {
+const VARIANT_MAP: Record<ButtonVariant, "default" | "secondary" | "outline" | "destructive" | "ghost"> = {
   primary: "default",
   secondary: "secondary",
+  outline: "outline",
   destructive: "destructive",
   ghost: "ghost",
 };
@@ -72,7 +73,7 @@ export function Button({
         variant={VARIANT_MAP[variant]}
         size={size}
         asChild={true}
-        className={cn("min-h-11 active:scale-[0.97] active:opacity-90 transition-all", className)}
+        className={cn("active:scale-[0.97] active:opacity-90 transition-all", className)}
         disabled={disabled || loading}
         aria-busy={loading || undefined}
         {...props}
@@ -86,7 +87,7 @@ export function Button({
     <ShadcnButton
       variant={VARIANT_MAP[variant]}
       size={size}
-      className={cn("min-h-11 active:scale-[0.97] active:opacity-90 transition-all", className)}
+      className={cn("active:scale-[0.97] active:opacity-90 transition-all", className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...props}
@@ -99,7 +100,7 @@ export function Button({
       ) : (
         leftIcon
       )}
-      {children != null ? <span>{children}</span> : null}
+      {children != null ? <span className="inline-flex items-center gap-1.5">{children}</span> : null}
       {!loading ? rightIcon : null}
     </ShadcnButton>
   );
@@ -119,9 +120,12 @@ export interface InputProps extends React.ComponentProps<"input"> {
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
-  { id, label, helpText, errorText, successText, state = "default", className, ...props },
+  { id: idProp, label, helpText, errorText, successText, state = "default", className, ...props },
   ref
 ) {
+  // Sans id fourni, le libellé n'était relié à rien et les ids d'aide se répétaient.
+  const autoId = React.useId();
+  const id = idProp ?? autoId;
   const errorId = `${id}-error`;
   const helpId = `${id}-help`;
   const successId = `${id}-success`;
@@ -135,7 +139,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
     .join(" ");
 
   return (
-    <div className="grid gap-1.5">
+    <div className="grid content-start gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <ShadcnInput
         ref={ref}
@@ -248,7 +252,7 @@ export function EmptyState({ title, description, icon, action }: EmptyStateProps
   return (
     <section className="grid justify-items-start gap-2.5 rounded-xl border border-dashed border-border bg-muted/40 p-6">
       {icon ? <div aria-hidden="true">{icon}</div> : null}
-      <h3 className="font-[var(--font-display)] text-xl leading-tight text-foreground">{title}</h3>
+      <h3 className="font-[var(--font-display)] text-base font-bold leading-tight text-foreground">{title}</h3>
       <p className="text-sm text-muted-foreground">{description}</p>
       {action ? <div>{action}</div> : null}
     </section>

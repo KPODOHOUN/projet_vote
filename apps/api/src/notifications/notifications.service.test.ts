@@ -63,28 +63,6 @@ test("markRead marque la sienne ; celle d'autrui → NotFound", async () => {
   await assert.rejects(service.markRead(asUser(a.staff, "ORGANIZER_STAFF"), ownerRow.id), /introuvable|not found|404/i);
 });
 
-test("createForPlatformAdmins notifie les admins plateforme", async () => {
-  const tenant = await prisma.tenant.create({ data: { slug: "adm-ntf", displayName: "Admin Org" } });
-  const adminUser = await prisma.user.create({
-    data: {
-      tenantId: tenant.id,
-      email: "admin@platform.africa",
-      passwordHash: "x",
-      role: "PLATFORM_ADMIN"
-    }
-  });
-  await prisma.user.create({
-    data: { tenantId: tenant.id, email: "owner@org.africa", passwordHash: "x", role: "ORGANIZER_OWNER" }
-  });
-  await service.createForPlatformAdmins("PARTNER_REQUEST_RECEIVED", {
-    eventTitle: "Gala",
-    requestId: "req-1"
-  });
-  const rows = await prisma.notification.findMany({ where: { userId: adminUser.id } });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0]?.type, "PARTNER_REQUEST_RECEIVED");
-});
-
 test("markAllRead passe toutes les non-lues du user à lues", async () => {
   const a = await seedTenant("allread");
   await service.create(a.tenant.id, "INVITATION_ACCEPTED", { email: "1@y.z" });

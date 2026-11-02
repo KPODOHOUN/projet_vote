@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { VotesService } from "./votes.service";
 
@@ -18,18 +18,18 @@ export class VotesController {
 
   // Event-centric public entry point (ADR-016): /e/{eventSlug} resolves here.
   @Get("public/event/:eventSlug")
-  getPublicEventBySlug(@Param("eventSlug") eventSlug: string) {
-    return this.votesService.getPublicEventBySlug(eventSlug);
+  getPublicEventBySlug(@Param("eventSlug") eventSlug: string, @Query("preview") preview?: string) {
+    return this.votesService.getPublicEventBySlug(eventSlug, preview);
   }
 
   @Get("public/event/:eventSlug/results")
-  getPublicEventResults(@Param("eventSlug") eventSlug: string) {
-    return this.votesService.getPublicEventResults(eventSlug);
+  getPublicEventResults(@Param("eventSlug") eventSlug: string, @Query("preview") preview?: string) {
+    return this.votesService.getPublicEventResults(eventSlug, preview);
   }
 
   @Get("public/event/:eventSlug/candidate/:ref")
-  getPublicCandidate(@Param("eventSlug") eventSlug: string, @Param("ref") ref: string) {
-    return this.votesService.getPublicCandidate(eventSlug, ref);
+  getPublicCandidate(@Param("eventSlug") eventSlug: string, @Param("ref") ref: string, @Query("preview") preview?: string) {
+    return this.votesService.getPublicCandidate(eventSlug, ref, preview);
   }
 
   @Post("cast")

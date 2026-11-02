@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHADOMA Votes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --action:#4F46E5; --action-d:#4338CA;
+  --ink:#0F172A; --muted:#475569; --bg:#FFFFFF; --soft:#F8FAFC; --rule:#E2E8F0;
+  --gold:#D97706; --ok:#047857;
+  --gut:clamp(16px,4vw,64px);
+  --display:"Plus Jakarta Sans",system-ui,sans-serif;
+  --text:"Inter",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font:400 17px/1.6 var(--text);overflow-x:hidden}
+img{display:block;max-width:100%}
+a{color:inherit}
+h1,h2,h3,.d{font-family:var(--display);font-weight:800;letter-spacing:-.04em;line-height:.92;font-style:normal}
+.wrap{padding-inline:var(--gut)}
+.rule{border-top:1px solid var(--ink)}
+.eyebrow{font:600 13px/1 var(--text);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:24px;height:72px}
+.logo{font:800 20px/1 var(--display);letter-spacing:.06em;text-decoration:none}
+.nav{display:flex;align-items:center;gap:32px;font-size:15px;font-weight:500}
+.nav a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+.nav a:hover{text-decoration:underline;text-underline-offset:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;border-radius:8px;
+  background:var(--action);color:#fff;font:600 16px/1 var(--text);text-decoration:none;border:1px solid var(--action);transition:background .15s}
+.btn:hover{background:var(--action-d)}
+.btn.sm{min-height:44px;padding:0 18px;font-size:15px}
+.link{font-weight:600;min-height:48px;display:inline-flex;align-items:center;text-decoration:underline;text-underline-offset:5px;text-decoration-thickness:1px}
+.link:hover{color:var(--action)}
+
+/* hero */
+.hero h1{font-size:clamp(52px,11.6vw,184px);padding:clamp(40px,6vw,88px) 0 clamp(28px,4vw,56px);max-width:15ch}
+.hero h1 em{font-style:normal;color:var(--action)}
+.split{display:grid;grid-template-columns:1fr 1fr}
+.split>*{min-width:0}
+.hero-copy{padding:40px clamp(24px,4vw,64px) 40px 0;display:flex;flex-direction:column;justify-content:flex-start;gap:72px;border-right:1px solid var(--ink)}
+.hero-copy p{font-size:clamp(19px,1.6vw,24px);line-height:1.45;max-width:30ch}
+.ctas{display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px;margin-top:28px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--rule)}
+.facts div{padding:16px 16px 0 0;font-size:14px;color:var(--muted);line-height:1.4}
+.facts b{display:block;font:700 17px/1.2 var(--display);color:var(--ink);letter-spacing:-.01em;margin-bottom:4px}
+.hero-shot{padding:40px 0 40px clamp(24px,4vw,64px)}
+.shot{border:1px solid var(--rule);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.06),0 12px 32px -12px rgba(15,23,42,.18);background:#fff}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top center}
+.hero-shot .shot{aspect-ratio:16/10.5}
+.cap{display:flex;justify-content:space-between;gap:16px;margin-top:12px;font-size:14px;color:var(--muted)}
+
+/* styles wall */
+.sec{padding-block:clamp(72px,9vw,140px)}
+.sec-head{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:32px;margin-bottom:clamp(32px,4vw,56px)}
+.sec-head h2{font-size:clamp(44px,7.4vw,120px)}
+.sec-head p{font-size:19px;color:var(--muted);max-width:34ch;justify-self:end}
+.wall{display:grid;grid-template-columns:repeat(5,1fr);gap:clamp(12px,1.4vw,20px)}
+.wall figure .shot{aspect-ratio:3/4.6}
+.wall figcaption{display:flex;justify-content:space-between;align-items:baseline;padding-top:12px;border-top:1px solid var(--ink);margin-top:14px}
+.wall figcaption b{font:800 clamp(18px,1.7vw,26px)/1 var(--display);letter-spacing:-.03em}
+.wall figcaption span{font-size:13px;color:var(--muted)}
+.wall figure:nth-child(even){margin-top:clamp(0px,4vw,64px)}
+.names{margin-top:clamp(40px,5vw,72px);padding-top:20px;border-top:1px solid var(--rule);font-size:15px;color:var(--muted);line-height:1.9}
+.names strong{color:var(--ink)}
+
+/* steps */
+.steps{border-bottom:1px solid var(--ink)}
+.step{display:grid;grid-template-columns:120px 1fr minmax(0,34ch);align-items:end;gap:32px;padding:clamp(20px,2.4vw,36px) 0;border-top:1px solid var(--ink)}
+.step .n{font:700 15px/1 var(--text);color:var(--muted);padding-bottom:12px}
+.step h3{font-size:clamp(56px,9.6vw,156px)}
+.step p{font-size:18px;color:var(--ink);padding-bottom:10px}
+.step:nth-child(3) h3{color:var(--action)}
+
+/* money */
+.money{background:var(--ink);color:#fff}
+.money .split{align-items:stretch}
+.money h2{font-size:clamp(48px,7.4vw,120px)}
+.money .left{padding:clamp(72px,9vw,140px) clamp(24px,4vw,64px) clamp(72px,9vw,140px) 0;border-right:1px solid rgba(255,255,255,.22);display:flex;flex-direction:column;justify-content:space-between;gap:48px}
+.money .left p{color:#CBD5E1;font-size:19px;max-width:32ch}
+.money ol{list-style:none;padding:clamp(72px,9vw,140px) 0 clamp(72px,9vw,140px) clamp(24px,4vw,64px)}
+.money li{display:grid;grid-template-columns:48px 1fr;gap:8px;padding:22px 0;border-top:1px solid rgba(255,255,255,.22)}
+.money li:last-child{border-bottom:1px solid rgba(255,255,255,.22)}
+.money li span{font:700 14px/1.6 var(--text);color:#A5B4FC}
+.money li b{display:block;font:700 22px/1.25 var(--display);letter-spacing:-.02em;margin-bottom:4px}
+.money li p{color:#CBD5E1;font-size:16px}
+
+/* voter */
+.voter .split{align-items:center}
+.voter .phone{display:flex;justify-content:center;padding:0 clamp(24px,4vw,64px) 0 0;border-right:1px solid var(--ink)}
+.voter .phone .shot{width:min(320px,100%);aspect-ratio:555/1000;border-radius:12px}
+.voter .txt{padding-left:clamp(24px,4vw,64px)}
+.voter h2{font-size:clamp(44px,6.4vw,104px)}
+.voter .txt p{font-size:19px;color:var(--muted);max-width:32ch;margin-top:28px}
+.ops{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
+.ops span{border:1px solid var(--ink);border-radius:6px;padding:8px 14px;font-size:14px;font-weight:600}
+.ops span.soon{border-color:var(--rule);color:var(--muted)}
+.res{margin-top:40px}
+.res .shot{aspect-ratio:1200/640}
+.res .shot img{object-position:top left}
+
+/* who */
+.who ul{list-style:none;display:flex;flex-wrap:wrap;column-gap:.3em;font:800 clamp(40px,6.6vw,108px)/1.14 var(--display);letter-spacing:-.04em}
+.who li{white-space:nowrap}
+.who li:not(:last-child)::after{content:"·";color:var(--action);margin-left:.3em}
+
+/* faq */
+.faq{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--ink)}
+.faq div{padding:28px 32px 0 0}
+.faq div+div{padding-left:32px;border-left:1px solid var(--rule)}
+.faq h3{font-size:clamp(24px,2.2vw,32px);line-height:1.1;letter-spacing:-.03em;margin-bottom:16px}
+.faq p{color:var(--muted)}
+
+/* end */
+.end{border-top:1px solid var(--ink);padding-top:clamp(56px,7vw,104px);padding-bottom:clamp(56px,7vw,104px)}
+.end h2{font-size:clamp(64px,15vw,240px);line-height:.86}
+.end .row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:24px;margin-top:40px}
+.end .row p{font-size:19px;color:var(--muted);max-width:36ch}
+footer{border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 24px;padding-block:20px;font-size:14px;color:var(--muted)}
+footer nav{display:flex;flex-wrap:wrap;gap:0 24px}
+footer a{text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+footer a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--action);outline-offset:3px;border-radius:4px}
+
+@media (max-width:1100px){
+  .wall{grid-template-columns:repeat(3,1fr)}
+  .wall figure:nth-child(n+4){display:none}
+  .wall figure:nth-child(even){margin-top:0}
+  .step{grid-template-columns:72px 1fr}
+  .step p{grid-column:2}
+}
+@media (max-width:760px){
+  body{font-size:16px}
+  .nav a:not(.btn){display:none}
+  .nav .btn{padding:0 14px}
+  .split,.sec-head,.faq{grid-template-columns:1fr}
+  .hero-copy{border-right:0;padding:24px 0 32px;gap:32px}
+  .hero-shot{padding:0 0 8px}
+  .facts{grid-template-columns:1fr 1fr 1fr}
+  .facts div{padding-right:8px}
+  .sec-head p{justify-self:start}
+  .wall{grid-template-columns:1fr 1fr;gap:12px}
+  .wall figure:nth-child(n+4){display:block}
+  .wall figure:nth-child(5){display:none}
+  .step{grid-template-columns:1fr;gap:10px}
+  .step .n{padding:0}
+  .step p{grid-column:1}
+  .money .left{border-right:0;padding:72px 0 32px}
+  .money ol{padding:0 0 72px}
+  .voter .phone{border-right:0;padding:0 0 40px}
+  .voter .phone .shot{width:min(260px,80%)}
+  .voter .txt{padding-left:0}
+  .faq div,.faq div+div{padding:24px 0;border-left:0;border-bottom:1px solid var(--rule)}
+  .who li{white-space:normal}
+}
+</style>
+</head>
+<body>
+
+<header class="wrap top" role="banner">
+  <a class="logo" href="#">SHADOMA</a>
+  <nav class="nav" aria-label="Principale">
+    <a href="#comment">Comment ça marche</a>
+    <a href="#">Tarifs</a>
+    <a href="#">Se connecter</a>
+    <a class="btn sm" href="#">Créer un compte</a>
+  </nav>
+</header>
+
+<main>
+<section class="wrap hero rule" aria-labelledby="h1">
+  <h1 id="h1">Le concours où chaque voix se paie en <em>Mobile&nbsp;Money.</em></h1>
+  <div class="split rule">
+    <div class="hero-copy">
+      <div>
+        <p>Créez votre concours, partagez le lien, le public vote depuis son téléphone. SHADOMA encaisse pour vous.</p>
+        <div class="ctas">
+          <a class="btn" href="#">Créer mon concours</a>
+          <a class="link" href="#">Voir un exemple</a>
+        </div>
+      </div>
+      <div class="facts">
+        <div><b>FCFA</b>Prix de la voix fixé par vous</div>
+        <div><b>Sans compte</b>Pour le votant</div>
+        <div><b>17 styles</b>De page pour votre concours</div>
+      </div>
+    </div>
+    <div class="hero-shot">
+      <figure>
+        <div class="shot"><img src="assets/couronne-home.jpg" alt="Page d’accueil d’un concours Miss Campus 2026 au style Couronne"></div>
+        <figcaption class="cap"><span>Miss Campus 2026</span><span>Style Couronne</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="wrap sec" aria-labelledby="h-styles">
+  <div class="sec-head">
+    <h2 id="h-styles">Un concours,<br>une page.</h2>
+    <p>Chaque concours a son mini-site&nbsp;: accueil, profils des candidats, résultats en direct, billetterie. Vous choisissez le style, votre logo et votre couleur.</p>
+  </div>
+  <div class="wall">
+    <figure><div class="shot"><img src="assets/couronne-home.jpg" alt="Style Couronne"></div><figcaption><b>Couronne</b><span>01</span></figcaption></figure>
+    <figure><div class="shot"><img src="assets/soiree-home.jpg" alt="Style Soirée"></div><figcaption><b>Soirée</b><span>02</span></figcaption></figure>
+    <figure><div class="shot"><img src="assets/affiche-home.jpg" alt="Style Affiche"></div><figcaption><b>Affiche</b><span>03</span></figcaption></figure>
+    <figure><div class="shot"><img src="assets/wax-home.jpg" alt="Style Wax"></div><figcaption><b>Wax</b><span>04</span></figcaption></figure>
+    <figure><div class="shot"><img src="assets/stade-home.jpg" alt="Style Stade"></div><figcaption><b>Stade</b><span>05</span></figcaption></figure>
+  </div>
+  <p class="names"><strong>17 styles, 88 modèles&nbsp;:</strong> Affiche, Soirée, Billet, Couronne, Magazine, Pop, Terroir, Stade, Line-up, Diplôme, Marché, Menu, Wax, Campus, Badge, Story, Sanctuaire.</p>
+</section>
+
+<section class="wrap sec" id="comment" aria-labelledby="h-how" style="padding-top:0">
+  <div class="sec-head">
+    <h2 id="h-how">Comment<br>ça marche.</h2>
+    <p>Quatre étapes. Rien à installer.</p>
+  </div>
+  <div class="steps">
+    <div class="step"><span class="n">01</span><h3>Créez.</h3><p>Titre, dates, prix d’une voix. Ajoutez vos candidats.</p></div>
+    <div class="step"><span class="n">02</span><h3>Partagez.</h3><p>Envoyez le lien de votre mini-site sur WhatsApp, Facebook, partout.</p></div>
+    <div class="step"><span class="n">03</span><h3>On vote.</h3><p>Le public choisit un candidat et paie en Mobile Money.</p></div>
+    <div class="step"><span class="n">04</span><h3>Retirez.</h3><p>Vous demandez un retrait. SHADOMA le valide et l’envoie sur votre Mobile Money.</p></div>
+  </div>
+</section>
+
+<section class="money" aria-labelledby="h-money">
+  <div class="wrap split">
+    <div class="left">
+      <h2 id="h-money">L’argent,<br>en clair.</h2>
+      <p>Pas de virement automatique&nbsp;: chaque retrait est vérifié par une personne de l’équipe SHADOMA.</p>
+    </div>
+    <ol>
+      <li><span>01</span><div><b>SHADOMA encaisse pour vous.</b><p>Paiements via FeexPay et FedaPay. KkiaPay et SebPay&nbsp;: bientôt.</p></div></li>
+      <li><span>02</span><div><b>La voix compte une fois payée.</b><p>Seuls les paiements confirmés entrent dans les résultats.</p></div></li>
+      <li><span>03</span><div><b>L’argent arrive dans votre portefeuille.</b><p>Une partie reste en réserve jusqu’à la clôture du concours.</p></div></li>
+      <li><span>04</span><div><b>Vous demandez un retrait.</b><p>Un administrateur le valide, puis l’envoie sur votre Mobile Money.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<section class="wrap sec voter" aria-labelledby="h-voter">
+  <div class="split">
+    <div class="phone">
+      <div class="shot"><img src="assets/campus-mobile.jpg" alt="Mini-site d’un concours au style Campus, sur téléphone"></div>
+    </div>
+    <div class="txt">
+      <p class="eyebrow">Côté votant</p>
+      <h2 id="h-voter" style="margin-top:20px">Un numéro.<br>C’est tout.</h2>
+      <p>Pas de compte à créer. Le votant choisit un candidat et un nombre de voix, saisit son numéro Mobile Money et confirme sur son téléphone.</p>
+      <div class="ops"><span>MTN</span><span>Moov</span><span>Celtiis</span></div>
+      <figure class="res">
+        <div class="shot"><img src="assets/couronne-results.jpg" alt="Page des résultats en direct d’un concours"></div>
+        <figcaption class="cap"><span>Résultats en direct</span><span>Voix payées uniquement</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="wrap sec who rule" aria-labelledby="h-who">
+  <p class="eyebrow" id="h-who" style="margin-bottom:28px">Pour qui</p>
+  <ul>
+    <li>Miss &amp; Mister campus</li><li>Festivals</li><li>Écoles</li><li>Chorales</li><li>Foires</li><li>Médias</li>
+  </ul>
+  <p style="margin-top:28px;color:var(--muted);font-size:19px;max-width:60ch">Et la billetterie&nbsp;: billets avec QR code, payés en Mobile Money.</p>
+</section>
+
+<section class="wrap sec" aria-labelledby="h-faq" style="padding-top:0">
+  <div class="sec-head">
+    <h2 id="h-faq">Trois<br>questions.</h2>
+  </div>
+  <div class="faq">
+    <div><h3>Le votant doit-il créer un compte&nbsp;?</h3><p>Non. Un numéro Mobile Money suffit.</p></div>
+    <div><h3>Quand une voix compte-t-elle&nbsp;?</h3><p>Quand le paiement est confirmé. Avant, elle n’apparaît pas dans les résultats.</p></div>
+    <div><h3>Quand vais-je recevoir l’argent&nbsp;?</h3><p>Après votre demande de retrait, une fois validée par SHADOMA.</p></div>
+  </div>
+</section>
+
+<section class="wrap end" aria-labelledby="h-end">
+  <h2 id="h-end">À vous<br>de lancer.</h2>
+  <div class="row">
+    <p>Créez votre compte, puis votre concours. Le lien est prêt à partager.</p>
+    <div class="ctas" style="margin-top:0">
+      <a class="btn" href="#">Créer mon concours</a>
+      <a class="link" href="#">Voir un exemple</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="wrap">
+  <nav aria-label="Informations légales">
+    <a href="#">Mentions légales</a><a href="#">Confidentialité</a><a href="#">Conditions</a><a href="#">Cookies</a>
+  </nav>
+  <span>© 2026 SHADOMA</span>
+</footer>
+</body>
+</html>

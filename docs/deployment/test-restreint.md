@@ -38,7 +38,7 @@ RUN_SEED=true npm run db:seed
 ### Option A — Blueprint (recommandé)
 
 1. [render.com](https://render.com) → **New → Blueprint** → connecte ce dépôt GitHub.
-2. Render lit `render.yaml` (build Docker via `Dockerfile.api`).
+2. Copier `docs/deployment/templates/render.yaml.example` en `render.yaml` à la racine ; Render construit l'image `apps/api/Dockerfile`.
 3. Complète les variables marquées *sync: false* dans le dashboard :
 
 | Variable | Valeur |
@@ -55,8 +55,8 @@ RUN_SEED=true npm run db:seed
 
 1. **New → Web Service** → repo GitHub.
 2. **Environment** : Docker.
-3. **Dockerfile Path** : `Dockerfile.api`.
-4. **Docker Command** : `./docker-entrypoint.api.sh`.
+3. **Dockerfile Path** : `apps/api/Dockerfile` (contexte : racine du dépôt).
+4. **Docker Command** : laisser vide (l'image applique les migrations puis démarre l'API).
 5. **Health Check Path** : `/api/v1/health`.
 6. **Plan** : Free.
 7. Colle toutes les variables ci-dessous.
@@ -73,6 +73,7 @@ RUN_SEED=true
 # Secrets — Render peut les générer (render.yaml) ou :
 # openssl rand -base64 48 | cut -c1-44
 API_JWT_SECRET=<32+ caractères>
+API_EDGE_PROXY_SECRET=<32+ caractères, identique à EDGE_PROXY_SECRET du front>
 API_ORGANIZER_SECRET_KEY=<32+ caractères>
 API_VAULT_SECRET_KEY=<32+ caractères, DIFFÉRENT>
 API_MAINTENANCE_CRON_SECRET=<32+ caractères>
@@ -111,6 +112,7 @@ GOOGLE_CALLBACK_URL=https://shadoma-votes.vercel.app/oauth/callback/google
 NEXT_PUBLIC_APP_NAME=SHADOMA Votes
 NEXT_PUBLIC_APP_URL=https://shadoma-votes.vercel.app
 API_BASE_URL=https://shadoma-api.onrender.com
+EDGE_PROXY_SECRET=<même valeur que API_EDGE_PROXY_SECRET sur Render>
 # NEXT_PUBLIC_API_BASE_URL : NE PAS la définir (voir encadré ci-dessous)
 ```
 
@@ -185,7 +187,7 @@ Conservez ces identifiants dans `.env.owner.local` (gitignored), pas dans le gui
 | Besoin | Alternative |
 | --- | --- |
 | Pas de cold start | **Google Cloud Run** (workflow `deploy-api.yml` déjà dans le repo) + Neon |
-| Tout Docker, autre hébergeur | **Fly.io** (`fly launch` + `Dockerfile.api`) + Neon |
+| Tout Docker, autre hébergeur | **Fly.io** (`fly launch` + `apps/api/Dockerfile`) + Neon |
 | Front + back serverless | Cloudflare Pages (front) + Cloud Run (API) — voir `docs/deployment/staging-production.md` |
 
 ---

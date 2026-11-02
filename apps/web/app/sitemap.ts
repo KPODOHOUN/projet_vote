@@ -1,5 +1,5 @@
 // app/sitemap.ts — routes publiques pour le SEO (§F-10).
-// Note : l'API n'expose PAS d'index public global des évènements (seulement
+// Note : l'API n'expose PAS d'index public global des événements (seulement
 // /votes/public/:tenantSlug/events, tenant-scoped). On ne liste donc que les
 // routes statiques réellement publiques — aucune URL inventée. Les pages
 // /e/{slug} restent indexables (robots.ts) et découvrables par lien/OG.

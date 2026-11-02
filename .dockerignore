@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/dist-test
+**/.next
+**/coverage
+**/test-results
+**/*.tsbuildinfo
+.git
+.env
+.env.*
+!.env.example
+design-demos
+docs
+apps/web
+infra
+*.zip

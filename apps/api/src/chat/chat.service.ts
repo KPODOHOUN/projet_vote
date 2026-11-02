@@ -59,6 +59,8 @@ export class ChatService {
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
+        // OpenAI lent ou indisponible : réponse d'erreur rapide plutôt qu'une requête suspendue.
+        signal: AbortSignal.timeout(20_000),
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`

@@ -63,13 +63,13 @@ test("castVote: succès crée un vote NON payé (paidAt null)", async () => {
   assert.equal(row?.paidAt, null);
 });
 
-test("castVote: tenant ou évènement introuvable", async () => {
+test("castVote: tenant ou événement introuvable", async () => {
   await seed();
   await assert.rejects(votes.castVote(base({ tenantSlug: "nope-tenant" })), /Tenant introuvable/);
-  await assert.rejects(votes.castVote(base({ eventSlug: "nope-event" })), /Évènement introuvable/);
+  await assert.rejects(votes.castVote(base({ eventSlug: "nope-event" })), /Événement introuvable/);
 });
 
-test("castVote: refuse si l'évènement n'est pas ACTIVE", async () => {
+test("castVote: refuse si l'événement n'est pas ACTIVE", async () => {
   await seed({ status: EventStatus.DRAFT });
   await assert.rejects(votes.castVote(base()), /n'est pas ouvert/);
 });
@@ -80,7 +80,7 @@ test("castVote: refuse hors période de vote", async () => {
   await assert.rejects(votes.castVote(base()), /hors période/);
 });
 
-test("castVote: refuse si l'évènement n'a pas de prix unitaire défini", async () => {
+test("castVote: refuse si l'événement n'a pas de prix unitaire défini", async () => {
   await seed({ voteUnitPriceCfa: 0 });
   await assert.rejects(votes.castVote(base()), /pas de prix unitaire/);
 });
@@ -118,7 +118,7 @@ test("getPublicEventBySlug: expose photoUrl + voteCount PAID-only par candidat",
 
 test("getPublicEventResults: expose branding (event > tenant) + 404 si absent", async () => {
   const { tenant, event } = await seed();
-  // Le tenant porte une couleur par défaut, l'évènement la surcharge.
+  // Le tenant porte une couleur par défaut, l'événement la surcharge.
   await prisma.tenant.update({ where: { id: tenant.id }, data: { brandColor: "#111111", logoUrl: "https://img.test/org.png" } });
   await prisma.event.update({ where: { id: event.id }, data: { brandColor: "#DB2777", tagline: "En direct" } });
 
@@ -196,8 +196,6 @@ test("updateCandidate: met à jour photoUrl, refuse hors tenant", async () => {
   const events = new EventsService(
     prismaService,
     votes,
-    undefined as never,
-    undefined as never,
     undefined as never
   );
   const owner = { userId: "u1", tenantId: tenant.id, role: "ORGANIZER_OWNER" } as never;
@@ -243,4 +241,10 @@ test("hub et profil comptent les voix payées (votesCount), comme les résultats
   assert.equal(inResults.voteCount, 7);
   assert.equal(hub.candidates.find((c) => c.id === candidate.id)!.voteCount, 7);
   assert.equal(profile.candidate.voteCount, 7);
+});
+
+test("castVote: aucun abonnement n'est demandé à l'organisateur pour recevoir des votes", async () => {
+  await seed();
+  const vote = await votes.castVote(base());
+  assert.ok(vote.id);
 });

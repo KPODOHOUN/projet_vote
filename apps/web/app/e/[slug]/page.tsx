@@ -1,6 +1,6 @@
-// app/e/[slug]/page.tsx — Mini-plateforme publique d'un évènement (event-as-platform, ADR-016).
+// app/e/[slug]/page.tsx — Mini-plateforme publique d'un événement (event-as-platform, ADR-016).
 // Server Component : fetch SSR pour le SEO + generateMetadata dynamique (OG par
-// évènement). Hub annuaire : liste les candidats (photo + votes) en cartes-liens
+// événement). Hub annuaire : liste les candidats (photo + votes) en cartes-liens
 // vers leur profil /e/{slug}/c/{number} (où se fait le vote). Câblé sur le
 // contrat RÉEL de GET /votes/public/event/:slug → { organizer, event, candidates }.
 
@@ -25,12 +25,22 @@ import { fetchPublicEvent } from "../../../lib/public-event-fetch";
 // (ex. animated-candidates-section) les importent depuis cette page.
 export type { PublicCandidate, PublicEvent, PublicOrganizer, PublicEventResponse } from "../../../lib/public-event-fetch";
 
-type PageProps = { params: Promise<{ slug: string }> };
+type PageProps = {
+  params: Promise<{ slug: string }>;
+  /** `preview` : jeton d'aperçu d'un brouillon (éditeur d'apparence). */
+  searchParams: Promise<{ preview?: string | string[] }>;
+};
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+async function previewTokenOf(searchParams: PageProps["searchParams"]): Promise<string | undefined> {
+  const { preview } = await searchParams;
+  return typeof preview === "string" ? preview : undefined;
+}
+
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const previewToken = await previewTokenOf(searchParams);
   const locale = await getServerLocale();
-  const data = await fetchPublicEvent(slug);
+  const data = await fetchPublicEvent(slug, previewToken);
   if (!data) {
     return {
       title: `${translate(locale, "pub.voteNotFound")} · ${SITE_NAME}`,
@@ -47,6 +57,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
     alternates: { canonical: url },
+    // Aperçu d'un brouillon : jamais indexé.
+    ...(event.status === "DRAFT" ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
       title,
       description,
@@ -60,11 +72,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PublicEventPage({ params }: PageProps) {
+export default async function PublicEventPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const previewToken = await previewTokenOf(searchParams);
   const locale = await getServerLocale();
   const t9n = (key: MessageKey) => translate(locale, key);
-  const data = await fetchPublicEvent(slug);
+  const data = await fetchPublicEvent(slug, previewToken);
   if (!data) {
     notFound();
   }
@@ -80,7 +93,7 @@ export default async function PublicEventPage({ params }: PageProps) {
     <PublicEventShell eventTitle={event.title} slug={event.slug} branding={event.branding} active="candidates" headerInHero>
       <main>
         {/* Bandeau dans le style choisi par l'organisateur (Affiche, Soirée, Billet). */}
-        <EventHero event={event} organizer={organizer} phase={phase} locale={locale} now={now} />
+        <EventHero event={event} organizer={organizer} phase={phase} locale={locale} now={now} paymentNetworks={data.paymentNetworks} />
 
         <div className="space-y-14 px-[clamp(20px,4vw,56px)] pb-24 pt-14">
           <PhaseNotice phase={phase} locale={locale} startLabel={startLabel} resultsHref={resultsHref} />

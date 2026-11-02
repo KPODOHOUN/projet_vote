@@ -6,8 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, UserCircle, Calendar, Users, CreditCard, UserPlus, Bell, LogOut } from "lucide-react";
-import { LanguageSwitcher, useI18n } from "../lib/i18n-provider";
+import { Search, Calendar, Users, CreditCard, UserPlus, Bell } from "lucide-react";
+import { useI18n } from "../lib/i18n-provider";
+import { formatCfa } from "../lib/format";
+import { formatEventStatus, formatUserRole } from "../lib/i18n";
+import { paymentStatusLabel } from "../lib/payment-status-labels";
+import { UserMenu } from "./user-menu";
 import { apiFetch } from "../lib/api";
 import { getStoredToken, clearAuthStorage } from "../lib/auth";
 import { search, searchResultHref, type SearchResults } from "../lib/search";
@@ -156,7 +160,7 @@ export function DashboardHeader() {
                     <span className="flex items-center gap-2 px-4 py-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"><Calendar className="size-3.5" aria-hidden="true" /> {t("search.groupEvents")}</span>
                     {results!.events.map((it) => (
                       <button key={it.id} type="button" className="w-full text-left px-4 py-2 hover:bg-muted/50 transition-colors flex flex-col" onClick={() => go(searchResultHref("event", it))}>
-                        <strong className="text-sm font-medium text-foreground">{it.title}</strong><span className="text-xs text-muted-foreground">{it.status}</span>
+                        <strong className="text-sm font-medium text-foreground">{it.title}</strong><span className="text-xs text-muted-foreground">{formatEventStatus(it.status, isEn)}</span>
                       </button>
                     ))}
                   </div>
@@ -176,7 +180,7 @@ export function DashboardHeader() {
                     <span className="flex items-center gap-2 px-4 py-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"><UserPlus className="size-3.5" aria-hidden="true" /> {t("search.groupMembers")}</span>
                     {results!.members.map((it) => (
                       <button key={it.id} type="button" className="w-full text-left px-4 py-2 hover:bg-muted/50 transition-colors flex flex-col" onClick={() => go(searchResultHref("member", it))}>
-                        <strong className="text-sm font-medium text-foreground">{it.email}</strong><span className="text-xs text-muted-foreground">{it.role}</span>
+                        <strong className="text-sm font-medium text-foreground">{it.email}</strong><span className="text-xs text-muted-foreground">{formatUserRole(it.role, isEn)}</span>
                       </button>
                     ))}
                   </div>
@@ -186,7 +190,7 @@ export function DashboardHeader() {
                     <span className="flex items-center gap-2 px-4 py-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"><CreditCard className="size-3.5" aria-hidden="true" /> {t("search.groupPayments")}</span>
                     {results!.payments.map((it) => (
                       <button key={it.id} type="button" className="w-full text-left px-4 py-2 hover:bg-muted/50 transition-colors flex flex-col" onClick={() => go(searchResultHref("payment", it))}>
-                        <strong className="text-sm font-medium text-foreground">{it.providerRef ?? "…"}</strong><span className="text-xs text-muted-foreground">{it.amountCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")} XOF · {it.status}</span>
+                        <strong className="text-sm font-medium text-foreground">{it.providerRef ?? "…"}</strong><span className="text-xs text-muted-foreground">{formatCfa(it.amountCfa, locale)} · {paymentStatusLabel(it.status, isEn)}</span>
                       </button>
                     ))}
                   </div>
@@ -202,7 +206,7 @@ export function DashboardHeader() {
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 sm:gap-4">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <div ref={bellRef} className="relative">
           <button type="button" className="relative inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={openNotifs} aria-label={`${t("notif.bellLabel")} (${notifCount})`}>
             <Bell className="h-5 w-5" aria-hidden="true" />
@@ -237,20 +241,7 @@ export function DashboardHeader() {
             </div>
           ) : null}
         </div>
-        <LanguageSwitcher />
-        <span className="hidden items-center gap-2 text-sm font-semibold text-foreground md:flex">
-          <UserCircle className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-          <span className="hidden md:inline">{t("common.account")}</span>
-        </span>
-        <button
-          type="button"
-          onClick={logout}
-          aria-label={t("nav.logout")}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:px-3"
-        >
-          <LogOut className="h-5 w-5 sm:hidden" aria-hidden="true" />
-          <span className="hidden sm:inline">{t("nav.logout")}</span>
-        </button>
+        <UserMenu settingsHref="/dashboard/account" settingsLabel={isEn ? "My account" : "Mon compte"} onLogout={logout} />
       </div>
     </header>
   );

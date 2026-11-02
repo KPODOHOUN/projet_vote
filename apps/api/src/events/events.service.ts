@@ -2,28 +2,19 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
-  HttpException,
-  HttpStatus,
   NotFoundException
 } from "@nestjs/common";
-import { EventFontStyle, EventHeroBackground, EventLayout, EventPageStyle, EventStatus, PaymentProvider, TenantOfferType, UserRole } from "@prisma/client";
+import { EventFontStyle, EventHeroBackground, EventLayout, EventPageStyle, EventStatus, PaymentStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma/prisma.service";
 import { VotesService } from "../votes/votes.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { isUniqueConstraintViolation } from "../common/prisma-errors";
+import { eventPreviewToken } from "../common/event-preview-token";
 import type { AuthUser } from "../auth/auth.types";
-import {
-  ACTIVATION_FEE_CFA_KEY,
-  DEFAULT_ACTIVATION_FEE_CFA,
-  parseIntSetting
-} from "../common/platform-settings";
-import { PartnersService } from "../partners/partners.service";
 import { generateSecureEventSlug } from "../common/secure-event-slug";
 import { generateUniqueCandidatePublicRef } from "../common/candidate-public-ref";
-import { OfferSettingsService } from "../offers/offer-settings.service";
-import { supportsSplit } from "../offers/psp-split.util";
-import { env } from "../config/env";
+import { assertEventTransition } from "./event-lifecycle";
 
 // Per-event branding / rules. Reused by create and update. All optional:
 // a null field inherits from the owning organizer (ADR-016).
@@ -72,11 +63,6 @@ const updateCandidateSchema = z.object({
   photoUrl: photoUrlSchema.optional()
 });
 
-const setCandidateVoteCountSchema = z.object({
-  voteCount: z.number().int().min(0).max(1_000_000),
-  reason: z.string().min(3).max(500).optional()
-});
-
 const bulkImportCandidateItemSchema = z.object({
   fullName: z.string().min(2).max(160),
   number: z.number().int().positive().optional(),
@@ -87,93 +73,20 @@ const bulkImportCandidatesSchema = z.object({
   candidates: z.array(bulkImportCandidateItemSchema).min(1).max(200)
 });
 
+/** Les candidats d'un concours clôturé ou archivé sont figés (résultats définitifs). */
+function assertCandidatesEditable(status: EventStatus): void {
+  if (status === EventStatus.CLOSED || status === EventStatus.ARCHIVED) {
+    throw new ConflictException("Ce concours est terminé : ses candidats ne se modifient plus.");
+  }
+}
+
 @Injectable()
 export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly votesService: VotesService,
-    private readonly notifications: NotificationsService,
-    private readonly partnersService: PartnersService,
-    private readonly offerSettings: OfferSettingsService
+    private readonly notifications: NotificationsService
   ) { }
-
-  /**
-   * Offer-based gate: both EXTERNAL and ESCROW allow unlimited events when the
-   * matching platform offer flag is enabled. Replaces the former subscription plan limit.
-   */
-  private async assertOfferAllowsEventCreation(tenantId: string, userRole: UserRole): Promise<void> {
-    if (userRole === UserRole.PLATFORM_ADMIN || userRole === UserRole.PLATFORM_SUPER_ADMIN) {
-      return;
-    }
-    if (process.env.NODE_ENV === "test" && process.env.BYPASS_SUBSCRIPTION !== "0") {
-      return;
-    }
-
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { offerType: true }
-    });
-    if (!tenant) {
-      throw new NotFoundException("Organisation introuvable.");
-    }
-
-    const settings = await this.offerSettings.getSettings();
-    if (tenant.offerType === TenantOfferType.EXTERNAL && !settings.offer1ExternalEnabled) {
-      throw new ConflictException(
-        "L'offre External est désactivée. Contactez le support ou choisissez l'offre Escrow."
-      );
-    }
-    if (tenant.offerType === TenantOfferType.ESCROW && !settings.offer2EscrowEnabled) {
-      throw new ConflictException(
-        "L'offre Escrow est désactivée. Contactez le support ou choisissez l'offre External."
-      );
-    }
-  }
-
-  /**
-   * Offer 1 (EXTERNAL): event create/activate requires a PSP that supports split
-   * and a configured payout destination on the tenant.
-   */
-  private async assertExternalOfferReady(
-    tenantId: string,
-    eventProvider?: PaymentProvider | null
-  ): Promise<void> {
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        offerType: true,
-        provider: true,
-        fedapaySubAccountRef: true,
-        fedapaySubAccountVerifiedAt: true
-      }
-    });
-    if (!tenant) {
-      throw new NotFoundException("Organisation introuvable.");
-    }
-    if (tenant.offerType !== TenantOfferType.EXTERNAL) {
-      return;
-    }
-
-    if (!tenant.fedapaySubAccountRef || !tenant.fedapaySubAccountVerifiedAt) {
-      throw new ConflictException(
-        "Offre External : connectez puis faites valider votre sous-compte FedaPay avant de créer ou activer un évènement."
-      );
-    }
-
-    const provider =
-      eventProvider ?? tenant.provider ?? (env.DEFAULT_PSP_PROVIDER as PaymentProvider);
-    const ok = await supportsSplit(this.prisma.client, provider);
-    if (!ok) {
-      throw new ConflictException(
-        `Offre External : ${provider} ne prend pas en charge le split natif validé. Utilisez FedaPay Marketplace ou passez à l'offre Escrow.`
-      );
-    }
-    if (provider !== PaymentProvider.FEDAPAY) {
-      throw new ConflictException(
-        "Offre External : seul FedaPay Marketplace est autorisé actuellement pour garantir le partage automatique des fonds."
-      );
-    }
-  }
 
   async listTenantEvents(user: AuthUser) {
     const events = await this.prisma.client.event.findMany({
@@ -188,7 +101,9 @@ export class EventsService {
 
     return events.map(({ _count, ...event }) => ({
       ...event,
-      candidateCount: _count.candidates
+      candidateCount: _count.candidates,
+      // Aperçu de la page publique tant que le concours est en brouillon.
+      previewToken: eventPreviewToken(event.id)
     }));
   }
 
@@ -199,15 +114,6 @@ export class EventsService {
       user.role !== UserRole.PLATFORM_ADMIN
     ) {
       throw new NotFoundException("Rôle non autorisé.");
-    }
-
-    await this.assertOfferAllowsEventCreation(user.tenantId, user.role);
-    await this.assertExternalOfferReady(user.tenantId);
-
-    if (await this.partnersService.hasOutstandingDebt(user.tenantId)) {
-      throw new ConflictException(
-        "Création bloquée : une dette d'activation partenaire est en cours. Solde-la avant de créer un nouvel évènement."
-      );
     }
 
     const input = createEventSchema.parse(payload);
@@ -241,7 +147,7 @@ export class EventsService {
       .catch((error: unknown) => {
         // Event slug is globally unique (the event is the public platform unit).
         if (isUniqueConstraintViolation(error)) {
-          throw new ConflictException("Ce slug d'évènement est déjà utilisé.");
+          throw new ConflictException("Ce slug d'événement est déjà utilisé.");
         }
         throw error;
       });
@@ -260,7 +166,8 @@ export class EventsService {
   }
 
   /**
-   * Parcours express : concours + 1er candidat + activation auto si le forfait est à 0 FCFA.
+   * Parcours express : concours en brouillon + 1er candidat. La mise en ligne
+   * passe ensuite par la signature du contrat.
    */
   async quickStartEvent(user: AuthUser, payload: unknown) {
     if (
@@ -269,15 +176,6 @@ export class EventsService {
       user.role !== UserRole.PLATFORM_ADMIN
     ) {
       throw new NotFoundException("Rôle non autorisé.");
-    }
-
-    await this.assertOfferAllowsEventCreation(user.tenantId, user.role);
-    await this.assertExternalOfferReady(user.tenantId);
-
-    if (await this.partnersService.hasOutstandingDebt(user.tenantId)) {
-      throw new ConflictException(
-        "Création bloquée : une dette d'activation partenaire est en cours. Solde-la avant de créer un nouvel évènement."
-      );
     }
 
     const input = quickStartEventSchema.parse(payload);
@@ -311,7 +209,7 @@ export class EventsService {
     }
 
     if (!createdEvent) {
-      throw new ConflictException("Impossible de créer l'évènement. Essayez un autre nom.");
+      throw new ConflictException("Impossible de créer l'événement. Essayez un autre nom.");
     }
 
     const candidate = await this.prisma.client.candidate.create({
@@ -335,28 +233,9 @@ export class EventsService {
       }
     });
 
-    let activated = false;
-    try {
-      await this.assertCanActivate(createdEvent);
-      const heldBps = await this.offerSettings.getDefaultHeldBps();
-      const activeEvent = await this.prisma.client.event.update({
-        where: { id: createdEvent.id },
-        data: { status: EventStatus.ACTIVE, heldBps }
-      });
-      createdEvent = activeEvent;
-      activated = true;
-      void this.notifications.create(user.tenantId, "EVENT_ACTIVATED", {
-        eventId: activeEvent.id,
-        title: activeEvent.title
-      });
-    } catch {
-      // Forfait requis — le concours reste en brouillon, l'organisateur paiera plus tard.
-    }
-
     return {
       event: createdEvent,
       candidate,
-      activated,
       slug: createdEvent.slug
     };
   }
@@ -369,7 +248,7 @@ export class EventsService {
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
 
     return this.prisma.client.candidate.findMany({
@@ -386,8 +265,9 @@ export class EventsService {
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
+    assertCandidatesEditable(event.status);
 
     const input = createCandidateSchema.parse(payload);
     const createdCandidate = await this.prisma.client.candidate.create({
@@ -418,8 +298,9 @@ export class EventsService {
       where: { id: eventId, tenantId: user.tenantId }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
+    assertCandidatesEditable(event.status);
 
     const input = bulkImportCandidatesSchema.parse(payload);
     const numbers = new Set<number>();
@@ -456,7 +337,7 @@ export class EventsService {
           errors.push({
             number: item.number ?? null,
             fullName: item.fullName,
-            message: "Ce numéro est déjà pris pour cet évènement."
+            message: "Ce numéro est déjà pris pour cet événement."
           });
         } else {
           throw error;
@@ -491,8 +372,9 @@ export class EventsService {
       where: { id: eventId, tenantId: user.tenantId }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
+    assertCandidatesEditable(event.status);
     const input = updateCandidateSchema.parse(payload);
     const existing = await this.prisma.client.candidate.findFirst({
       where: { id: candidateId, eventId: event.id }
@@ -516,10 +398,10 @@ export class EventsService {
       include: { _count: { select: { candidates: true } } }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
     const { _count, ...rest } = event;
-    return { ...rest, candidateCount: _count.candidates };
+    return { ...rest, candidateCount: _count.candidates, previewToken: eventPreviewToken(event.id) };
   }
 
   async getEventDashboard(user: AuthUser, eventId: string) {
@@ -542,100 +424,14 @@ export class EventsService {
     };
   }
 
-  async setCandidateVoteCount(
-    user: AuthUser,
-    eventId: string,
-    candidateId: string,
-    payload: unknown
-  ) {
-    if (user.role !== UserRole.ORGANIZER_OWNER && user.role !== UserRole.PLATFORM_ADMIN) {
-      throw new NotFoundException("Rôle non autorisé.");
-    }
-    const event = await this.prisma.client.event.findFirst({
-      where: { id: eventId, tenantId: user.tenantId }
-    });
-    if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
-    }
-    const candidate = await this.prisma.client.candidate.findFirst({
-      where: { id: candidateId, eventId: event.id }
-    });
-    if (!candidate) {
-      throw new NotFoundException("Candidat introuvable.");
-    }
-    const input = setCandidateVoteCountSchema.parse(payload);
-    const { results } = await this.votesService.computeResults(event.id);
-    const current = results.find((row) => row.candidateId === candidateId)?.voteCount ?? 0;
-    const delta = input.voteCount - current;
-    if (delta === 0) {
-      return { candidateId, voteCount: current };
-    }
-
-    const unitAmount = event.voteUnitPriceCfa ?? 0;
-
-    if (delta > 0) {
-      await this.prisma.client.vote.createMany({
-        data: Array.from({ length: delta }, () => ({
-          tenantId: user.tenantId,
-          eventId: event.id,
-          candidateId: candidate.id,
-          amountCfa: unitAmount,
-          paidAt: new Date()
-        }))
-      });
-    } else {
-      const toCancel = await this.prisma.client.vote.findMany({
-        where: {
-          eventId: event.id,
-          candidateId: candidate.id,
-          cancelledAt: null,
-          paidAt: { not: null }
-        },
-        orderBy: { createdAt: "desc" },
-        take: Math.abs(delta),
-        select: { id: true }
-      });
-      if (toCancel.length < Math.abs(delta)) {
-        throw new BadRequestException("Impossible d'ajuster : pas assez de votes payés.");
-      }
-      await this.prisma.client.vote.updateMany({
-        where: { id: { in: toCancel.map((row) => row.id) } },
-        data: {
-          cancelledAt: new Date(),
-          cancelledReason: input.reason ?? "Ajustement manuel organisateur",
-          cancelledByUserId: user.userId
-        }
-      });
-    }
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorUserId: user.userId,
-        actorRole: user.role,
-        action: "candidate.vote_count_adjusted",
-        targetType: "Candidate",
-        targetId: candidate.id,
-        metadata: {
-          eventId: event.id,
-          previousCount: current,
-          targetCount: input.voteCount,
-          delta,
-          reason: input.reason ?? null
-        }
-      }
-    });
-
-    return { candidateId, voteCount: input.voteCount };
-  }
-
   async deleteCandidate(user: AuthUser, eventId: string, candidateId: string) {
     const event = await this.prisma.client.event.findFirst({
       where: { id: eventId, tenantId: user.tenantId }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
+    assertCandidatesEditable(event.status);
     const candidate = await this.prisma.client.candidate.findFirst({
       where: { id: candidateId, eventId: event.id }
     });
@@ -652,6 +448,23 @@ export class EventsService {
     if (paidVotes > 0) {
       throw new ConflictException(
         "Impossible de supprimer un candidat qui a déjà reçu des votes payés."
+      );
+    }
+    // Un vote en cours de paiement disparaîtrait avec le candidat : l'argent du
+    // votant serait encaissé sans vote à compter.
+    const candidateVotes = await this.prisma.client.vote.findMany({
+      where: { candidateId: candidate.id },
+      select: { id: true }
+    });
+    const pendingPayments = await this.prisma.client.paymentTransaction.count({
+      where: {
+        status: { in: [PaymentStatus.INITIATED, PaymentStatus.PENDING] },
+        voteId: { in: candidateVotes.map((v) => v.id) }
+      }
+    });
+    if (pendingPayments > 0) {
+      throw new ConflictException(
+        "Un paiement est en cours pour ce candidat : réessayez dans quelques minutes, une fois le paiement confirmé ou échoué."
       );
     }
     await this.prisma.client.candidate.delete({ where: { id: candidate.id } });
@@ -677,16 +490,24 @@ export class EventsService {
       where: { id: eventId, tenantId: user.tenantId }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
-    const paidVotes = await this.prisma.client.vote.count({
-      where: {
-        eventId: event.id,
-        paidAt: { not: null },
-        cancelledAt: null
-      }
-    });
-    if (paidVotes > 0) {
+    if (event.status === EventStatus.ACTIVE) {
+      throw new ConflictException(
+        "Ce concours est en ligne : clôturez-le d'abord. Il sera archivé, et sa réserve libérée après le délai prévu."
+      );
+    }
+    if (event.status === EventStatus.ARCHIVED) {
+      throw new ConflictException("Ce concours est déjà archivé.");
+    }
+    // Un concours qui a été publié ou qui a encaissé quoi que ce soit est
+    // conservé (archivé) : ses paiements, son contrat et son grand livre restent.
+    const [payments, signedContracts] = await Promise.all([
+      this.prisma.client.paymentTransaction.count({ where: { eventId: event.id } }),
+      this.prisma.client.eventContract.count({ where: { eventId: event.id, signedAt: { not: null } } })
+    ]);
+    if (event.status === EventStatus.CLOSED || payments > 0 || signedContracts > 0) {
+      assertEventTransition(event.status, EventStatus.ARCHIVED, "update");
       const archived = await this.prisma.client.event.update({
         where: { id: event.id },
         data: { status: EventStatus.ARCHIVED }
@@ -699,12 +520,16 @@ export class EventsService {
           action: "event.archived",
           targetType: "Event",
           targetId: event.id,
-          metadata: { reason: "paid_votes_exist" }
+          metadata: { reason: event.status === EventStatus.CLOSED ? "closed" : "has_payments_or_contract", fromStatus: event.status }
         }
       });
       return { deleted: false, archived: true, event: archived };
     }
-    await this.prisma.client.event.delete({ where: { id: event.id } });
+    // Brouillon jamais publié : ses projets de contrat non signés partent avec lui.
+    await this.prisma.client.$transaction([
+      this.prisma.client.eventContract.deleteMany({ where: { eventId: event.id, signedAt: null } }),
+      this.prisma.client.event.delete({ where: { id: event.id } })
+    ]);
     await this.prisma.client.auditLog.create({
       data: {
         tenantId: user.tenantId,
@@ -724,7 +549,7 @@ export class EventsService {
       where: { id: eventId, tenantId: user.tenantId }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
     // Single source of truth for tallying: only PAID, non-cancelled votes are
     // counted (see VotesService.computeResults). Reused here so the organizer
@@ -740,7 +565,7 @@ export class EventsService {
       }
     });
     if (!event) {
-      throw new NotFoundException("Évènement introuvable.");
+      throw new NotFoundException("Événement introuvable.");
     }
 
     const updateEventSchema = z.object({
@@ -778,13 +603,33 @@ export class EventsService {
     if (input.heroBackground !== undefined) data.heroBackground = input.heroBackground;
     if (input.voteUnitPriceCfa !== undefined) data.voteUnitPriceCfa = input.voteUnitPriceCfa;
 
-    // Activation gate: going ACTIVE requires the activation fee to be paid
-    // (no free quota) when a fee is configured. EXTERNAL also needs PSP split + payout dest.
-    const isActivating = input.status === EventStatus.ACTIVE && event.status !== EventStatus.ACTIVE;
-    if (isActivating) {
-      await this.assertCanActivate(event);
-      await this.assertExternalOfferReady(user.tenantId, event.provider);
-      data.heldBps = await this.offerSettings.getDefaultHeldBps();
+    if (input.status !== undefined) {
+      assertEventTransition(event.status, input.status, "update");
+    }
+    if (event.status === EventStatus.CLOSED || event.status === EventStatus.ARCHIVED) {
+      const onlyArchiving = Object.keys(input).every((key) => key === "status");
+      if (!onlyArchiving) {
+        throw new ConflictException("Un concours clôturé ou archivé ne se modifie plus.");
+      }
+    }
+    // Nom, dates et prix du vote figurent dans le contrat signé : ils ne
+    // changent plus après publication (l'apparence reste libre).
+    if (event.status !== EventStatus.DRAFT) {
+      const locked: string[] = [];
+      if (input.voteUnitPriceCfa !== undefined && input.voteUnitPriceCfa !== event.voteUnitPriceCfa) locked.push("le prix du vote");
+      if (input.title !== undefined && input.title !== event.title) locked.push("le nom du concours");
+      if (startsAtStr !== undefined && new Date(startsAtStr).getTime() !== event.startsAt.getTime()) locked.push("la date de début");
+      if (endsAtStr !== undefined && new Date(endsAtStr).getTime() !== event.endsAt.getTime()) locked.push("la date de fin");
+      if (locked.length) {
+        throw new ConflictException(
+          `Ces éléments sont fixés par le contrat signé et ne peuvent plus être modifiés : ${locked.join(", ")}.`
+        );
+      }
+    }
+    const nextStartsAt = (data.startsAt as Date | undefined) ?? event.startsAt;
+    const nextEndsAt = (data.endsAt as Date | undefined) ?? event.endsAt;
+    if (nextEndsAt.getTime() <= nextStartsAt.getTime()) {
+      throw new BadRequestException("La date de fin doit être après la date de début.");
     }
 
     const updatedEvent = await this.prisma.client.event.update({
@@ -802,35 +647,7 @@ export class EventsService {
         metadata: input
       }
     });
-    if (isActivating) {
-      void this.notifications.create(user.tenantId, "EVENT_ACTIVATED", {
-        eventId: updatedEvent.id,
-        title: updatedEvent.title
-      });
-    }
     return updatedEvent;
   }
 
-  /**
-   * Activation requires the forfait to be paid (no free quota). No-op when no
-   * fee is configured (monetization off). Throws 402 when the fee is unpaid.
-   */
-  private async assertCanActivate(event: { activationPaidAt: Date | null }): Promise<void> {
-    const feeCfa = await this.readIntSetting(ACTIVATION_FEE_CFA_KEY, DEFAULT_ACTIVATION_FEE_CFA);
-    if (feeCfa <= 0) {
-      return; // activation monetization disabled → free
-    }
-    if (event.activationPaidAt) {
-      return; // forfait already paid
-    }
-    throw new HttpException(
-      `Forfait d'activation requis (${feeCfa} FCFA) pour activer cet évènement.`,
-      HttpStatus.PAYMENT_REQUIRED
-    );
-  }
-
-  private async readIntSetting(key: string, fallback: number): Promise<number> {
-    const setting = await this.prisma.client.platformSetting.findUnique({ where: { key } });
-    return parseIntSetting(setting?.value, fallback);
-  }
 }

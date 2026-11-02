@@ -25,24 +25,6 @@ export class NotificationsService {
     }
   }
 
-  // Best-effort : notifications pour tous les admins plateforme.
-  async createForPlatformAdmins(type: NotificationType, data: Prisma.JsonObject): Promise<void> {
-    try {
-      const admins = await this.prisma.client.user.findMany({
-        where: { role: { in: ["PLATFORM_ADMIN", "PLATFORM_SUPER_ADMIN"] } },
-        select: { id: true, tenantId: true }
-      });
-      if (admins.length === 0) return;
-      await this.prisma.client.notification.createMany({
-        data: admins.map((a) => ({ tenantId: a.tenantId, userId: a.id, type, data }))
-      });
-    } catch (error) {
-      this.logger.error(
-        `platform admin notification failed (${type}): ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
   async list(user: AuthUser, opts: { limit?: number; unreadOnly?: boolean }) {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
     const rows = await this.prisma.client.notification.findMany({

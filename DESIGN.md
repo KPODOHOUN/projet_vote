@@ -35,7 +35,8 @@ Dans une mini-plateforme, `--color-primary` = `--event-accent-strong` (moteur `l
 - Arrondis `rounded-md`. Pas de `rounded-2xl/3xl`, pas de verre, pas d'ombre portée forte.
 - Séparation par filets 1 px (`border-border`, ou `border-slate-900` pour les filets forts des mini-plateformes) plutôt que par cartes.
 - Espacement 4 pt ; `space-y-8` entre sections du dashboard ; gouttière mobile `px-4` (mini-plateformes `clamp(20px,4vw,56px)`).
-- Cibles tactiles ≥ 44 px (`min-h-11`).
+- Cibles tactiles ≥ 44 px au téléphone. Une seule hauteur pour tout contrôle (bouton, champ, liste) : 44 px sous `sm`, 40 px au-dessus (`h-11 sm:h-10`, réglé dans `button.tsx` / `input.tsx` / `select.tsx`). Ne pas forcer `min-h-11` sur un bouton posé à côté d'un champ.
+- Bordures : couleur `--color-border` par défaut (règle de base dans `globals.css`) ; un cadre noir n'apparaît que s'il est voulu.
 
 ## Mini-plateformes (`/e/*`)
 

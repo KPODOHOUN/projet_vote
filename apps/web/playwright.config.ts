@@ -8,9 +8,9 @@ process.env.E2E_API_BASE_URL ??= "http://127.0.0.1:3011/api/v1";
 // Base dédiée aux e2e (convention identique au script `npm test` de l'API).
 // Surcharge le DATABASE_URL du .env racine chargé par apps/api/src/config/env.ts
 // afin que les specs ne polluent jamais la base de développement.
-const e2eDatabaseUrl =
-  process.env.TEST_DATABASE_URL ??
-  "postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test";
+// Exportée aussi vers les specs qui ouvrent leur propre client Prisma.
+const e2eDatabaseUrl = (process.env.TEST_DATABASE_URL ??=
+  "postgresql://votezpro:votezpro_dev@localhost:5433/votezpro_test");
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -20,7 +20,15 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] }
+      // Démo visible : PW_CHANNEL=chrome (Chrome installé) et PW_SLOWMO=600 (ms
+      // entre deux actions), avec --headed. Sans ces variables : Chromium, pleine vitesse.
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
+        launchOptions: { slowMo: Number(process.env.PW_SLOWMO ?? 0) },
+        // PW_VIDEO=on : vidéo de chaque test, visible dans le rapport HTML.
+        ...(process.env.PW_VIDEO === "on" ? { video: "on" as const } : {})
+      }
     }
   ],
   use: {
@@ -54,7 +62,9 @@ export default defineConfig({
               // API_CORS_ORIGINS : en NODE_ENV=test, main.ts n'autorise que localhost:3000
               // (le wildcard n'existe qu'en development) — sans ça, les fetchs navigateur
               // 3100 → 3011 (login, maintenance…) sont bloqués par le preflight CORS.
-              `export NODE_ENV=test DATABASE_URL="${e2eDatabaseUrl}" MAIL_RESEND_API_KEY= API_DISABLE_THROTTLE=1 API_CORS_ORIGINS="http://127.0.0.1:${webPort},http://localhost:${webPort}" && ` +
+              // API_PAYMENT_DEMO_MODE : paiements simulés (tickets.spec va jusqu'au
+              // billet payé) ; refusé par l'API en production.
+              `export NODE_ENV=test DATABASE_URL="${e2eDatabaseUrl}" MAIL_RESEND_API_KEY= API_DISABLE_THROTTLE=1 API_PAYMENT_DEMO_MODE=true API_CORS_ORIGINS="http://127.0.0.1:${webPort},http://localhost:${webPort}" && ` +
               "npm --prefix ../../packages/shared run build && npm --prefix ../../packages/db run build && npm --prefix ../api run build && " +
               // migrate deploy, comme en production : le drift schema/migrations est
               // nul (prisma migrate diff sur base vierge, 2026-10-25).

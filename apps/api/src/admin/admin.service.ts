@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import type { AuthUser } from "../auth/auth.types";
 import { isPlatformOperator } from "../auth/platform-roles";
-import { OrganizerSecretsService } from "../organizer-secrets/organizer-secrets.service";
+import { DELETABLE_AUDIT_LOGS, PROTECTED_AUDIT_MESSAGE, isProtectedAuditAction } from "../common/audit-retention";
 import { PrismaService } from "../prisma/prisma.service";
 
 const listAuditLogsQuerySchema = z.object({
@@ -27,21 +27,6 @@ const listUsersQuerySchema = z.object({
   tenantId: z.string().min(1).optional()
 });
 
-const listFeatureFlagsQuerySchema = z.object({
-  tenantId: z.string().min(1).optional()
-});
-
-const upsertFeatureFlagSchema = z.object({
-  key: z
-    .string()
-    .min(3)
-    .max(64)
-    .regex(/^[a-z0-9._-]+$/),
-  enabled: z.boolean(),
-  rolloutPercent: z.coerce.number().int().min(0).max(100).default(100),
-  tenantId: z.string().min(1).optional()
-});
-
 const updateUserSchema = z
   .object({
     role: z.nativeEnum(UserRole).optional(),
@@ -52,32 +37,15 @@ const updateUserSchema = z
     message: "Indiquez un rôle ou un statut de suspension."
   });
 
-const deleteFeatureFlagParamsSchema = z.object({
-  key: z
-    .string()
-    .min(3)
-    .max(64)
-    .regex(/^[a-z0-9._-]+$/),
-  tenantId: z.string().min(1).optional()
-});
-
 const bulkDeleteAuditLogsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(500)
 });
 
 const auditLogFilterSchema = listAuditLogsQuerySchema.omit({ limit: true, cursor: true });
 
-const subscriptionsOverviewQuerySchema = z.object({
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional()
-});
-
 @Injectable()
 export class AdminService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly organizerSecretsService: OrganizerSecretsService
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private parseOrThrow<T>(schema: z.ZodSchema<T>, value: unknown, message: string): T {
     const parsed = schema.safeParse(value);
@@ -153,6 +121,9 @@ export class AdminService {
     if (!isPlatformOperator(user.role) && log.tenantId !== user.tenantId) {
       throw new ForbiddenException("Accès refusé à cette entrée d'audit.");
     }
+    if (isProtectedAuditAction(log.action)) {
+      throw new ForbiddenException(PROTECTED_AUDIT_MESSAGE);
+    }
 
     await this.prisma.client.auditLog.delete({ where: { id } });
     return { deleted: true, id };
@@ -167,7 +138,7 @@ export class AdminService {
 
     const logs = await this.prisma.client.auditLog.findMany({
       where: { id: { in: input.ids } },
-      select: { id: true, tenantId: true }
+      select: { id: true, tenantId: true, action: true }
     });
 
     if (logs.length !== input.ids.length) {
@@ -179,6 +150,10 @@ export class AdminService {
       if (foreign) {
         throw new ForbiddenException("Accès refusé à certaines entrées d'audit.");
       }
+    }
+
+    if (logs.some((log) => isProtectedAuditAction(log.action))) {
+      throw new ForbiddenException(PROTECTED_AUDIT_MESSAGE);
     }
 
     const result = await this.prisma.client.auditLog.deleteMany({
@@ -210,7 +185,7 @@ export class AdminService {
     }
 
     const where = this.buildAuditLogWhere(user, parsedQuery);
-    const result = await this.prisma.client.auditLog.deleteMany({ where });
+    const result = await this.prisma.client.auditLog.deleteMany({ where: { AND: [where, DELETABLE_AUDIT_LOGS] } });
     return { deleted: result.count };
   }
 
@@ -353,116 +328,6 @@ export class AdminService {
     };
   }
 
-  async listFeatureFlags(user: AuthUser, query: unknown) {
-    const parsedQuery = this.parseOrThrow(
-      listFeatureFlagsQuerySchema,
-      query,
-      "Paramètres feature flags invalides."
-    ) as z.infer<typeof listFeatureFlagsQuerySchema>;
-    const tenantId = isPlatformOperator(user.role) ? parsedQuery.tenantId ?? user.tenantId : user.tenantId;
-    const secrets = await this.prisma.client.tenantSecret.findMany({
-      where: {
-        tenantId,
-        key: { startsWith: "feature_flag." }
-      },
-      orderBy: { updatedAt: "desc" }
-    });
-
-    const flags = await Promise.all(
-      secrets.map(async (secret) => {
-        const secretRead = await this.organizerSecretsService.getSecret(
-          {
-            ...user,
-            tenantId
-          },
-          secret.key
-        );
-        const value = JSON.parse(secretRead.value) as { enabled: boolean; rolloutPercent: number };
-        return {
-          key: secret.key.replace(/^feature_flag\./, ""),
-          enabled: value.enabled,
-          rolloutPercent: value.rolloutPercent,
-          updatedAt: secret.updatedAt.toISOString()
-        };
-      })
-    );
-
-    return { tenantId, items: flags };
-  }
-
-  async upsertFeatureFlag(user: AuthUser, payload: unknown) {
-    const input = this.parseOrThrow(
-      upsertFeatureFlagSchema,
-      payload,
-      "Payload feature flag invalide."
-    ) as z.infer<typeof upsertFeatureFlagSchema>;
-    const tenantId = isPlatformOperator(user.role) ? input.tenantId ?? user.tenantId : user.tenantId;
-    const secretKey = `feature_flag.${input.key}`;
-    const value = JSON.stringify({ enabled: input.enabled, rolloutPercent: input.rolloutPercent });
-
-    await this.organizerSecretsService.saveSecret(
-      {
-        ...user,
-        tenantId
-      },
-      { key: secretKey, value }
-    );
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId,
-        actorUserId: user.userId,
-        actorRole: user.role,
-        action: "feature_flag.upserted",
-        targetType: "FeatureFlag",
-        targetId: input.key,
-        metadata: {
-          enabled: input.enabled,
-          rolloutPercent: input.rolloutPercent
-        }
-      }
-    });
-
-    return {
-      tenantId,
-      key: input.key,
-      enabled: input.enabled,
-      rolloutPercent: input.rolloutPercent
-    };
-  }
-
-  async deleteFeatureFlag(user: AuthUser, payload: unknown) {
-    const input = this.parseOrThrow(
-      deleteFeatureFlagParamsSchema,
-      payload,
-      "Clé feature flag invalide."
-    ) as z.infer<typeof deleteFeatureFlagParamsSchema>;
-    const tenantId = isPlatformOperator(user.role) ? input.tenantId ?? user.tenantId : user.tenantId;
-    const secretKey = `feature_flag.${input.key}`;
-
-    const secret = await this.prisma.client.tenantSecret.findUnique({
-      where: { tenantId_key: { tenantId, key: secretKey } }
-    });
-    if (!secret) {
-      throw new NotFoundException("Feature flag introuvable.");
-    }
-
-    await this.prisma.client.tenantSecret.delete({ where: { id: secret.id } });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId,
-        actorUserId: user.userId,
-        actorRole: user.role,
-        action: "feature_flag.deleted",
-        targetType: "FeatureFlag",
-        targetId: input.key
-      }
-    });
-
-    return { deleted: true, key: input.key };
-  }
-
   async getJobsOverview(user: AuthUser) {
     const now = Date.now();
     const stalePendingBefore = new Date(now - 15 * 60 * 1000);
@@ -470,7 +335,7 @@ export class AdminService {
     const cleanupBefore = new Date(now - 30 * 24 * 60 * 60 * 1000);
     const tenantFilter = isPlatformOperator(user.role) ? {} : { tenantId: user.tenantId };
 
-    const [pendingPayments, stalePendingPayments, failedPayments24h, expiredIdempotencyKeys, revokedSessionsToPurge, recentMaintenanceRuns] =
+    const [pendingPayments, stalePendingPayments, failedPayments24h, expiredIdempotencyKeys, revokedSessionsToPurge, recentMaintenanceRuns, lateSuccessToRefund] =
       await Promise.all([
         this.prisma.client.paymentTransaction.count({
           where: {
@@ -513,6 +378,12 @@ export class AdminService {
           },
           orderBy: { createdAt: "desc" },
           take: 5
+        }),
+        // Paiements confirmés par le prestataire après leur abandon, sans place
+        // libre ou concours fermé : l'argent est à rendre à la main. Trace
+        // protégée (jamais effacée) : on ne compte que les 30 derniers jours.
+        this.prisma.client.auditLog.count({
+          where: { ...tenantFilter, action: "payment.late_success_needs_refund", createdAt: { gte: cleanupBefore } }
         })
       ]);
 
@@ -522,89 +393,13 @@ export class AdminService {
       failedPayments24h,
       expiredIdempotencyKeys,
       revokedSessionsToPurge,
+      lateSuccessToRefund,
       recentMaintenanceRuns: recentMaintenanceRuns.map((item) => ({
         id: item.id,
         action: item.action,
         createdAt: item.createdAt.toISOString(),
         actorUserId: item.actorUserId
       }))
-    };
-  }
-
-  async getSubscriptionsOverview(user: AuthUser, query: unknown) {
-    const parsedQuery = this.parseOrThrow(
-      subscriptionsOverviewQuerySchema,
-      query,
-      "Paramètres abonnements invalides."
-    ) as z.infer<typeof subscriptionsOverviewQuerySchema>;
-    const now = Date.now();
-    const from = parsedQuery.from ?? new Date(now - 30 * 24 * 60 * 60 * 1000);
-    const to = parsedQuery.to ?? new Date(now);
-
-    const where =
-      isPlatformOperator(user.role)
-        ? {
-            status: PaymentStatus.SUCCEEDED,
-            updatedAt: { gte: from, lte: to }
-          }
-        : {
-            tenantId: user.tenantId,
-            status: PaymentStatus.SUCCEEDED,
-            updatedAt: { gte: from, lte: to }
-          };
-
-    const transactions = await this.prisma.client.paymentTransaction.findMany({
-      where,
-      select: {
-        tenantId: true,
-        amountCfa: true,
-        updatedAt: true
-      },
-      orderBy: { updatedAt: "desc" }
-    });
-
-    const totalsByTenant = new Map<string, { revenueCfa: number; successfulPayments: number; lastPaymentAt: Date }>();
-    for (const tx of transactions) {
-      const existing = totalsByTenant.get(tx.tenantId);
-      if (!existing) {
-        totalsByTenant.set(tx.tenantId, {
-          revenueCfa: tx.amountCfa,
-          successfulPayments: 1,
-          lastPaymentAt: tx.updatedAt
-        });
-      } else {
-        existing.revenueCfa += tx.amountCfa;
-        existing.successfulPayments += 1;
-        if (tx.updatedAt > existing.lastPaymentAt) {
-          existing.lastPaymentAt = tx.updatedAt;
-        }
-      }
-    }
-
-    const items = Array.from(totalsByTenant.entries())
-      .map(([tenantId, value]) => ({
-        tenantId,
-        revenueCfa: value.revenueCfa,
-        successfulPayments: value.successfulPayments,
-        lastPaymentAt: value.lastPaymentAt.toISOString(),
-        subscriptionState: value.lastPaymentAt.getTime() >= now - 30 * 24 * 60 * 60 * 1000 ? "ACTIVE" : "INACTIVE"
-      }))
-      .sort((a, b) => b.revenueCfa - a.revenueCfa);
-
-    const totalRevenueCfa = items.reduce((acc, item) => acc + item.revenueCfa, 0);
-    const activeSubscriptions = items.filter((item) => item.subscriptionState === "ACTIVE").length;
-
-    return {
-      window: {
-        from: from.toISOString(),
-        to: to.toISOString()
-      },
-      totals: {
-        tenantsWithRevenue: items.length,
-        activeSubscriptions,
-        totalRevenueCfa
-      },
-      items
     };
   }
 
@@ -615,7 +410,7 @@ export class AdminService {
       where: { id: userId },
       include: {
         tenant: {
-          select: { id: true, slug: true, displayName: true, provider: true, commissionBps: true }
+          select: { id: true, slug: true, displayName: true, provider: true }
         },
         sessions: { select: { id: true, createdAt: true, expiresAt: true, revokedAt: true } }
       }
@@ -640,10 +435,6 @@ export class AdminService {
       where: { tenantId: user.tenantId, status: PaymentStatus.SUCCEEDED },
       _sum: { amountCfa: true }
     });
-    const subscription = await this.prisma.client.accountSubscription.findFirst({
-      where: { tenantId: user.tenantId, status: "ACTIVE" },
-      orderBy: { expiresAt: "desc" }
-    });
 
     return {
       id: user.id,
@@ -663,15 +454,6 @@ export class AdminService {
         activeEvents: activeEventCount,
         totalRevenueCfa: revenueResult._sum.amountCfa ?? 0
       },
-      subscription: subscription
-        ? {
-            id: subscription.id,
-            planType: subscription.planType,
-            status: subscription.status,
-            expiresAt: subscription.expiresAt.toISOString(),
-            frozenCommissionBps: subscription.frozenCommissionBps
-          }
-        : null,
       sessions: user.sessions.map((s) => ({
         id: s.id,
         createdAt: s.createdAt.toISOString(),
@@ -681,25 +463,68 @@ export class AdminService {
     };
   }
 
+  /**
+   * Supprime UN utilisateur. Son organisation n'est supprimée avec lui que s'il
+   * en était le seul membre et qu'elle n'a aucune activité (concours, paiement,
+   * portefeuille, retrait) : un compte actif se suspend, il ne s'efface pas.
+   * L'audit est écrit dans l'espace de l'administrateur, qui survit à la suppression.
+   */
   async deleteUser(actor: AuthUser, userId: string) {
     const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException("Utilisateur introuvable.");
     if (user.role === UserRole.PLATFORM_SUPER_ADMIN) {
       throw new ForbiddenException("Impossible de supprimer un super-admin.");
     }
+    if (user.id === actor.userId) {
+      throw new ForbiddenException("Vous ne pouvez pas supprimer votre propre compte.");
+    }
 
-    // Delete tenant (cascades to events, votes, payments)
-    await this.prisma.client.tenant.delete({ where: { id: user.tenantId } });
+    const [otherMembers, otherOwners, signedContracts] = await Promise.all([
+      this.prisma.client.user.count({ where: { tenantId: user.tenantId, id: { not: user.id } } }),
+      this.prisma.client.user.count({ where: { tenantId: user.tenantId, id: { not: user.id }, role: user.role } }),
+      this.prisma.client.eventContract.count({ where: { signedByUserId: user.id } })
+    ]);
+    if (signedContracts > 0) {
+      throw new BadRequestException("Cet utilisateur a signé des contrats, qui doivent rester attribués : suspendez-le plutôt.");
+    }
+    if (user.role === UserRole.ORGANIZER_OWNER && otherMembers > 0 && otherOwners === 0) {
+      throw new BadRequestException(
+        "C'est le seul responsable de l'organisation : nommez un autre responsable, ou suspendez-le plutôt."
+      );
+    }
 
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorUserId: actor.userId,
-        actorRole: actor.role,
-        action: "user.deleted",
-        targetType: "User",
-        targetId: userId,
-        metadata: { email: user.email, tenantId: user.tenantId }
+    const deleteTenant = otherMembers === 0;
+    if (deleteTenant) {
+      const [events, payments, wallet, withdrawals] = await Promise.all([
+        this.prisma.client.event.count({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.paymentTransaction.count({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.organizerWallet.findUnique({ where: { tenantId: user.tenantId } }),
+        this.prisma.client.withdrawalRequest.count({ where: { tenantId: user.tenantId } })
+      ]);
+      const hasMoney = wallet !== null && wallet.withdrawableCfa + wallet.heldCfa > 0;
+      if (events > 0 || payments > 0 || withdrawals > 0 || hasMoney) {
+        throw new BadRequestException(
+          "Cette organisation a des concours, des paiements ou de l'argent : suspendez le compte plutôt que de le supprimer."
+        );
+      }
+    }
+
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          actorUserId: actor.userId,
+          actorRole: actor.role,
+          action: "user.deleted",
+          targetType: "User",
+          targetId: userId,
+          metadata: { email: user.email, tenantId: user.tenantId, tenantDeleted: deleteTenant }
+        }
+      });
+      if (deleteTenant && user.tenantId !== actor.tenantId) {
+        await tx.tenant.delete({ where: { id: user.tenantId } });
+      } else {
+        await tx.user.delete({ where: { id: user.id } });
       }
     });
 
@@ -710,6 +535,9 @@ export class AdminService {
     const provider = body.provider as PaymentProvider;
     if (!Object.values(PaymentProvider).includes(provider)) {
       throw new BadRequestException("Fournisseur de paiement invalide.");
+    }
+    if (provider !== PaymentProvider.FEEXPAY && provider !== PaymentProvider.FEDAPAY) {
+      throw new BadRequestException("Choisissez FeexPay ou FedaPay.");
     }
 
     const user = await this.prisma.client.user.findUnique({
@@ -825,86 +653,6 @@ export class AdminService {
     });
 
     return { deleted: true };
-  }
-
-  // ── Subscriptions ────────────────────────────────────────────────────
-
-  async activateSubscription(actor: AuthUser, id: string) {
-    const sub = await this.prisma.client.accountSubscription.findUnique({ where: { id } });
-    if (!sub) throw new NotFoundException("Abonnement introuvable.");
-
-    const updated = await this.prisma.client.accountSubscription.update({
-      where: { id },
-      data: { status: "ACTIVE" }
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: sub.tenantId,
-        actorUserId: actor.userId,
-        actorRole: actor.role,
-        action: "subscription.activated",
-        targetType: "AccountSubscription",
-        targetId: id
-      }
-    });
-
-    return { id: updated.id, status: updated.status };
-  }
-
-  async suspendSubscription(actor: AuthUser, id: string) {
-    const sub = await this.prisma.client.accountSubscription.findUnique({ where: { id } });
-    if (!sub) throw new NotFoundException("Abonnement introuvable.");
-
-    const updated = await this.prisma.client.accountSubscription.update({
-      where: { id },
-      data: { status: "CANCELLED" }
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: sub.tenantId,
-        actorUserId: actor.userId,
-        actorRole: actor.role,
-        action: "subscription.suspended",
-        targetType: "AccountSubscription",
-        targetId: id
-      }
-    });
-
-    return { id: updated.id, status: updated.status };
-  }
-
-  async renewSubscription(actor: AuthUser, id: string, body: { durationMonths: number }) {
-    const sub = await this.prisma.client.accountSubscription.findUnique({ where: { id } });
-    if (!sub) throw new NotFoundException("Abonnement introuvable.");
-
-    const durationMonths = z.coerce.number().int().min(1).max(36).parse(body.durationMonths);
-    const expiresAt = new Date();
-    expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
-
-    const updated = await this.prisma.client.accountSubscription.update({
-      where: { id },
-      data: {
-        status: "ACTIVE",
-        expiresAt,
-        durationMonths
-      }
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: sub.tenantId,
-        actorUserId: actor.userId,
-        actorRole: actor.role,
-        action: "subscription.renewed",
-        targetType: "AccountSubscription",
-        targetId: id,
-        metadata: { durationMonths, previousExpiresAt: sub.expiresAt.toISOString(), newExpiresAt: expiresAt.toISOString() }
-      }
-    });
-
-    return { id: updated.id, status: updated.status, expiresAt: updated.expiresAt.toISOString() };
   }
 
   // ── Admin Management ─────────────────────────────────────────────────

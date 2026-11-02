@@ -6,7 +6,8 @@
 export const MOBILE_NETWORKS = [
   { value: "mtn", label: "MTN" },
   { value: "moov", label: "Moov" },
-  { value: "orange", label: "Orange" },
+  // Même liste que l'API (PSP_SUPPORTED_OPERATORS par défaut) : réseaux du Bénin.
+  { value: "celtiis", label: "Celtiis" },
 ] as const;
 
 export type MobileNetwork = (typeof MOBILE_NETWORKS)[number]["value"];

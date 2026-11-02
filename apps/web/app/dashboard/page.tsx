@@ -3,17 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CreditCard, ArrowRight, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { authLoginUrl } from "@/lib/auth-navigation";
 import { getStoredToken } from "../../lib/auth";
 import { useI18n } from "../../lib/i18n-provider";
-import {
-  useOrganizerEvents,
-  usePaymentReadiness,
-} from "../../lib/hooks/use-organizer-events";
+import { useOrganizerEvents } from "../../lib/hooks/use-organizer-events";
 import { useOrganizerOffer } from "../../lib/hooks/use-organizer-offer";
-import { useSubscriptionUsage } from "../../lib/hooks/use-subscription";
 import { StatusChip, EmptyState, LoadingState, Button, FormError } from "@/components/ui";
 import { useWalletQuery } from "../../lib/hooks/use-wallet";
 import { formatCfa, formatEventDate } from "../../lib/format";
@@ -34,11 +30,7 @@ export default function DashboardHomePage() {
   const eventsQuery = useOrganizerEvents(hasToken);
   const events = eventsQuery.data ?? [];
   const latest = events[0];
-  const { ready: paymentReady, skipPaymentStep } = usePaymentReadiness(latest?.id);
-  const usageQuery = useSubscriptionUsage(hasToken);
-  const usage = usageQuery.data;
   const offerQuery = useOrganizerOffer(hasToken);
-  const isEscrow = offerQuery.data?.offerType === "ESCROW";
 
   useEffect(() => {
     if (!eventsQuery.isFetching && eventsQuery.isSuccess && events.length === 0) {
@@ -51,18 +43,6 @@ export default function DashboardHomePage() {
   const activeEvents = events.filter((item) => item.status === "ACTIVE").length;
   const recentEvents = events.slice(0, 5);
 
-  // Escrow : jamais bloqué par l'absence d'abonnement. EXTERNAL/legacy : limite plan éventuelle.
-  const subscriptionBlocked =
-    offerQuery.isSuccess &&
-    !isEscrow &&
-    Boolean(usage) &&
-    (usage!.hasSubscription === false ||
-      (usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit));
-  const subscriptionLimitReached =
-    Boolean(usage?.hasSubscription) && usage!.eventsLimit != null && usage!.eventsUsed >= usage!.eventsLimit;
-  // Escrow : SHADOMA encaisse pour l'organisateur, il n'y a pas de compte Mobile Money à brancher.
-  const noPaymentSetup = skipPaymentStep || isEscrow;
-  const paymentBlocked = !subscriptionBlocked && !paymentReady && !noPaymentSetup;
 
   if (eventsQuery.isPending) {
     return <LoadingState variant="rows" count={4} label={isEn ? "Loading dashboard metrics…" : "Chargement des indicateurs…"} />;
@@ -80,56 +60,11 @@ export default function DashboardHomePage() {
 
   return (
     <div className="space-y-8">
-      <OnboardingChecklist events={events} isEn={isEn} paymentReady={paymentReady} skipPaymentStep={noPaymentSetup} />
+      <OnboardingChecklist events={events} isEn={isEn} payoutConfigured={offerQuery.data?.payoutConfigured ?? false} />
 
-      {subscriptionBlocked && (
-        <div
-          role="alert"
-          className="flex flex-col gap-4 rounded-xl border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--color-warning-text)]" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-bold text-[var(--color-warning-text)]">
-                {subscriptionLimitReached ? t("dash.banner.subLimitTitle") : t("dash.banner.subMissingTitle")}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {subscriptionLimitReached ? t("dash.banner.subLimitDesc") : t("dash.banner.subMissingDesc")}
-              </p>
-            </div>
-          </div>
-          <Button asChild size="sm" className="shrink-0">
-            <Link href="/dashboard/offer">
-              {t("dash.banner.manageOffer")}
-              <ArrowRight className="ml-1.5 size-4" />
-            </Link>
-          </Button>
-        </div>
-      )}
-
-      {paymentBlocked && (
-        <div
-          role="alert"
-          className="flex flex-col gap-4 rounded-xl border border-[var(--color-info)]/30 bg-[var(--color-info)]/10 p-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="flex items-start gap-3">
-            <CreditCard className="mt-0.5 size-5 shrink-0 text-[var(--color-info-text)]" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-bold text-[var(--color-info-text)]">{t("dash.banner.paymentTitle")}</p>
-              <p className="text-sm text-muted-foreground">{t("dash.banner.paymentDesc")}</p>
-            </div>
-          </div>
-          <Button asChild size="sm" variant="secondary" className="shrink-0">
-            <Link href="/dashboard/account">
-              {t("dash.banner.setupPayment")}
-              <ArrowRight className="ml-1.5 size-4" />
-            </Link>
-          </Button>
-        </div>
-      )}
 
       <header>
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{t("today.title")}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-slate-900">{t("today.title")}</h1>
       </header>
 
       {/* Un chiffre dominant : le disponible (7.6). */}

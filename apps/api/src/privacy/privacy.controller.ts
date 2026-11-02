@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Header, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
@@ -35,7 +35,8 @@ export class PrivacyController {
 
   @Delete("delete")
   @UseGuards(AuthGuard)
-  deleteUserData(@CurrentUser() user: AuthUser) {
-    return this.privacyService.anonymizeUserData(user);
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  deleteUserData(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.privacyService.anonymizeUserData(user, body);
   }
 }

@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { LedgerBucket, LedgerDirection, Prisma, WalletLedgerEntry, WalletLedgerKind } from "@prisma/client";
+import { randomUUID } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { appendLedgerEntry, bucketOf } from "./ledger-entry";
 
@@ -54,15 +55,14 @@ export class WalletService {
     const db = this.db(tx);
     const existing = await db.organizerWallet.findUnique({ where: { tenantId } });
     if (existing) return existing;
-    try {
-      return await db.organizerWallet.create({
-        data: { tenantId, withdrawableCfa: 0, heldCfa: 0 }
-      });
-    } catch (err) {
-      const again = await db.organizerWallet.findUnique({ where: { tenantId } });
-      if (again) return again;
-      throw err;
-    }
+    // INSERT … ON CONFLICT DO NOTHING : deux premiers crédits simultanés ne
+    // lèvent pas d'erreur (un échec de contrainte annulerait la transaction
+    // Postgres de l'appelant, sans reprise possible).
+    await db.$executeRaw`
+      INSERT INTO "OrganizerWallet" ("id", "tenantId", "withdrawableCfa", "heldCfa", "createdAt", "updatedAt")
+      VALUES (${`wal_${randomUUID()}`}, ${tenantId}, 0, 0, NOW(), NOW())
+      ON CONFLICT ("tenantId") DO NOTHING`;
+    return db.organizerWallet.findUniqueOrThrow({ where: { tenantId } });
   }
 
   async getWallet(tenantId: string) {

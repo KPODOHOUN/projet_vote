@@ -26,10 +26,10 @@ async function makeSuperAdmin() {
   return { tenant, user };
 }
 
-test("requestUnlock crée un challenge, retourne le code (en mode test)", async () => {
+test("requestUnlock crée un challenge ; sans service d'e-mail (tests), le code est rendu pour l'automatisation", async () => {
   const { user } = await makeSuperAdmin();
   const { code, challengeId } = await otp.requestUnlock(user.id);
-  assert.match(code, /^\d{6}$/);
+  assert.match(code ?? "", /^\d{6}$/);
   const row = await prisma.vaultUnlockChallenge.findUniqueOrThrow({ where: { id: challengeId } });
   assert.notEqual(row.codeHash, code, "le code stocké est haché");
 });
@@ -37,9 +37,9 @@ test("requestUnlock crée un challenge, retourne le code (en mode test)", async 
 test("confirmUnlock retourne un token de 10 min ; ré-utilisation refusée", async () => {
   const { user } = await makeSuperAdmin();
   const { code, challengeId } = await otp.requestUnlock(user.id);
-  const token = await otp.confirmUnlock(user.id, challengeId, code);
+  const token = await otp.confirmUnlock(user.id, challengeId, code!);
   assert.ok(token.length > 20);
-  await assert.rejects(otp.confirmUnlock(user.id, challengeId, code), /déjà utilisé|invalide/);
+  await assert.rejects(otp.confirmUnlock(user.id, challengeId, code!), /déjà utilisé|invalide|bloqué/);
 });
 
 test("confirmUnlock : 5 essais ratés → challenge bloqué", async () => {
@@ -54,7 +54,27 @@ test("confirmUnlock : 5 essais ratés → challenge bloqué", async () => {
 test("verifyToken : token valide accepté, token forgé refusé", async () => {
   const { user } = await makeSuperAdmin();
   const { code, challengeId } = await otp.requestUnlock(user.id);
-  const token = await otp.confirmUnlock(user.id, challengeId, code);
+  const token = await otp.confirmUnlock(user.id, challengeId, code!);
   assert.equal(otp.verifyToken(token, user.id), true);
   assert.equal(otp.verifyToken("invalid.token.here", user.id), false);
+});
+
+test("le code part par e-mail : jamais dans la réponse quand l'envoi réussit", async () => {
+  const { user } = await makeSuperAdmin();
+  const sent: Array<{ to: string[]; html: string }> = [];
+  const withMail = new VaultOtpService(prismaService, { send: async (payload: { to: string[]; html: string }) => { sent.push(payload); return true; } } as never);
+  const response = await withMail.requestUnlock(user.id);
+  assert.equal("code" in response, false);
+  assert.deepEqual(sent[0]!.to, ["su@votez.pro"]);
+  assert.match(sent[0]!.html, /\d{6}/);
+});
+
+test("essais en parallèle : jamais plus de 5 codes comparés", async () => {
+  const { user } = await makeSuperAdmin();
+  const { code, challengeId } = await otp.requestUnlock(user.id);
+  const guesses = Array.from({ length: 40 }, (_, i) => String(i).padStart(6, "0")).filter((g) => g !== code);
+  const results = await Promise.allSettled(guesses.map((g) => otp.confirmUnlock(user.id, challengeId, g)));
+  const compared = results.filter((r) => r.status === "rejected" && /Code invalide/.test((r.reason as Error).message)).length;
+  assert.ok(compared <= 5, `${compared} codes comparés`);
+  await assert.rejects(otp.confirmUnlock(user.id, challengeId, code!), /bloqué/);
 });

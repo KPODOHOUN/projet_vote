@@ -15,14 +15,13 @@ test.describe("Notifications", () => {
   }) => {
     const unique = `${Date.now()}-notif`;
     const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3011/api/v1";
-    const tenantSlug = `e2e-notif-${unique}`;
     const email = `owner-${unique}@shadowa.test`;
     const password = "SecurePass123!";
     const tenantDisplayName = `E2E Notif ${unique}`;
     const inviteeEmail = `invitee-${unique}@example.com`;
 
     const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-      data: { tenantSlug, tenantDisplayName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+      data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: tenantDisplayName, email, password, acceptPrivacyPolicy: true }
     });
     expect(registerResponse.ok()).toBeTruthy();
 

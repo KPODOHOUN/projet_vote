@@ -6,7 +6,6 @@ import { PLATFORM_OPERATOR_ROLES } from "../auth/platform-roles";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { CommissionOverrideService } from "./commission-override.service";
-import { EventSettlementService } from "./event-settlement.service";
 import { EventStatsService } from "./event-stats.service";
 import { OfferSettingsService } from "./offer-settings.service";
 import { OrganizerOffersService } from "./organizer-offers.service";
@@ -22,7 +21,6 @@ export class AdminOffersController {
     private readonly withdrawals: WithdrawalsService,
     private readonly eventStats: EventStatsService,
     private readonly organizerOffers: OrganizerOffersService,
-    private readonly settlement: EventSettlementService,
     private readonly commissionOverride: CommissionOverrideService,
     private readonly ledger: LedgerConsistencyService
   ) {}
@@ -45,25 +43,17 @@ export class AdminOffersController {
 
   @Get("revenue")
   revenue() {
-    return this.organizerOffers.adminRevenueByOfferType();
-  }
-
-  @Get("fedapay-subaccounts")
-  listFedaPaySubAccounts() {
-    return this.organizerOffers.listFedaPaySubAccounts();
-  }
-
-  @Post("fedapay-subaccounts/:tenantId/verify")
-  verifyFedaPaySubAccount(
-    @CurrentUser() user: AuthUser,
-    @Param("tenantId") tenantId: string
-  ) {
-    return this.organizerOffers.verifyFedaPaySubAccount(user, tenantId);
+    return this.organizerOffers.adminRevenue();
   }
 
   @Get("withdrawals")
   listWithdrawals(@Query() query: Record<string, unknown>) {
     return this.withdrawals.listAll(query);
+  }
+
+  @Get("withdrawals/:id/destination")
+  revealDestination(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.withdrawals.revealDestination(user, id);
   }
 
   @Post("withdrawals/:id/approve")
@@ -86,11 +76,6 @@ export class AdminOffersController {
     return this.eventStats.listActiveEventsWithStats();
   }
 
-  @Post("events/close-expired")
-  closeExpired(@CurrentUser() _user: AuthUser) {
-    return this.settlement.closeExpiredEvents();
-  }
-
   @Get("events/:eventId")
   eventDetail(@Param("eventId") eventId: string) {
     return this.eventStats.getEventStats(eventId);
@@ -98,7 +83,7 @@ export class AdminOffersController {
 
   @Get("events/:eventId/commission")
   getEventCommission(@Param("eventId") eventId: string) {
-    return this.offerSettings.describeEscrowCommission(eventId);
+    return this.offerSettings.describeEventCommission(eventId);
   }
 
   @Put("events/:eventId/commission")
@@ -110,12 +95,13 @@ export class AdminOffersController {
     return this.commissionOverride.setEventCommission(user, eventId, body.commissionBps);
   }
 
-  @Put("tenants/:tenantId/commission")
-  setTenantCommission(
-    @CurrentUser() user: AuthUser,
-    @Param("tenantId") tenantId: string,
-    @Body() body: { commissionBps: number }
-  ) {
-    return this.commissionOverride.setTenantCommission(user, tenantId, body.commissionBps);
+  @Get("tenants/:tenantId/commission-rates")
+  listTenantRates(@Param("tenantId") tenantId: string) {
+    return this.commissionOverride.listTenantRates(tenantId);
+  }
+
+  @Post("tenants/:tenantId/commission-rates")
+  setTenantCommission(@CurrentUser() user: AuthUser, @Param("tenantId") tenantId: string, @Body() body: unknown) {
+    return this.commissionOverride.setTenantCommission(user, tenantId, body);
   }
 }

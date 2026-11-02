@@ -7,8 +7,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
-import { useAuth } from "@/lib/auth-context";
-import { canManagePaymentSecrets } from "@/lib/roles";
 import { useI18n } from "@/lib/i18n-provider";
 import { formatEventStatus } from "@/lib/i18n";
 import { Button, ConfirmDialog, Input, StatusChip, EmptyState, LoadingState } from "@/components/ui";
@@ -16,11 +14,8 @@ import { CandidatePhoto } from "@/components/candidate-photo";
 import { PhotoUploadField } from "@/components/photo-upload-field";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { CandidateBulkImport } from "@/components/candidate-bulk-import";
-import { ActivationPaymentPanel } from "@/components/activation-payment-panel";
-import { FeexPaySecretPanel } from "@/components/feexpay-secret-panel";
+import { PublishPanel } from "@/components/publish-panel";
 import { showToast } from "@/lib/toast";
-import { ApiError } from "@/lib/api";
-import { getEventPartnerStatus } from "@/lib/partners";
 import { CopyCandidateLinkButton } from "@/components/copy-candidate-link-button";
 import { trackEvent } from "@/lib/analytics";
 import { EventDashboardShell } from "@/components/event-dashboard-shell";
@@ -51,7 +46,6 @@ export default function EventCandidatesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { locale } = useI18n();
-  const { role } = useAuth();
   const isEn = locale === "en";
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
@@ -69,22 +63,18 @@ export default function EventCandidatesPage() {
   const [editName, setEditName] = useState("");
   const [editNumber, setEditNumber] = useState("");
   const [editUrl, setEditUrl] = useState("");
-  const [editVoteCount, setEditVoteCount] = useState("");
-  const [isPartnerEvent, setIsPartnerEvent] = useState(false);
 
   const loadCandidates = async (token: string) => {
-    const [event, list, dashboard, partnerStatus] = await Promise.all([
+    const [event, list, dashboard] = await Promise.all([
       apiFetch<EventMeta>(`/events/${eventId}`, { headers: { Authorization: `Bearer ${token}` } }),
       apiFetch<Candidate[]>(`/events/${eventId}/candidates`, { headers: { Authorization: `Bearer ${token}` } }),
       apiFetch<{ byCandidate: CandidateStats[] }>(`/events/${eventId}/dashboard`, {
         headers: { Authorization: `Bearer ${token}` }
-      }),
-      getEventPartnerStatus(token, eventId).catch(() => null)
+      })
     ]);
     setEventMeta(event);
     setCandidates(list);
     setStatsByCandidate(Object.fromEntries(dashboard.byCandidate.map((row) => [row.candidateId, row])));
-    setIsPartnerEvent(partnerStatus?.isPartnerEvent ?? false);
     const numbered = list.filter((c) => c.number != null).map((c) => c.number as number);
     setNumber(numbered.length > 0 ? String(Math.max(...numbered) + 1) : "1");
   };
@@ -126,26 +116,15 @@ export default function EventCandidatesPage() {
       setFullName("");
       setPhotoUrl("");
       await loadCandidates(token);
-      if (wasFirst) {
-        try {
-          await apiFetch(`/events/${eventId}`, {
-            method: "PATCH",
-            headers: { Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ status: "ACTIVE" })
-          });
-          showToast.success(isEn ? "Event published!" : "Évènement publié !");
-        } catch (caughtError) {
-          if (caughtError instanceof ApiError && caughtError.status === 402) {
-            showToast.info(
-              isEn
-                ? "Candidate added. Pay the launch fee to open voting."
-                : "Candidat ajouté. Réglez le forfait pour ouvrir les votes."
-            );
-          }
-        }
-      } else {
-        showToast.success(isEn ? "Candidate added." : "Candidat ajouté.");
-      }
+      showToast.success(
+        wasFirst && eventMeta?.status === "DRAFT"
+          ? isEn
+            ? "Candidate added. Sign the contract to put the contest online."
+            : "Candidat ajouté. Signez le contrat pour mettre le concours en ligne."
+          : isEn
+            ? "Candidate added."
+            : "Candidat ajouté."
+      );
       void trackEvent("candidate_added", { eventId });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : isEn ? "Creation failed." : "Création impossible.");
@@ -159,7 +138,6 @@ export default function EventCandidatesPage() {
     setEditName(candidate.fullName);
     setEditNumber(candidate.number != null ? String(candidate.number) : "");
     setEditUrl(candidate.photoUrl ?? "");
-    setEditVoteCount(String(statsByCandidate[candidate.id]?.voteCount ?? 0));
   };
 
   const onSaveCandidate = async (candidateId: string) => {
@@ -176,14 +154,6 @@ export default function EventCandidatesPage() {
           photoUrl: editUrl.trim() || undefined
         })
       });
-      const targetVotes = Number.parseInt(editVoteCount, 10);
-      if (!Number.isNaN(targetVotes)) {
-        await apiFetch(`/events/${eventId}/candidates/${candidateId}/vote-count`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ voteCount: targetVotes, reason: "Ajustement organisateur" })
-        });
-      }
       setEditingId(null);
       await loadCandidates(token);
       showToast.success(isEn ? "Candidate updated." : "Candidat mis à jour.");
@@ -223,13 +193,7 @@ export default function EventCandidatesPage() {
       {searchParams.get("welcome") === "1" ? <NextStepBanner variant="welcome" isEn={isEn} /> : null}
       {eventMeta.status === "ACTIVE" ? <NextStepBanner variant="share" isEn={isEn} eventSlug={eventMeta.slug} /> : null}
 
-      {eventMeta.status !== "ACTIVE" && token ? (
-        <ActivationPaymentPanel eventId={eventId} token={token} isEn={isEn} onActivated={() => void loadCandidates(token)} />
-      ) : null}
-
-      {eventMeta.status === "ACTIVE" && token && canManagePaymentSecrets(role) ? (
-        <FeexPaySecretPanel token={token} isEn={isEn} eventId={eventId} isPartnerEvent={isPartnerEvent} hideWhenReady />
-      ) : null}
+      {eventMeta.status === "DRAFT" ? <PublishPanel eventId={eventId} eventStatus={eventMeta.status} isEn={isEn} /> : null}
 
       {token ? (
         <CandidateBulkImport
@@ -278,12 +242,14 @@ export default function EventCandidatesPage() {
               <li key={candidate.id}>
                 <GlassCard intensity="subtle" className="p-4 sm:p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex items-start gap-4">
-                      <CandidatePhoto photoUrl={candidate.photoUrl} fullName={candidate.fullName} size="sm" />
-                      <div>
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className="size-14 shrink-0 overflow-hidden rounded-md bg-muted">
+                        <CandidatePhoto photoUrl={candidate.photoUrl} fullName={candidate.fullName} size="sm" />
+                      </div>
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           {candidate.number != null ? <StatusChip label={`#${candidate.number}`} tone="live" /> : null}
-                          <h3 className="text-lg font-bold text-foreground">{candidate.fullName}</h3>
+                          <h3 className="text-lg font-bold text-foreground [overflow-wrap:anywhere]">{candidate.fullName}</h3>
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {stats?.voteCount ?? 0} {isEn ? "votes" : "votes"} · {(stats?.totalAmountCfa ?? 0).toLocaleString(isEn ? "en-FR" : "fr-FR")} FCFA
@@ -303,7 +269,7 @@ export default function EventCandidatesPage() {
 
                     <div className="flex flex-wrap gap-2">
                       <Button type="button" variant="secondary" size="sm" onClick={() => (isEditing ? setEditingId(null) : startEdit(candidate))}>
-                        <Pencil className="mr-1.5 size-4" />
+                        <Pencil className="size-4" />
                         {isEditing ? (isEn ? "Cancel" : "Annuler") : isEn ? "Edit" : "Modifier"}
                       </Button>
                       <ConfirmDialog
@@ -318,7 +284,7 @@ export default function EventCandidatesPage() {
                         onConfirm={() => void onDeleteCandidate(candidate.id)}
                         trigger={
                           <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                            <Trash2 className="mr-1.5 size-4" />
+                            <Trash2 className="size-4" />
                             {isEn ? "Delete" : "Supprimer"}
                           </Button>
                         }
@@ -330,14 +296,6 @@ export default function EventCandidatesPage() {
                     <div className="mt-5 grid gap-4 border-t border-border/50 pt-5 md:grid-cols-2">
                       <Input label={isEn ? "Full name" : "Nom complet"} value={editName} onChange={(e) => setEditName(e.target.value)} />
                       <Input label={isEn ? "Number" : "Numéro"} type="number" min={1} value={editNumber} onChange={(e) => setEditNumber(e.target.value)} />
-                      <Input
-                        label={isEn ? "Vote count" : "Nombre de votes"}
-                        type="number"
-                        min={0}
-                        value={editVoteCount}
-                        onChange={(e) => setEditVoteCount(e.target.value)}
-                        helpText={isEn ? "Manual adjustment (owner only)." : "Ajustement manuel (propriétaire)."}
-                      />
                       <div className="md:col-span-2">
                         <PhotoUploadField value={editUrl} onChange={setEditUrl} token={token} label={isEn ? "Photo" : "Photo"} fullName={editName} />
                       </div>

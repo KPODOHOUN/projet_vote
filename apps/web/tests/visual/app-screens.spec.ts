@@ -43,7 +43,7 @@ test("écrans organisateur et admin à 390 et 1280 px", async ({ page, request }
   }
 
   const reg = await request.post(`${apiBaseUrl}/auth/register`, {
-    data: { tenantSlug: `app-${unique}`, tenantDisplayName: "Comité Miss Campus", email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+    data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: "Comité Miss Campus", email, password, acceptPrivacyPolicy: true }
   });
   expect(reg.ok()).toBeTruthy();
   const { accessToken } = (await reg.json()) as { accessToken: string };

@@ -5,33 +5,20 @@ import { EventStatus, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventsService } from "./events.service";
 import { VotesService } from "../votes/votes.service";
-import { PlatformControlService } from "../platform-control/platform-control.service";
-import { VaultService } from "../platform-control/vault.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { PartnersService } from "../partners/partners.service";
-import { noopPartnerNotifications } from "../partners/partner-notifications.stub";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
-import { OfferSettingsService } from "../offers/offer-settings.service";
-import { SETTLEMENT_HELD_BPS_KEY } from "../common/platform-settings";
+import { eventPreviewToken } from "../common/event-preview-token";
 
 const prismaService = new PrismaService();
 const votes = new VotesService(prismaService);
-const partners = new PartnersService(prismaService, noopPartnerNotifications());
-const offerSettings = new OfferSettingsService(prismaService);
 const events = new EventsService(
   prismaService,
   votes,
-  new NotificationsService(prismaService),
-  partners,
-  offerSettings
+  new NotificationsService(prismaService)
 );
-const platform = new PlatformControlService(prismaService, new VaultService(prismaService));
 
 function owner(tenantId: string) {
   return { userId: "owner-1", tenantId, email: "owner@ev.bj", role: UserRole.ORGANIZER_OWNER };
-}
-function admin(tenantId: string) {
-  return { userId: "admin-1", tenantId, email: "admin@ev.bj", role: UserRole.PLATFORM_ADMIN };
 }
 const past = () => new Date(Date.now() - 86_400_000).toISOString();
 const future = () => new Date(Date.now() + 86_400_000).toISOString();
@@ -76,7 +63,8 @@ test("createEvent: layout par défaut GRID, et layout choisi persisté + exposé
   assert.equal(spot.layout, "SPOTLIGHT");
 
   // Le contrat public (GET /votes/public/event/:slug) expose le layout.
-  const pub = await votes.getPublicEventBySlug("layout-spotlight");
+  // Brouillon : lu avec le jeton d'aperçu de l'organisateur.
+  const pub = await votes.getPublicEventBySlug("layout-spotlight", eventPreviewToken(spot.id));
   assert.equal(pub.event.layout, "SPOTLIGHT");
 });
 
@@ -103,9 +91,10 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
   assert.equal(updated.fontStyle, "GALA");
 
   await prisma.candidate.create({ data: { eventId: ev.id, fullName: "Ada", number: 1, publicRef: "ada-ref" } });
-  const hub = await votes.getPublicEventBySlug("style-default");
-  const profile = await votes.getPublicCandidate("style-default", "ada-ref");
-  const results = await votes.getPublicEventResults("style-default");
+  const preview = eventPreviewToken(ev.id);
+  const hub = await votes.getPublicEventBySlug("style-default", preview);
+  const profile = await votes.getPublicCandidate("style-default", "ada-ref", preview);
+  const results = await votes.getPublicEventResults("style-default", preview);
   for (const branding of [hub.event.branding, profile.event.branding, results.event.branding]) {
     assert.equal(branding.coverUrl, cover);
     assert.equal(branding.pageStyle, "SOIREE");
@@ -116,7 +105,7 @@ test("personnalisation de la mini-plateforme : couverture, style de page, police
   assert.equal(ev.heroBackground, "IMAGE");
   const colorBg = await events.updateEvent(owner(t.id), ev.id, { heroBackground: "COLOR" });
   assert.equal(colorBg.heroBackground, "COLOR");
-  assert.equal((await votes.getPublicEventBySlug("style-default")).event.branding.heroBackground, "COLOR");
+  assert.equal((await votes.getPublicEventBySlug("style-default", preview)).event.branding.heroBackground, "COLOR");
   await assert.rejects(events.updateEvent(owner(t.id), ev.id, { heroBackground: "VIDEO" }));
 
   for (const style of ["COURONNE", "MAGAZINE", "POP", "TERROIR", "STADE", "LINEUP", "DIPLOME", "MARCHE", "MENU", "WAX", "CAMPUS", "BADGE", "STORY", "SANCTUAIRE", "BILLET", "AFFICHE"]) {
@@ -164,11 +153,12 @@ test("listCandidates: isolation tenant (event d'autrui → introuvable)", async 
   await assert.rejects(events.listCandidates(owner(t2.id), ev.id), /introuvable/);
 });
 
-test("updateEvent: activation refusée (402) tant que le forfait est impayé", async () => {
+test("updateEvent: la mise en ligne passe uniquement par la signature du contrat", async () => {
   const t = await tenant("ev-act");
-  await platform.updateSettings(admin(t.id), { activationFeeCfa: 20000 });
   const ev = await events.createEvent(owner(t.id), { slug: "act-evt", title: "Activation", startsAt: past(), endsAt: future() });
-  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { status: "ACTIVE" }), /Forfait/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { status: "ACTIVE" }), /contrat/);
+  const still = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(still.status, "DRAFT");
 });
 
 test("importCandidates: crée plusieurs candidats et signale les numéros en conflit", async () => {
@@ -190,28 +180,6 @@ test("importCandidates: crée plusieurs candidats et signale les numéros en con
 
   const list = await events.listCandidates(owner(t.id), ev.id);
   assert.equal(list.length, 3);
-});
-
-test("updateEvent: pose heldBps au moment de l'activation, jamais avant", async () => {
-  await prisma.platformSetting.upsert({
-    where: { key: SETTLEMENT_HELD_BPS_KEY },
-    create: { key: SETTLEMENT_HELD_BPS_KEY, value: "5000", updatedByUserId: "test" },
-    update: { value: "5000" }
-  });
-  const t = await tenant(`held-snap-${Date.now().toString(36)}`);
-  const draft = await prisma.event.create({
-    data: {
-      tenantId: t.id,
-      title: "Held snapshot event",
-      slug: `ev-held-${Date.now().toString(36)}`,
-      startsAt: new Date(future()),
-      endsAt: new Date(new Date(future()).getTime() + 86_400_000)
-    }
-  });
-  assert.equal(draft.heldBps, null);
-
-  const activated = await events.updateEvent(owner(t.id), draft.id, { status: "ACTIVE" });
-  assert.equal(activated.heldBps, 5_000);
 });
 
 test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre organisateur ; payload public cohérent", async () => {
@@ -244,8 +212,70 @@ test("updateEvent: null efface slogan, logo et couleur ; refusé pour un autre o
   const partial = await prisma.event.findUniqueOrThrow({ where: { id: created.id } });
   assert.deepEqual([partial.tagline, partial.logoUrl, partial.brandColor], ["Retour", null, null]);
 
-  const pub = await votes.getPublicEventBySlug("brand-clear-evt");
+  const pub = await votes.getPublicEventBySlug("brand-clear-evt", eventPreviewToken(created.id));
   assert.equal(pub.event.branding.tagline, "Retour");
   assert.equal(pub.event.branding.logoUrl, null);
   assert.equal(pub.event.branding.brandColor, null);
+});
+
+async function publishedEvent(slug: string, status: EventStatus = EventStatus.ACTIVE) {
+  const t = await tenant(`${slug}-t`);
+  const ev = await prisma.event.create({
+    data: {
+      tenantId: t.id,
+      slug,
+      title: "Concours publié",
+      startsAt: new Date(past()),
+      endsAt: new Date(future()),
+      status,
+      voteUnitPriceCfa: 100,
+      ...(status === EventStatus.CLOSED ? { closedAt: new Date() } : {})
+    }
+  });
+  return { t, ev };
+}
+
+test("updateEvent: après publication, nom, dates et prix sont figés par le contrat ; l'apparence reste libre", async () => {
+  const { t, ev } = await publishedEvent("locked-evt");
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { title: "Autre nom" }), /nom du concours/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { endsAt: new Date(Date.now() + 9 * 86_400_000).toISOString() }), /date de fin/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { startsAt: past() }), /date de début/);
+  await assert.rejects(events.updateEvent(owner(t.id), ev.id, { voteUnitPriceCfa: 200 }), /prix du vote/);
+  // Renvoyer les valeurs actuelles (formulaire complet) reste accepté.
+  await events.updateEvent(owner(t.id), ev.id, { title: ev.title, endsAt: ev.endsAt.toISOString(), tagline: "Nouveau slogan" });
+  const after = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(after.tagline, "Nouveau slogan");
+  assert.equal(after.title, "Concours publié");
+});
+
+test("deleteEvent: un concours en ligne doit d'abord être clôturé", async () => {
+  const { t, ev } = await publishedEvent("del-active");
+  await assert.rejects(events.deleteEvent(owner(t.id), ev.id), /clôturez-le/);
+  assert.equal((await prisma.event.findUniqueOrThrow({ where: { id: ev.id } })).status, EventStatus.ACTIVE);
+});
+
+test("deleteEvent: un concours clôturé est archivé et garde sa date de clôture (réserve libérable)", async () => {
+  const { t, ev } = await publishedEvent("del-closed", EventStatus.CLOSED);
+  const result = await events.deleteEvent(owner(t.id), ev.id);
+  assert.equal(result.archived, true);
+  const after = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(after.status, EventStatus.ARCHIVED);
+  assert.ok(after.closedAt);
+});
+
+test("deleteEvent: un brouillon avec un projet de contrat non signé est supprimé", async () => {
+  const t = await tenant("del-draft");
+  const ev = await events.createEvent(owner(t.id), { slug: "del-draft-evt", title: "Brouillon", startsAt: past(), endsAt: future() });
+  await prisma.eventContract.create({
+    data: { id: "ctr_test_draft", eventId: ev.id, tenantId: t.id, templateVersion: "test", snapshot: {}, contentText: "projet", contentHash: "x".repeat(64) }
+  });
+  const result = await events.deleteEvent(owner(t.id), ev.id);
+  assert.equal(result.deleted, true);
+  assert.equal(await prisma.event.count({ where: { id: ev.id } }), 0);
+});
+
+test("candidats : figés une fois le concours clôturé", async () => {
+  const { t, ev } = await publishedEvent("cand-closed", EventStatus.CLOSED);
+  await assert.rejects(events.createCandidate(owner(t.id), ev.id, { fullName: "Tardif" }), /terminé/);
+  await assert.rejects(events.importCandidates(owner(t.id), ev.id, { candidates: [{ fullName: "Tardif" }] }), /terminé/);
 });

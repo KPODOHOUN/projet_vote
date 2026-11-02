@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Auth OTP register path", () => {
-  // D10 / 7.5 : la modale n'expose que l'offre Escrow ; l'offre externe n'est plus proposée.
-  test("register modal shows the Escrow offer only", async ({ page }) => {
+  // Inscription simple : identité et contact, aucune offre ni abonnement à choisir.
+  test("register modal asks for identity only, no offer or subscription", async ({ page }) => {
     await page.goto("/?auth=register");
-    await expect(page.getByText(/Encaissement plateforme|Platform collection/i).first()).toBeVisible({
-      timeout: 15_000
-    });
-    await expect(page.getByText(/Compte de paiement externe|External payment/i)).toHaveCount(0);
+    await expect(page.getByLabel("Prénom")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel("Nom", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Téléphone")).toBeVisible();
+    await expect(page.getByText(/abonnement|Encaissement par SHADOMA|Paiement direct/i)).toHaveCount(0);
   });
 });

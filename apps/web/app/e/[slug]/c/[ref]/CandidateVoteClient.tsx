@@ -23,6 +23,8 @@ type Props = {
   candidateName: string;
   voteUnitPriceCfa: number | null;
   initialVoteCount: number;
+  /** Réseaux acceptés par le prestataire du concours (API) ; tous si absent. */
+  paymentNetworks?: string[] | undefined;
 };
 
 const PRESETS = [1, 5, 10, 20] as const;
@@ -39,10 +41,12 @@ export function CandidateVoteClient({
   candidatePublicRef,
   candidateName,
   voteUnitPriceCfa,
-  initialVoteCount
+  initialVoteCount,
+  paymentNetworks
 }: Props) {
   const { locale, t } = useI18n();
   const isEn = locale === "en";
+  const networks = paymentNetworks ? MOBILE_NETWORKS.filter((network) => paymentNetworks.includes(network.value)) : MOBILE_NETWORKS;
   const { status, submit, reset } = usePublicVotePayment({ tenantSlug: organizerSlug, eventSlug, isEn });
   const [quantity, setQuantity] = useState(1);
   // Quantité envoyée au paiement : c'est elle qui compte après SUCCEEDED,
@@ -56,7 +60,8 @@ export function CandidateVoteClient({
   const isDone = liveStatus === "SUCCEEDED";
   const isFailed = liveStatus === "FAILED";
   const isSubmitting = status.phase === "submitting";
-  const canSubmit = quantity > 0 && voterPhone.trim().length >= 8 && !isSubmitting;
+  // Réseau obligatoire : deviner l'opérateur d'après le numéro envoie la demande au mauvais réseau.
+  const canSubmit = quantity > 0 && voterPhone.trim().length >= 8 && operator !== "" && !isSubmitting;
   const hasPrice = voteUnitPriceCfa !== null && voteUnitPriceCfa > 0;
   const amountCfa = hasPrice ? quantity * voteUnitPriceCfa : 0;
   const paidQuantity = submittedQuantity ?? quantity;
@@ -174,13 +179,12 @@ export function CandidateVoteClient({
               <Label htmlFor="operator" className="text-sm font-semibold text-slate-900">
                 {t("pay.network")}
               </Label>
-              <Select value={operator || "auto"} onValueChange={(value) => setOperator(value === "auto" ? "" : value)}>
+              <Select value={operator} onValueChange={setOperator}>
                 <SelectTrigger id="operator" className="w-full text-base data-[size=default]:h-12">
-                  <SelectValue />
+                  <SelectValue placeholder={t("pub.operatorPick")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto">{t("pub.operatorAuto")}</SelectItem>
-                  {MOBILE_NETWORKS.map((network) => (
+                  {networks.map((network) => (
                     <SelectItem key={network.value} value={network.value}>
                       {network.label}
                     </SelectItem>

@@ -20,12 +20,12 @@ export function NextStepBanner({ variant, isEn = false, eventId, eventSlug }: Ne
         <Info className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
         <div>
           <p className="font-semibold text-foreground">
-            {isEn ? "Event created. Add your candidates" : "Évènement créé. Ajoutez vos candidats"}
+            {isEn ? "Event created. Add your candidates" : "Événement créé. Ajoutez vos candidats"}
           </p>
           <p className="text-sm text-muted-foreground">
             {isEn
               ? "Add at least one candidate to open your event to voters."
-              : "Ajoutez au moins un candidat pour ouvrir votre évènement aux votants."}
+              : "Ajoutez au moins un candidat pour ouvrir votre événement aux votants."}
           </p>
         </div>
       </div>
@@ -47,7 +47,7 @@ export function NextStepBanner({ variant, isEn = false, eventId, eventSlug }: Ne
           href={`/dashboard/events/${eventId}/edit`}
           className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-md transition-all"
         >
-          {isEn ? "Edit event" : "Modifier l'évènement"}
+          {isEn ? "Edit event" : "Modifier l'événement"}
         </Link>
       </div>
     );
@@ -61,7 +61,7 @@ export function NextStepBanner({ variant, isEn = false, eventId, eventSlug }: Ne
             {isEn ? "Next: go live" : "Ensuite : mettre en ligne"}
           </p>
           <p className="text-sm text-muted-foreground">
-            {isEn ? "Your event is ready. Launch it when you are." : "Votre évènement est prêt. Lancez-le quand vous voulez."}
+            {isEn ? "Your event is ready. Launch it when you are." : "Votre événement est prêt. Lancez-le quand vous voulez."}
           </p>
         </div>
         <Link

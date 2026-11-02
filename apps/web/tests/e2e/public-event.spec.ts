@@ -1,20 +1,25 @@
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } } });
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 // Couvre les pages publiques event-as-platform (ADR-016) rendues côté serveur :
 //   /e/[slug]          → mini-plateforme de vote
 //   /e/[slug]/results  → classement public (votes payés uniquement)
 // Ces pages sont des Server Components : on ne peut pas mocker leur fetch depuis
 // le navigateur, on provisionne donc de vraies données via l'API (comme
-// organizer-flow.spec). Un évènement neuf est DRAFT (l'activation est derrière
-// le paiement), donc la page de vote affiche la branche « vote pas ouvert » et
-// les résultats l'état zéro — testables sans dépendre d'un PSP.
-test("pages publiques d'un évènement : rendu SSR + état zéro des résultats", async ({
+// organizer-flow.spec). Un brouillon n'est pas public. On le met en ligne en base
+// (dates futures) pour le rendu et l'état zéro des résultats, sans PSP.
+test("pages publiques d'un événement : rendu SSR + état zéro des résultats", async ({
   page,
   request
 }) => {
   const unique = `${Date.now()}`;
   const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3001/api/v1";
-  const tenantSlug = `e2e-public-${unique}`;
   const email = `owner-${unique}@shadowa.test`;
   const password = "SecurePass123!";
   const organizerName = `E2E Public ${unique}`;
@@ -23,13 +28,13 @@ test("pages publiques d'un évènement : rendu SSR + état zéro des résultats"
 
   // 1) Provisionne un tenant + organisateur (API réelle).
   const registerResponse = await request.post(`${apiBaseUrl}/auth/register`, {
-    data: { tenantSlug, tenantDisplayName: organizerName, email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+    data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: organizerName, email, password, acceptPrivacyPolicy: true }
   });
   expect(registerResponse.ok()).toBeTruthy();
   const { accessToken } = (await registerResponse.json()) as { accessToken: string };
   const authHeaders = { Authorization: `Bearer ${accessToken}` };
 
-  // 2) Crée un évènement (status DRAFT imposé par le service).
+  // 2) Crée un événement (status DRAFT imposé par le service).
   const startsAt = new Date(Date.now() + 86_400_000).toISOString();
   const endsAt = new Date(Date.now() + 172_800_000).toISOString();
   const createEventResponse = await request.post(`${apiBaseUrl}/events`, {
@@ -52,20 +57,25 @@ test("pages publiques d'un évènement : rendu SSR + état zéro des résultats"
     expect(candidateResponse.ok()).toBeTruthy();
   }
 
-  // 4) Page publique de vote (SSR). DRAFT → branche « vote pas ouvert ».
+  // 4) Un brouillon n'a pas de page publique.
+  const draftResponse = await page.goto(`/e/${eventSlug}`);
+  expect(draftResponse?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Ce concours n'est pas disponible" })).toBeVisible();
+
+  // 5) Mise en ligne (dates futures) : la page s'affiche, le vote n'est pas encore ouvert.
+  await prisma.event.update({ where: { id: createdEvent.id }, data: { status: "ACTIVE" } });
   await page.goto(`/e/${eventSlug}`);
   await expect(page.getByRole("heading", { name: eventTitle })).toBeVisible();
   await expect(page.getByText(organizerName)).toBeVisible();
-  await expect(page.getByText("Le vote n'est pas ouvert")).toBeVisible();
-  // Libellé « résultats en direct » remplacé (7.11-b : il n'y a pas de direct).
-  await expect(page.getByRole("link", { name: "Voir les résultats" })).toBeVisible();
+  await expect(page.getByText(/Le vote ouvre le/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Résultats" })).toBeVisible();
 
-  // 5) Page publique des résultats (SSR). Aucun vote payé → état zéro + invariant.
+  // 6) Page publique des résultats (SSR). Aucun vote payé → état zéro + invariant.
   await page.goto(`/e/${eventSlug}/results`);
   await expect(page.getByRole("heading", { name: eventTitle })).toBeVisible();
   await expect(page.getByText("Seuls les votes")).toBeVisible();
 
-  // 6) Slug inexistant → 404.
+  // 7) Slug inexistant → 404.
   const notFoundResponse = await page.goto(`/e/inexistant-${unique}`);
   expect(notFoundResponse?.status()).toBe(404);
 });

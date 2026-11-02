@@ -91,17 +91,6 @@ export class EventsController {
     return this.eventsService.updateCandidate(user, eventId, candidateId, body);
   }
 
-  @Patch(":eventId/candidates/:candidateId/vote-count")
-  @Roles(...EVENT_OWNER_ROLES)
-  setCandidateVoteCount(
-    @CurrentUser() user: AuthUser,
-    @Param("eventId") eventId: string,
-    @Param("candidateId") candidateId: string,
-    @Body() body: unknown
-  ) {
-    return this.eventsService.setCandidateVoteCount(user, eventId, candidateId, body);
-  }
-
   @Delete(":eventId/candidates/:candidateId")
   @Roles(...EVENT_OWNER_ROLES)
   deleteCandidate(

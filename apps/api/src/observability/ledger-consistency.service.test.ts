@@ -6,13 +6,14 @@ import {
   PaymentProvider,
   PaymentPurpose,
   PaymentStatus,
-  TenantOfferType,
   UserRole,
   WalletLedgerKind
 } from "@prisma/client";
 import type { AuthUser } from "../auth/auth.types";
 import { WalletService } from "../offers/wallet.service";
 import { WithdrawalsService } from "../offers/withdrawals.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { PayoutDestinationService } from "../payouts/payout-destination.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LedgerConsistencyService } from "./ledger-consistency.service";
 import { assertTestDatabase, prisma, resetDatabase } from "../test-utils/db";
@@ -21,7 +22,12 @@ import { candidateTestData } from "../test-utils/candidate-fixture";
 const prismaService = new PrismaService();
 const ledger = new LedgerConsistencyService(prismaService);
 const wallet = new WalletService(prismaService);
-const withdrawals = new WithdrawalsService(prismaService, wallet);
+const withdrawals = new WithdrawalsService(
+  prismaService,
+  wallet,
+  new NotificationsService(prismaService),
+  new PayoutDestinationService(prismaService)
+);
 
 before(() => assertTestDatabase());
 beforeEach(() => resetDatabase());
@@ -137,7 +143,6 @@ async function seedEscrowTenant() {
     data: {
       slug: `rec-${suffix}`,
       displayName: "Réconciliation",
-      offerType: TenantOfferType.ESCROW,
       payoutNetwork: "MTN",
       payoutPhoneEnc: "iv:tag:cipher",
       payoutPhoneLast4: "3456"

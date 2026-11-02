@@ -13,11 +13,7 @@ export default function AdminAuditPage() {
       <AdminPageHeader
         eyebrow={isEn ? "System" : "Système"}
         title={isEn ? "Audit log" : "Journal d'audit"}
-        description={
-          isEn
-            ? "Inspect, filter and delete audit entries. Use retention purge for bulk cleanup of old logs."
-            : "Consultez, filtrez et supprimez les entrées d'audit. Utilisez la purge par rétention pour nettoyer les anciens logs."
-        }
+        description={isEn ? "Who did what, and when." : "Qui a fait quoi, et quand."}
       />
       <AuditLogPanel isEn={isEn} />
     </AdminPageShell>

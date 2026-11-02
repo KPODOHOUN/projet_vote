@@ -29,14 +29,6 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({ items: [], unreadCount: 0 })
     });
   });
-
-  await page.route("**/api/v1/partners/admin/requests/pending-count", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ count: 0 })
-    });
-  });
 });
 
 test("maintenance: affiche le mode inactif puis active", async ({ page }) => {

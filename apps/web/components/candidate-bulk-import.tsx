@@ -80,7 +80,7 @@ export function CandidateBulkImport({
   if (!isOpen) {
     return (
       <Button type="button" variant="secondary" onClick={() => setIsOpen(true)}>
-        <ListPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+        <ListPlus className="size-4" aria-hidden="true" />
         {isEn ? "Import several candidates" : "Importer plusieurs candidats"}
       </Button>
     );

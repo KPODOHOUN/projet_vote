@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useI18n } from "../../../lib/i18n-provider";
+import { formatCfa } from "../../../lib/format";
+import { formatEventStatus, formatUserRole } from "../../../lib/i18n";
+import { paymentStatusLabel } from "../../../lib/payment-status-labels";
 import { getStoredToken } from "../../../lib/auth";
 import { search, searchResultHref, type SearchResults } from "../../../lib/search";
 import { LoadingState, EmptyState } from "@/components/ui";
@@ -46,17 +49,18 @@ export function SearchResultsClient() {
     <div className="space-y-10">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-6">
         <div className="space-y-1">
-          <span className="text-sm font-bold tracking-widest uppercase text-primary block">{isEn ? "Search" : "Recherche"}</span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{t("search.resultsTitle")}</h2>
+          <span className="block text-sm font-semibold text-slate-600">{isEn ? "Search" : "Recherche"}</span>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-foreground">{t("search.resultsTitle")}</h1>
         </div>
       </header>
 
       <form className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col sm:flex-row items-end gap-4" onSubmit={onSubmit} role="search">
         <div className="grid gap-1.5 w-full">
-          <label className="text-sm font-medium leading-none">
+          <label htmlFor="search-page-term" className="text-sm font-medium leading-none">
             {t("search.label")}
           </label>
           <input
+            id="search-page-term"
             type="search"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
@@ -84,7 +88,7 @@ export function SearchResultsClient() {
                   <li key={it.id}>
                     <Link href={searchResultHref("event", it)} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border border-border/50 bg-background hover:border-primary/50 transition-colors gap-2">
                       <strong className="text-foreground">{it.title}</strong>
-                      <span className="text-sm text-muted-foreground">{it.status}</span>
+                      <span className="text-sm text-muted-foreground">{formatEventStatus(it.status, isEn)}</span>
                     </Link>
                   </li>
                 ))}
@@ -114,7 +118,7 @@ export function SearchResultsClient() {
                   <li key={it.id}>
                     <Link href={searchResultHref("member", it)} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border border-border/50 bg-background hover:border-primary/50 transition-colors gap-2">
                       <strong className="text-foreground">{it.email}</strong>
-                      <span className="text-sm text-muted-foreground">{it.role}</span>
+                      <span className="text-sm text-muted-foreground">{formatUserRole(it.role, isEn)}</span>
                     </Link>
                   </li>
                 ))}
@@ -129,7 +133,7 @@ export function SearchResultsClient() {
                   <li key={it.id}>
                     <Link href={searchResultHref("payment", it)} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border border-border/50 bg-background hover:border-primary/50 transition-colors gap-2">
                       <strong className="text-foreground">{it.providerRef ?? "…"}</strong>
-                      <span className="text-sm text-muted-foreground">{it.amountCfa.toLocaleString(isEn ? "en-GB" : "fr-FR")} XOF · {it.status}</span>
+                      <span className="text-sm text-muted-foreground">{formatCfa(it.amountCfa, locale)} · {paymentStatusLabel(it.status, isEn)}</span>
                     </Link>
                   </li>
                 ))}

@@ -53,12 +53,13 @@ async function importImage(request: APIRequestContext, headers: Record<string, s
 async function organizer(request: APIRequestContext, unique: string) {
   const res = await request.post(`${apiBaseUrl}/auth/register`, {
     data: {
-      tenantSlug: `vis-${unique}`,
-      tenantDisplayName: "Comité Miss Campus",
+      firstName: "E2E",
+      lastName: "Organisateur",
+      phone: "0197000000",
+      organizationName: "Comité Miss Campus",
       email: `vis-${unique}@shadowa.test`,
       password: "SecurePass123!",
-      acceptPrivacyPolicy: true,
-      offerType: "ESCROW"
+      acceptPrivacyPolicy: true
     }
   });
   expect(res.ok()).toBeTruthy();
@@ -85,7 +86,7 @@ async function seedEvent(request: APIRequestContext, headers: Record<string, str
     const r = await request.post(`${apiBaseUrl}/events/${id}/candidates`, { headers, data: { fullName, number: i + 1 } });
     expect(r.ok()).toBeTruthy();
   }
-  // Activation et votes payés posés directement en base : le parcours PSP n'est pas l'objet de la capture.
+  // Mise en ligne et votes payés posés directement en base : le parcours PSP n'est pas l'objet de la capture.
   const event = await prisma.event.update({
     where: { id },
     data: {

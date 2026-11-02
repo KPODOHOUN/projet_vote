@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable, Logger, Optional, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { env } from "../config/env";
+import { MailService } from "../mail/mail.service";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const TOKEN_TTL_MS = 10 * 60 * 1000;
@@ -20,9 +21,22 @@ function hashCode(code: string): string {
  */
 @Injectable()
 export class VaultOtpService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(VaultOtpService.name);
 
-  async requestUnlock(userId: string): Promise<{ challengeId: string; code: string }> {
+  constructor(
+    private readonly prisma: PrismaService,
+    // Optionnel : les tests construisent ce service sans e-mail.
+    @Optional() private readonly mail?: MailService
+  ) {}
+
+  /**
+   * Le code part par e-mail au super-admin : la réponse HTTP ne le contient
+   * jamais (sinon une session volée suffirait à ouvrir le coffre). Seule
+   * exception : développement ou tests sans service d'e-mail, comme les autres codes.
+   */
+  async requestUnlock(userId: string): Promise<{ challengeId: string; expiresAt: string; code?: string }> {
+    const user = await this.prisma.client.user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (!user) throw new UnauthorizedException("Compte introuvable.");
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
     const row = await this.prisma.client.vaultUnlockChallenge.create({
       data: {
@@ -31,9 +45,18 @@ export class VaultOtpService {
         expiresAt: new Date(Date.now() + OTP_TTL_MS)
       }
     });
-    // In production this triggers an email delivery of `code`. In test/dev the
-    // code is returned so E2E automation can complete the flow.
-    return { challengeId: row.id, code };
+    const sent = this.mail
+      ? await this.mail.send({
+          to: [user.email],
+          subject: "Code d'accès au coffre SHADOMA",
+          html: `<p>Votre code d'accès au coffre : <strong style="font-size:20px;letter-spacing:2px">${code}</strong></p><p>Il expire dans 5 minutes. Si vous n'êtes pas à l'origine de cette demande, changez votre mot de passe immédiatement.</p>`
+        })
+      : false;
+    if (!sent && env.NODE_ENV === "production") {
+      throw new ServiceUnavailableException("Envoi du code impossible : le service d'e-mail n'est pas configuré.");
+    }
+    if (!sent) this.logger.warn(`[vault:dev] code d'accès au coffre pour ${user.email} : ${code}`);
+    return { challengeId: row.id, expiresAt: row.expiresAt.toISOString(), ...(sent ? {} : { code }) };
   }
 
   async confirmUnlock(userId: string, challengeId: string, code: string): Promise<string> {
@@ -49,18 +72,27 @@ export class VaultOtpService {
     if (row.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException("Challenge expiré.");
     }
-    if (row.attempts >= MAX_ATTEMPTS) {
+    // Essai réservé atomiquement AVANT la comparaison : des envois en parallèle
+    // ne comparent jamais plus de MAX_ATTEMPTS codes.
+    const claimed = await this.prisma.client.vaultUnlockChallenge.updateMany({
+      where: { id: challengeId, consumedAt: null, attempts: { lt: MAX_ATTEMPTS } },
+      data: { attempts: { increment: 1 } }
+    });
+    if (claimed.count === 0) {
       throw new UnauthorizedException("Challenge bloqué après trop d'essais.");
     }
     const expected = Buffer.from(row.codeHash, "utf8");
     const provided = Buffer.from(hashCode(code), "utf8");
     const matches = expected.length === provided.length && timingSafeEqual(expected, provided);
-    await this.prisma.client.vaultUnlockChallenge.update({
-      where: { id: challengeId },
-      data: matches ? { consumedAt: new Date() } : { attempts: { increment: 1 } }
-    });
     if (!matches) {
       throw new UnauthorizedException("Code invalide.");
+    }
+    const consumed = await this.prisma.client.vaultUnlockChallenge.updateMany({
+      where: { id: challengeId, consumedAt: null },
+      data: { consumedAt: new Date() }
+    });
+    if (consumed.count === 0) {
+      throw new UnauthorizedException("Challenge déjà utilisé.");
     }
     return this.signToken(userId);
   }

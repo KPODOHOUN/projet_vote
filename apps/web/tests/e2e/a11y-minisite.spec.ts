@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 
 // Accessibilité des mini-plateformes : axe-core (WCAG 2.2 A/AA) et aucun
 // défilement horizontal à 390 px, sur l'accueil, le profil et les résultats des
-// dix-sept styles de page, puis sur l'éditeur d'apparence. Activation et votes
+// dix-sept styles de page, puis sur l'éditeur d'apparence. Mise en ligne et votes
 // posés en base (base e2e), comme les autres specs.
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } } });
 const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:3001/api/v1";
@@ -47,7 +47,7 @@ async function organizer(request: APIRequestContext, unique: string) {
   const email = `a11y-${unique}@shadowa.test`;
   const password = "SecurePass123!";
   const res = await request.post(`${apiBaseUrl}/auth/register`, {
-    data: { tenantSlug: `a11y-${unique}`, tenantDisplayName: "Comité A11y", email, password, acceptPrivacyPolicy: true, offerType: "ESCROW" }
+    data: { firstName: "E2E", lastName: "Organisateur", phone: "0197000000", organizationName: "Comité A11y", email, password, acceptPrivacyPolicy: true }
   });
   expect(res.ok()).toBeTruthy();
   const { accessToken } = (await res.json()) as { accessToken: string };
@@ -115,4 +115,46 @@ test("accessibilité : mini-plateformes dans les dix-sept styles et éditeur d'a
 
   writeFileSync(test.info().outputPath("a11y-violations.json"), JSON.stringify(violations, null, 2));
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+});
+
+// Parcours de vote au clavier seul : Tab jusqu'au numéro Mobile Money, saisie,
+// puis Tab jusqu'au bouton de paiement ; chaque arrêt a un focus visible.
+test("accessibilité : voter au clavier seul, focus toujours visible", async ({ page, request }) => {
+  const unique = `${Date.now()}`;
+  const owner = await organizer(request, `kb-${unique}`);
+  const { slug, firstRef } = await seedEvent(request, owner.headers, `kb-${unique}`, "AFFICHE", "#6D28D9");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/e/${slug}/c/${firstRef}`);
+  await page.waitForLoadState("networkidle");
+
+  const focusState = () =>
+    page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el || el === document.body) return null;
+      const style = getComputedStyle(el);
+      const outline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
+      const ring = style.boxShadow !== "none";
+      return { id: el.id, tag: el.tagName, text: (el.textContent ?? "").trim().slice(0, 40), visible: outline || ring };
+    });
+
+  const tabUntil = async (match: (s: NonNullable<Awaited<ReturnType<typeof focusState>>>) => boolean, max: number) => {
+    for (let i = 0; i < max; i += 1) {
+      await page.keyboard.press("Tab");
+      const state = await focusState();
+      if (!state) continue;
+      expect(state.visible, `focus invisible sur ${state.tag}#${state.id} « ${state.text} »`).toBeTruthy();
+      if (match(state)) return state;
+    }
+    throw new Error("élément jamais atteint au clavier");
+  };
+
+  await tabUntil((s) => s.id === "voterPhone", 60);
+  await page.keyboard.type("+22997000001");
+  // Le réseau est obligatoire : choix au clavier dans la liste (ouvrir, première option, valider).
+  await tabUntil((s) => s.id === "operator", 5);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#operator")).toContainText("MTN");
+  const pay = await tabUntil((s) => s.tag === "BUTTON" && /Payer/.test(s.text), 20);
+  expect(pay.text).toContain("Payer");
 });

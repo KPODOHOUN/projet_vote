@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ticket, ArrowRight, CalendarDays } from "lucide-react";
+import { ArrowRight, CalendarDays } from "lucide-react";
 import { apiFetch } from "../../../lib/api";
 import { getStoredToken } from "../../../lib/auth";
 import { authLoginUrl } from "../../../lib/auth-navigation";
@@ -54,18 +54,18 @@ export default function DashboardTicketingPage() {
         <div className="space-y-8">
             <header className="flex flex-col gap-4 border-b border-border/50 pb-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-2">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-600"><Ticket className="h-4 w-4" />{isEn ? "Ticketing" : "Billetterie"}</span>
-                    <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{isEn ? "Manage your tickets" : "Gérez votre billetterie"}</h2>
-                    <p className="max-w-2xl text-muted-foreground">{isEn ? "Choose an event to create ticket types, follow sales and validate your attendees." : "Choisissez un évènement pour créer vos types de billets, suivre les ventes et valider vos participants."}</p>
+                    <span className="block text-sm font-semibold text-slate-600">{isEn ? "Ticketing" : "Billetterie"}</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-foreground">{isEn ? "Manage your tickets" : "Gérez votre billetterie"}</h1>
+                    <p className="max-w-2xl text-muted-foreground">{isEn ? "Choose an event to create ticket types, follow sales and validate your attendees." : "Choisissez un événement pour créer vos types de billets, suivre les ventes et valider vos participants."}</p>
                 </div>
-                <Button asChild><Link href="/dashboard/events/new">{isEn ? "Create an event" : "Créer un évènement"}</Link></Button>
+                <Button asChild><Link href="/dashboard/events/new">{isEn ? "Create an event" : "Créer un événement"}</Link></Button>
             </header>
 
             {events.length === 0 ? (
                 <EmptyState
-                    title={isEn ? "No events yet" : "Aucun évènement"}
-                    description={isEn ? "Create an event before setting up your ticketing." : "Créez un évènement avant de configurer votre billetterie."}
-                    action={<Button asChild><Link href="/dashboard/events/new">{isEn ? "Create event" : "Créer un évènement"}</Link></Button>}
+                    title={isEn ? "No events yet" : "Aucun événement"}
+                    description={isEn ? "Create an event before setting up your ticketing." : "Créez un événement avant de configurer votre billetterie."}
+                    action={<Button asChild><Link href="/dashboard/events/new">{isEn ? "Create event" : "Créer un événement"}</Link></Button>}
                 />
             ) : (
                 <div className="grid gap-4 md:grid-cols-2">
